@@ -1,0 +1,1146 @@
+[
+  {
+    "name": "hello",
+    "direction": "fromFl",
+    "message": {
+      "type": "hello",
+      "version": 2
+    },
+    "hex": "f07d4d330102f7"
+  },
+  {
+    "name": "transport",
+    "direction": "fromFl",
+    "message": {
+      "type": "transport",
+      "state": {
+        "songMode": false,
+        "playing": true,
+        "recording": false,
+        "metronome": true,
+        "countIn": false
+      },
+      "tempo": 128.5,
+      "swing": 0.25,
+      "mainVolume": 0.8
+    },
+    "hex": "f07d4d33020500643220006632f7"
+  },
+  {
+    "name": "songPos",
+    "direction": "fromFl",
+    "message": {
+      "type": "songPos",
+      "bar": 12,
+      "step": 3,
+      "tick": 0
+    },
+    "hex": "f07d4d3303000c030000f7"
+  },
+  {
+    "name": "goodbye",
+    "direction": "fromFl",
+    "message": {
+      "type": "goodbye"
+    },
+    "hex": "f07d4d3304f7"
+  },
+  {
+    "name": "alive",
+    "direction": "fromFl",
+    "message": {
+      "type": "alive"
+    },
+    "hex": "f07d4d3305f7"
+  },
+  {
+    "name": "channels",
+    "direction": "fromFl",
+    "message": {
+      "type": "channels",
+      "total": 20,
+      "offset": 4,
+      "entries": [
+        {
+          "selected": true,
+          "muted": false,
+          "solo": false,
+          "color": 16747008,
+          "name": "Kick"
+        },
+        {
+          "selected": false,
+          "muted": true,
+          "solo": true,
+          "color": 1193046,
+          "name": "Hö hat"
+        }
+      ]
+    },
+    "hex": "f07d4d3308001400040201077e14004b69636b000600486856487f437f362068617400f7"
+  },
+  {
+    "name": "selectedChannel",
+    "direction": "fromFl",
+    "message": {
+      "type": "selectedChannel",
+      "index": 4,
+      "color": 16747008,
+      "volume": 0.78125,
+      "pan": 0,
+      "name": "Diva",
+      "plugin": "Diva"
+    },
+    "hex": "f07d4d33090004077e1400637f400044697661004469766100f7"
+  },
+  {
+    "name": "selectedChannelNone",
+    "direction": "fromFl",
+    "message": {
+      "type": "selectedChannel",
+      "index": null,
+      "color": 0,
+      "volume": 0,
+      "pan": -1,
+      "name": "",
+      "plugin": ""
+    },
+    "hex": "f07d4d33097f7f00000000000000000000f7"
+  },
+  {
+    "name": "channelDetail",
+    "direction": "fromFl",
+    "message": {
+      "type": "channelDetail",
+      "index": 2,
+      "pitch": -0.5,
+      "pitchRange": 2,
+      "cutoff": 1,
+      "resonance": 0.25,
+      "mixerTrack": 5,
+      "channelType": 2
+    },
+    "hex": "f07d4d330a00022000027f7f2000000502f7"
+  },
+  {
+    "name": "channelDetailNone",
+    "direction": "fromFl",
+    "message": {
+      "type": "channelDetail",
+      "index": null,
+      "pitch": 0,
+      "pitchRange": 0,
+      "cutoff": 0,
+      "resonance": 0,
+      "mixerTrack": 0,
+      "channelType": 0
+    },
+    "hex": "f07d4d330a7f7f40000000000000000000f7"
+  },
+  {
+    "name": "mixer",
+    "direction": "fromFl",
+    "message": {
+      "type": "mixer",
+      "total": 127,
+      "offset": 0,
+      "entries": [
+        {
+          "selected": true,
+          "muted": false,
+          "solo": false,
+          "armed": false,
+          "color": 6256001,
+          "volume": 0.8,
+          "pan": -0.25,
+          "name": "Master"
+        },
+        {
+          "selected": false,
+          "muted": true,
+          "solo": true,
+          "armed": true,
+          "color": 16711680,
+          "volume": 0,
+          "pan": 1,
+          "name": "Insert 1"
+        }
+      ]
+    },
+    "hex": "f07d4d3310007f00000201027d6b01663230004d6173746572000e077c000000007f7f496e73657274203100f7"
+  },
+  {
+    "name": "selectedTrack",
+    "direction": "fromFl",
+    "message": {
+      "type": "selectedTrack",
+      "index": 3
+    },
+    "hex": "f07d4d33110003f7"
+  },
+  {
+    "name": "meters",
+    "direction": "fromFl",
+    "message": {
+      "type": "meters",
+      "offset": 8,
+      "peaks": [
+        [1, 0.5],
+        [0, 0.25]
+      ]
+    },
+    "hex": "f07d4d33120008027f400020f7"
+  },
+  {
+    "name": "pattern",
+    "direction": "fromFl",
+    "message": {
+      "type": "pattern",
+      "number": 3,
+      "count": 5,
+      "length": 16,
+      "color": 4877196,
+      "name": "Pattern 3"
+    },
+    "hex": "f07d4d33180003000500100229570c5061747465726e203300f7"
+  },
+  {
+    "name": "patterns",
+    "direction": "fromFl",
+    "message": {
+      "type": "patterns",
+      "count": 5,
+      "offset": 0,
+      "entries": [
+        {
+          "current": false,
+          "color": 4877196,
+          "name": "Intro"
+        },
+        {
+          "current": true,
+          "color": 9194091,
+          "name": "Verse"
+        }
+      ]
+    },
+    "hex": "f07d4d33190005000002000229570c496e74726f00010431146b566572736500f7"
+  },
+  {
+    "name": "stepGrid",
+    "direction": "fromFl",
+    "message": {
+      "type": "stepGrid",
+      "channel": 4,
+      "pattern": 3,
+      "offset": 16,
+      "steps": [
+        true,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        true
+      ]
+    },
+    "hex": "f07d4d331a00040003001010022211f7"
+  },
+  {
+    "name": "patternGrid",
+    "direction": "fromFl",
+    "message": {
+      "type": "patternGrid",
+      "channel": 5,
+      "start": 16,
+      "steps": [
+        true,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        true
+      ],
+      "stepSequencer": true
+    },
+    "hex": "f07d4d331b0500101011220201f7"
+  },
+  {
+    "name": "patternGridPartial",
+    "direction": "fromFl",
+    "message": {
+      "type": "patternGrid",
+      "channel": 0,
+      "start": 0,
+      "steps": [true, true, false, false, true],
+      "stepSequencer": false
+    },
+    "hex": "f07d4d331b000000051300f7"
+  },
+  {
+    "name": "plugin",
+    "direction": "fromFl",
+    "message": {
+      "type": "plugin",
+      "channel": 4,
+      "valid": true,
+      "paramCount": 4240,
+      "name": "Diva"
+    },
+    "hex": "f07d4d332000040121104469766100f7"
+  },
+  {
+    "name": "pluginNone",
+    "direction": "fromFl",
+    "message": {
+      "type": "plugin",
+      "channel": null,
+      "valid": false,
+      "paramCount": 0,
+      "name": ""
+    },
+    "hex": "f07d4d33207f7f00000000f7"
+  },
+  {
+    "name": "pluginParams",
+    "direction": "fromFl",
+    "message": {
+      "type": "pluginParams",
+      "params": [
+        {
+          "index": 12,
+          "value": 0.5,
+          "name": "Cutoff",
+          "valueText": "64.0"
+        },
+        {
+          "index": 300,
+          "value": 1,
+          "name": "Res",
+          "valueText": "100 %"
+        }
+      ]
+    },
+    "hex": "f07d4d332102000c40004375746f66660036342e3000022c7f7f52657300313030202500f7"
+  },
+  {
+    "name": "paramNames",
+    "direction": "fromFl",
+    "message": {
+      "type": "paramNames",
+      "offset": 300,
+      "names": ["main: Output", "VCC: Voices", "", "Filter: Cutoff"]
+    },
+    "hex": "f07d4d3322022c046d61696e3a204f7574707574005643433a20566f69636573000046696c7465723a204375746f666600f7"
+  },
+  {
+    "name": "liveGrid",
+    "direction": "fromFl",
+    "message": {
+      "type": "liveGrid",
+      "scanned": 8,
+      "perf": true
+    },
+    "hex": "f07d4d33230801f7"
+  },
+  {
+    "name": "liveTrack",
+    "direction": "fromFl",
+    "message": {
+      "type": "liveTrack",
+      "offset": 16,
+      "track": 2,
+      "name": "Bass",
+      "color": 5941734,
+      "muted": true,
+      "solo": false,
+      "trigSnap": 3,
+      "blocks": [
+        { "status": 1, "color": 3753292 },
+        { "status": 5, "color": 16486980 }
+      ]
+    },
+    "hex": "f07d4d332500100201026a5366034261737300020101650a4c05076e2444f7"
+  },
+  {
+    "name": "activity",
+    "direction": "fromFl",
+    "message": {
+      "type": "activity",
+      "first": 16,
+      "active": [true, false, false, true]
+    },
+    "hex": "f07d4d332400100401000001f7"
+  },
+  {
+    "name": "requestState",
+    "direction": "toFl",
+    "message": {
+      "type": "requestState"
+    },
+    "hex": "f07d4d3341f7"
+  },
+  {
+    "name": "view",
+    "direction": "toFl",
+    "message": {
+      "type": "view",
+      "channelOffset": 0,
+      "mixerOffset": 8,
+      "patternOffset": 0,
+      "stepOffset": 16,
+      "meters": true,
+      "presets": false,
+      "patternGrid": false,
+      "params": [0, 1, 2, 3, 4, 5, 6, 7],
+      "liveScenes": false,
+      "liveOffset": 0
+    },
+    "hex": "f07d4d33420000000800000010010800000001000200030004000500060007000000f7"
+  },
+  {
+    "name": "selectChannel",
+    "direction": "toFl",
+    "message": {
+      "type": "selectChannel",
+      "index": 130
+    },
+    "hex": "f07d4d33430102f7"
+  },
+  {
+    "name": "setChannel",
+    "direction": "toFl",
+    "message": {
+      "type": "setChannel",
+      "index": 2,
+      "what": "pan",
+      "value": 0.25
+    },
+    "hex": "f07d4d33440002012000f7"
+  },
+  {
+    "name": "setChannelPitch",
+    "direction": "toFl",
+    "message": {
+      "type": "setChannel",
+      "index": 0,
+      "what": "pitch",
+      "value": 0.75
+    },
+    "hex": "f07d4d33440000035f7ff7"
+  },
+  {
+    "name": "setStep",
+    "direction": "toFl",
+    "message": {
+      "type": "setStep",
+      "channel": 1,
+      "step": 17,
+      "on": true
+    },
+    "hex": "f07d4d33450001001101f7"
+  },
+  {
+    "name": "selectTrack",
+    "direction": "toFl",
+    "message": {
+      "type": "selectTrack",
+      "index": 12
+    },
+    "hex": "f07d4d3346000cf7"
+  },
+  {
+    "name": "setTrack",
+    "direction": "toFl",
+    "message": {
+      "type": "setTrack",
+      "index": 3,
+      "what": "solo",
+      "value": 1
+    },
+    "hex": "f07d4d33470003037f7ff7"
+  },
+  {
+    "name": "setParam",
+    "direction": "toFl",
+    "message": {
+      "type": "setParam",
+      "param": 200,
+      "value": 0.3
+    },
+    "hex": "f07d4d334801482633f7"
+  },
+  {
+    "name": "selectPattern",
+    "direction": "toFl",
+    "message": {
+      "type": "selectPattern",
+      "number": 2
+    },
+    "hex": "f07d4d33490002f7"
+  },
+  {
+    "name": "clonePattern",
+    "direction": "toFl",
+    "message": {
+      "type": "clonePattern",
+      "number": 5
+    },
+    "hex": "f07d4d334d0005f7"
+  },
+  {
+    "name": "newPattern",
+    "direction": "toFl",
+    "message": {
+      "type": "newPattern"
+    },
+    "hex": "f07d4d334ef7"
+  },
+  {
+    "name": "clearSteps",
+    "direction": "toFl",
+    "message": {
+      "type": "clearSteps",
+      "channel": 130
+    },
+    "hex": "f07d4d334f0102f7"
+  },
+  {
+    "name": "ui",
+    "direction": "toFl",
+    "message": {
+      "type": "ui",
+      "action": "undo"
+    },
+    "hex": "f07d4d334a06f7"
+  },
+  {
+    "name": "setChannelTrack",
+    "direction": "toFl",
+    "message": {
+      "type": "setChannelTrack",
+      "index": 3,
+      "track": 12
+    },
+    "hex": "f07d4d334b0003000cf7"
+  },
+  {
+    "name": "showEditor",
+    "direction": "toFl",
+    "message": {
+      "type": "showEditor",
+      "index": 3
+    },
+    "hex": "f07d4d334c0003f7"
+  },
+  {
+    "name": "uiState",
+    "direction": "fromFl",
+    "message": {
+      "type": "uiState",
+      "snap": 8,
+      "visible": [true, true, false, true, false],
+      "focused": 3
+    },
+    "hex": "f07d4d3313080b03f7"
+  },
+  {
+    "name": "setTempo",
+    "direction": "toFl",
+    "message": {
+      "type": "setTempo",
+      "bpm": 128.5
+    },
+    "hex": "f07d4d3350006432f7"
+  },
+  {
+    "name": "setSwing",
+    "direction": "toFl",
+    "message": {
+      "type": "setSwing",
+      "value": 0.25
+    },
+    "hex": "f07d4d33512000f7"
+  },
+  {
+    "name": "showWindow",
+    "direction": "toFl",
+    "message": {
+      "type": "showWindow",
+      "window": 3
+    },
+    "hex": "f07d4d335203f7"
+  },
+  {
+    "name": "setSnap",
+    "direction": "toFl",
+    "message": {
+      "type": "setSnap",
+      "mode": 13
+    },
+    "hex": "f07d4d33530df7"
+  },
+  {
+    "name": "uiQuantizeStarts",
+    "direction": "toFl",
+    "message": {
+      "type": "ui",
+      "action": "quantizeStarts"
+    },
+    "hex": "f07d4d334a0df7"
+  },
+  {
+    "name": "undoState",
+    "direction": "fromFl",
+    "message": {
+      "type": "undoState",
+      "position": 3,
+      "count": 150,
+      "hint": "Move step"
+    },
+    "hex": "f07d4d3314000301164d6f7665207374657000f7"
+  },
+  {
+    "name": "setMainVolume",
+    "direction": "toFl",
+    "message": {
+      "type": "setMainVolume",
+      "value": 0.8
+    },
+    "hex": "f07d4d33546632f7"
+  },
+  {
+    "name": "presets",
+    "direction": "fromFl",
+    "message": {
+      "type": "presets",
+      "count": 300,
+      "current": 17,
+      "offset": 14,
+      "names": ["Init", "Pad A", "Bass 1", "Lead – wide", "Pluck", "Keys", "Strings", "Brass"]
+    },
+    "hex": "f07d4d3315022c001108000e496e697400506164204100426173732031004c656164207f627f007f13207769646500506c75636b004b65797300537472696e677300427261737300f7"
+  },
+  {
+    "name": "presetsNone",
+    "direction": "fromFl",
+    "message": {
+      "type": "presets",
+      "count": 0,
+      "current": null,
+      "offset": 0,
+      "names": []
+    },
+    "hex": "f07d4d331500007f7f000000f7"
+  },
+  {
+    "name": "viewPresets",
+    "direction": "toFl",
+    "message": {
+      "type": "view",
+      "channelOffset": 16,
+      "mixerOffset": 0,
+      "patternOffset": 0,
+      "stepOffset": 0,
+      "meters": false,
+      "presets": true,
+      "patternGrid": false,
+      "params": [],
+      "liveScenes": false,
+      "liveOffset": 0
+    },
+    "hex": "f07d4d334200100000000000000200000000f7"
+  },
+  {
+    "name": "viewPatternGrid",
+    "direction": "toFl",
+    "message": {
+      "type": "view",
+      "channelOffset": 16,
+      "mixerOffset": 0,
+      "patternOffset": 0,
+      "stepOffset": 32,
+      "meters": false,
+      "presets": false,
+      "patternGrid": true,
+      "params": [],
+      "liveScenes": false,
+      "liveOffset": 0
+    },
+    "hex": "f07d4d334200100000000000200400000000f7"
+  },
+  {
+    "name": "viewLive",
+    "direction": "toFl",
+    "message": {
+      "type": "view",
+      "channelOffset": 0,
+      "mixerOffset": 0,
+      "patternOffset": 0,
+      "stepOffset": 0,
+      "meters": false,
+      "presets": false,
+      "patternGrid": false,
+      "params": [],
+      "liveScenes": true,
+      "liveOffset": 16
+    },
+    "hex": "f07d4d334200000000000000000000010010f7"
+  },
+  {
+    "name": "presetStepNext",
+    "direction": "toFl",
+    "message": {
+      "type": "presetStep",
+      "dir": "next"
+    },
+    "hex": "f07d4d335501f7"
+  },
+  {
+    "name": "presetStepPrev",
+    "direction": "toFl",
+    "message": {
+      "type": "presetStep",
+      "dir": "prev"
+    },
+    "hex": "f07d4d335500f7"
+  },
+  {
+    "name": "uiSaveNew",
+    "direction": "toFl",
+    "message": {
+      "type": "ui",
+      "action": "saveNew"
+    },
+    "hex": "f07d4d334a0ef7"
+  },
+  {
+    "name": "transportSongMode",
+    "direction": "fromFl",
+    "message": {
+      "type": "transport",
+      "state": {
+        "songMode": true,
+        "playing": true,
+        "recording": false,
+        "metronome": true,
+        "countIn": false
+      },
+      "tempo": 128.5,
+      "swing": 0.25,
+      "mainVolume": 0.8
+    },
+    "hex": "f07d4d33021500643220006632f7"
+  },
+  {
+    "name": "markers",
+    "direction": "fromFl",
+    "message": {
+      "type": "markers",
+      "total": 3,
+      "offset": 0,
+      "entries": [
+        {
+          "ticks": 0,
+          "name": "Intro"
+        },
+        {
+          "ticks": 384,
+          "name": "Verse"
+        },
+        {
+          "ticks": 1536,
+          "name": "Drop"
+        }
+      ],
+      "ppq": 96
+    },
+    "hex": "f07d4d3316030003000000496e74726f00000300566572736500000c0044726f70000060f7"
+  },
+  {
+    "name": "markersEmpty",
+    "direction": "fromFl",
+    "message": {
+      "type": "markers",
+      "total": 0,
+      "offset": 0,
+      "entries": [],
+      "ppq": 480
+    },
+    "hex": "f07d4d33160000000360f7"
+  },
+  {
+    "name": "markersUnknownTimes",
+    "direction": "fromFl",
+    "message": {
+      "type": "markers",
+      "total": 2,
+      "offset": 0,
+      "entries": [
+        {
+          "ticks": null,
+          "name": "Intro"
+        },
+        {
+          "ticks": null,
+          "name": "Verse"
+        }
+      ],
+      "ppq": 96
+    },
+    "hex": "f07d4d33160200027f7f7f496e74726f007f7f7f5665727365000060f7"
+  },
+  {
+    "name": "jumpMarkerQuantized",
+    "direction": "toFl",
+    "message": {
+      "type": "jumpMarker",
+      "index": 5,
+      "quantized": true
+    },
+    "hex": "f07d4d33560501f7"
+  },
+  {
+    "name": "jumpMarkerNow",
+    "direction": "toFl",
+    "message": {
+      "type": "jumpMarker",
+      "index": 0,
+      "quantized": false
+    },
+    "hex": "f07d4d33560000f7"
+  },
+  {
+    "name": "addMarker",
+    "direction": "toFl",
+    "message": {
+      "type": "addMarker"
+    },
+    "hex": "f07d4d3357f7"
+  },
+  {
+    "name": "setLoopModeSong",
+    "direction": "toFl",
+    "message": {
+      "type": "setLoopMode",
+      "song": true
+    },
+    "hex": "f07d4d335801f7"
+  },
+  {
+    "name": "setLoopModePattern",
+    "direction": "toFl",
+    "message": {
+      "type": "setLoopMode",
+      "song": false
+    },
+    "hex": "f07d4d335800f7"
+  },
+  {
+    "name": "playlistViewZoomOut",
+    "direction": "toFl",
+    "message": {
+      "type": "playlistView",
+      "what": "zoom",
+      "delta": -3
+    },
+    "hex": "f07d4d3359003df7"
+  },
+  {
+    "name": "playlistViewScroll",
+    "direction": "toFl",
+    "message": {
+      "type": "playlistView",
+      "what": "scroll",
+      "delta": 5
+    },
+    "hex": "f07d4d33590145f7"
+  },
+  {
+    "name": "requestMarkers",
+    "direction": "toFl",
+    "message": {
+      "type": "requestMarkers"
+    },
+    "hex": "f07d4d335af7"
+  },
+  {
+    "name": "setSongPos",
+    "direction": "toFl",
+    "message": {
+      "type": "setSongPos",
+      "ticks": 3840
+    },
+    "hex": "f07d4d335b001e00f7"
+  },
+  {
+    "name": "probe",
+    "direction": "fromFl",
+    "message": {
+      "type": "probe",
+      "text": "perf=0 tracks=2 ppq=96"
+    },
+    "hex": "f07d4d3317706572663d3020747261636b733d32207070713d393600f7"
+  },
+  {
+    "name": "runProbe",
+    "direction": "toFl",
+    "message": {
+      "type": "runProbe"
+    },
+    "hex": "f07d4d335cf7"
+  },
+  {
+    "name": "presetWindow",
+    "direction": "toFl",
+    "message": {
+      "type": "presetWindow",
+      "offset": 300
+    },
+    "hex": "f07d4d335d022cf7"
+  },
+  {
+    "name": "presetLoad",
+    "direction": "toFl",
+    "message": {
+      "type": "presetLoad",
+      "index": 17
+    },
+    "hex": "f07d4d335e0011f7"
+  },
+  {
+    "name": "loopState",
+    "direction": "fromFl",
+    "message": {
+      "type": "loopState",
+      "active": true,
+      "start": 1536,
+      "end": 3072
+    },
+    "hex": "f07d4d331c01000c00001800f7"
+  },
+  {
+    "name": "loopStateOff",
+    "direction": "fromFl",
+    "message": {
+      "type": "loopState",
+      "active": false,
+      "start": 0,
+      "end": 0
+    },
+    "hex": "f07d4d331c00000000000000f7"
+  },
+  {
+    "name": "features",
+    "direction": "fromFl",
+    "message": {
+      "type": "features",
+      "patternLength": true,
+      "loop": false,
+      "browser": false,
+      "picker": false
+    },
+    "hex": "f07d4d331d01f7"
+  },
+  {
+    "name": "setPatternLength",
+    "direction": "toFl",
+    "message": {
+      "type": "setPatternLength",
+      "pattern": 3,
+      "length": 32
+    },
+    "hex": "f07d4d335f030020f7"
+  },
+  {
+    "name": "setLoop",
+    "direction": "toFl",
+    "message": {
+      "type": "setLoop",
+      "start": 1536,
+      "end": 3072
+    },
+    "hex": "f07d4d3360000c00001800f7"
+  },
+  {
+    "name": "setLoopClear",
+    "direction": "toFl",
+    "message": {
+      "type": "setLoop",
+      "start": 0,
+      "end": 0
+    },
+    "hex": "f07d4d3360000000000000f7"
+  },
+  {
+    "name": "requestLoop",
+    "direction": "toFl",
+    "message": {
+      "type": "requestLoop"
+    },
+    "hex": "f07d4d3361f7"
+  },
+  {
+    "name": "setPatternColor",
+    "direction": "toFl",
+    "message": {
+      "type": "setPatternColor",
+      "pattern": 300,
+      "color": 14708858
+    },
+    "hex": "f07d4d3362022c0701607af7"
+  },
+  {
+    "name": "doublePattern",
+    "direction": "toFl",
+    "message": {
+      "type": "doublePattern",
+      "pattern": 3
+    },
+    "hex": "f07d4d336303f7"
+  },
+  {
+    "name": "createPattern",
+    "direction": "toFl",
+    "message": {
+      "type": "createPattern",
+      "number": 300
+    },
+    "hex": "f07d4d3364022cf7"
+  },
+  {
+    "name": "stripPitch",
+    "direction": "toFl",
+    "message": {
+      "type": "strip",
+      "kind": "pitch",
+      "value": 12000,
+      "release": false
+    },
+    "hex": "f07d4d3365005d6000f7"
+  },
+  {
+    "name": "stripModRelease",
+    "direction": "toFl",
+    "message": {
+      "type": "strip",
+      "kind": "mod",
+      "value": 64,
+      "release": true
+    },
+    "hex": "f07d4d336501004001f7"
+  },
+  {
+    "name": "stripPerform",
+    "direction": "toFl",
+    "message": {
+      "type": "strip",
+      "kind": "perform",
+      "value": 16383,
+      "release": false
+    },
+    "hex": "f07d4d3365027f7f00f7"
+  },
+  {
+    "name": "transpose",
+    "direction": "toFl",
+    "message": {
+      "type": "transpose",
+      "channel": 130,
+      "semitones": -12
+    },
+    "hex": "f07d4d3366010234f7"
+  },
+  {
+    "name": "browserNode",
+    "direction": "fromFl",
+    "message": {
+      "type": "browserNode",
+      "caption": "Diva",
+      "fileType": -1,
+      "popup": true,
+      "browserFocused": true,
+      "otherFormFocused": false,
+      "formCaption": "Browser",
+      "hint": "Plugin database"
+    },
+    "hex": "f07d4d331e44697661003f7f0342726f7773657200506c7567696e20646174616261736500f7"
+  },
+  {
+    "name": "browse",
+    "direction": "toFl",
+    "message": {
+      "type": "browse",
+      "action": "next"
+    },
+    "hex": "f07d4d336701f7"
+  },
+  {
+    "name": "uiKey",
+    "direction": "toFl",
+    "message": {
+      "type": "uiKey",
+      "key": "enter"
+    },
+    "hex": "f07d4d336804f7"
+  },
+  {
+    "name": "picker",
+    "direction": "toFl",
+    "message": {
+      "type": "picker",
+      "show": true,
+      "mode": 2
+    },
+    "hex": "f07d4d33690142f7"
+  },
+  {
+    "name": "triggerLiveClip",
+    "direction": "toFl",
+    "message": {
+      "type": "triggerLiveClip",
+      "block": 2,
+      "release": false
+    },
+    "hex": "f07d4d336a000200f7"
+  },
+  {
+    "name": "triggerLiveClipRelease",
+    "direction": "toFl",
+    "message": {
+      "type": "triggerLiveClip",
+      "block": 2,
+      "release": true
+    },
+    "hex": "f07d4d336a000201f7"
+  },
+  {
+    "name": "triggerLiveClipStop",
+    "direction": "toFl",
+    "message": {
+      "type": "triggerLiveClip",
+      "block": null,
+      "release": false
+    },
+    "hex": "f07d4d336a7f7f00f7"
+  }
+]

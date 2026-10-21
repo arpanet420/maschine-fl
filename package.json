@@ -1,0 +1,51 @@
+{
+  "name": "maschine-fl",
+  "version": "1.0.0",
+  "description": "Maschine MK3 to FL Studio bridge daemon (mk3d)",
+  "directories": {
+    "doc": "docs",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:fl": "python3 -I -m unittest discover -s fl-script/tests -v",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p . --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write src",
+    "enumerate": "tsx src/tools/enumerate.ts",
+    "inputlog": "tsx src/tools/inputlog.ts",
+    "ledtest": "tsx src/tools/ledtest.ts",
+    "displaytest": "tsx src/tools/displaytest.ts",
+    "pagepng": "tsx src/tools/pagepng.ts",
+    "mk3d": "tsx src/main.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "type": "module",
+  "bin": {
+    "mk3d": "bin/mk3d"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "private": "true",
+  "dependencies": {
+    "@julusian/midi": "^3.8.1",
+    "@napi-rs/canvas": "^1.0.11",
+    "node-hid": "^3.4.0",
+    "usb": "^3.2.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.5",
+    "@types/w3c-web-usb": "^1.0.14",
+    "eslint": "^10.12.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.2",
+    "vitest": "^5.0.5"
+  }
+}

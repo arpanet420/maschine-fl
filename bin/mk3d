@@ -1,0 +1,538 @@
+#!/usr/bin/env bash
+# mk3d: the command for the Maschine MK3 to FL Studio bridge daemon.
+#   mk3d setup [--service] | run [--service] | start | stop [--restore-ni] | restart | status
+#   mk3d logs [--no-follow] | doctor | service install|uninstall|print | uninstall [--restore-ni]
+#   mk3d version | help
+# Works from a git clone (./bin/mk3d) and from Homebrew (symlinked into the prefix's bin).
+# Nothing here sends anything to the MK3; `doctor` only reads USB information.
+# bash 3.2 compatible (macOS).
+#
+# Environment overrides, for tests only:
+#   MK3D_HOME=<dir>        replaces $HOME (FL folder, LaunchAgents, logs)
+#   MK3D_NO_LAUNCHCTL=1    print `launchctl <args>` (and the NI agent script calls) instead of running them
+#   MK3D_NODE=<path>       the node binary to use instead of the first `node` on PATH
+set -u
+
+LABEL="io.github.arpanet420.mk3d"
+
+# --- where are we installed? (resolve symlinks, bash 3.2 has no readlink -f) ---
+src="${BASH_SOURCE[0]}"
+while [ -L "$src" ]; do
+  d="$(cd -P "$(dirname "$src")" && pwd)"
+  src="$(readlink "$src")"
+  case "$src" in /*) ;; *) src="$d/$src" ;; esac
+done
+INSTALL_DIR="$(cd -P "$(dirname "$src")/.." && pwd)"
+
+# Under Homebrew the real dir is in the Cellar and changes on upgrade. Anything that must survive
+# `brew upgrade` uses the stable opt path instead.
+STABLE_DIR="$INSTALL_DIR"
+case "$INSTALL_DIR" in
+  */Cellar/maschine-fl/*)
+    STABLE_DIR="${INSTALL_DIR%%/Cellar/maschine-fl/*}/opt/maschine-fl/libexec"
+    ;;
+esac
+
+HOME_DIR="${MK3D_HOME:-$HOME}"
+FL_HARDWARE_DIR="$HOME_DIR/Documents/Image-Line/FL Studio/Settings/Hardware"
+FL_LINK="$FL_HARDWARE_DIR/MK3Bridge"
+PLIST="$HOME_DIR/Library/LaunchAgents/$LABEL.plist"
+LOG_FILE="$HOME_DIR/Library/Logs/mk3d.log"
+DOMAIN="gui/$(id -u)"
+MAIN_JS="$INSTALL_DIR/dist/main.js"
+
+say() { printf '%s\n' "$*"; }
+err() { printf '%s\n' "$*" >&2; }
+
+find_node() {
+  if [ -n "${MK3D_NODE:-}" ]; then
+    printf '%s\n' "$MK3D_NODE"
+  else
+    command -v node || true
+  fi
+}
+
+version() {
+  sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$INSTALL_DIR/package.json" 2>/dev/null | head -n 1
+}
+
+required_node_major() {
+  local spec
+  spec="$(sed -n 's/.*"node": *">=\([0-9]*\).*/\1/p' "$INSTALL_DIR/package.json" 2>/dev/null | head -n 1)"
+  printf '%s\n' "${spec:-22}"
+}
+
+node_major() {
+  local v
+  v="$("$1" -v 2>/dev/null)" || return 1
+  v="${v#v}"
+  printf '%s\n' "${v%%.*}"
+}
+
+lc() {
+  if [ -n "${MK3D_NO_LAUNCHCTL:-}" ]; then
+    say "launchctl $*"
+    return 0
+  fi
+  launchctl "$@"
+}
+
+ni_agents() {
+  if [ -n "${MK3D_NO_LAUNCHCTL:-}" ]; then
+    say "scripts/ni-agents.sh $*"
+    return 0
+  fi
+  "$INSTALL_DIR/scripts/ni-agents.sh" "$@"
+}
+
+xml_escape() {
+  printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+}
+
+# Is this symlink target one of our installs (a clone, or a Homebrew install)?
+is_ours() {
+  local target="$1" root
+  case "$target" in
+    */fl-script/MK3Bridge) ;;
+    *) return 1 ;;
+  esac
+  case "$target" in
+    */Cellar/maschine-fl/*|*/opt/maschine-fl/*) return 0 ;;
+  esac
+  root="${target%/fl-script/MK3Bridge}"
+  if [ -f "$root/package.json" ] && grep -q '"name": *"maschine-fl"' "$root/package.json"; then
+    return 0
+  fi
+  # A clone that has since moved or been deleted.
+  if [ ! -e "$target" ]; then return 0; fi
+  return 1
+}
+
+# --- setup ---
+ensure_build() {
+  local node major need
+  node="$(find_node)"
+  if [ -z "$node" ]; then
+    err "Node.js was not found. Install it first (brew install node)."
+    return 1
+  fi
+  major="$(node_major "$node")" || major=0
+  need="$(required_node_major)"
+  if [ "$major" -lt "$need" ]; then
+    err "Node $need or newer is needed, found $("$node" -v) at $node."
+    return 1
+  fi
+  if [ -f "$MAIN_JS" ]; then
+    say "OK  Node $("$node" -v), build present"
+    return 0
+  fi
+  case "$INSTALL_DIR" in
+    */Cellar/maschine-fl/*)
+      err "dist/ is missing in this Homebrew install. Reinstall: brew reinstall --HEAD maschine-fl"
+      return 1
+      ;;
+  esac
+  say "dist/ is missing: building from the clone"
+  (
+    cd "$INSTALL_DIR" || exit 1
+    if [ ! -d node_modules ]; then
+      say "+ npm install"
+      npm install || exit 1
+    fi
+    say "+ npm run build"
+    npm run build || exit 1
+  ) || return 1
+}
+
+link_fl_script() {
+  local source="$STABLE_DIR/fl-script/MK3Bridge" current
+  if [ ! -d "$FL_HARDWARE_DIR" ]; then
+    err "FL Studio's hardware folder was not found: $FL_HARDWARE_DIR"
+    err "Start FL Studio once so it creates its settings folders, then run: mk3d setup"
+    return 1
+  fi
+  if [ -L "$FL_LINK" ]; then
+    current="$(readlink "$FL_LINK")"
+    if [ "$current" = "$source" ]; then
+      say "OK  FL script already linked: $FL_LINK -> $source"
+      return 0
+    fi
+    if is_ours "$current"; then
+      rm "$FL_LINK" && ln -s "$source" "$FL_LINK" || return 1
+      say "OK  FL script link updated: $FL_LINK -> $source (was $current)"
+      return 0
+    fi
+    err "$FL_LINK is a link to somewhere else ($current); leaving it alone."
+    err "Remove it yourself if it should point here, then run: mk3d setup"
+    return 1
+  fi
+  if [ -e "$FL_LINK" ]; then
+    err "$FL_LINK already exists and is not a link; leaving it alone."
+    return 1
+  fi
+  ln -s "$source" "$FL_LINK" || return 1
+  say "OK  FL script linked: $FL_LINK -> $source"
+}
+
+print_fl_steps() {
+  cat <<'TXT'
+
+Next, in FL Studio (mk3d must be running for the ports to show; see `mk3d start`):
+  Options > MIDI Settings
+  1. Input:  select "MK3 Bridge", tick Enable, set Controller type to "MK3 Bridge"
+             and give it a Port number, e.g. 10.
+  2. Output: select "MK3 Bridge FB" and set the same Port number (10).
+  3. Leave "Maschine MK3" disabled in both lists.
+FL's Script output (View > Script output) should then show "MK3 Bridge: ready, port 10".
+TXT
+}
+
+cmd_setup() {
+  local service=0 a rc=0
+  for a in "$@"; do
+    case "$a" in
+      --service) service=1 ;;
+      *) err "setup: unknown option $a"; return 2 ;;
+    esac
+  done
+  ensure_build || return 1
+  link_fl_script || rc=1
+  print_fl_steps
+  say ""
+  if [ "$service" -eq 1 ]; then
+    cmd_service install || rc=1
+  else
+    say "To start mk3d at login: mk3d setup --service   (or run it by hand: mk3d run)"
+  fi
+  return $rc
+}
+
+# --- service ---
+print_plist() {
+  local node nodedir path
+  node="$(find_node)"
+  nodedir=""
+  [ -n "$node" ] && nodedir="$(dirname "$node")"
+  path="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+  [ -n "$nodedir" ] && path="$nodedir:$path"
+  cat <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>$LABEL</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$(xml_escape "$STABLE_DIR/bin/mk3d")</string>
+    <string>run</string>
+    <string>--service</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>ProcessType</key>
+  <string>Interactive</string>
+  <key>StandardOutPath</key>
+  <string>$(xml_escape "$LOG_FILE")</string>
+  <key>StandardErrorPath</key>
+  <string>$(xml_escape "$LOG_FILE")</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>$(xml_escape "$path")</string>
+  </dict>
+</dict>
+</plist>
+PLIST
+}
+
+service_loaded() {
+  [ -z "${MK3D_NO_LAUNCHCTL:-}" ] && launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1
+}
+
+service_install() {
+  mkdir -p "$(dirname "$PLIST")" "$(dirname "$LOG_FILE")" || return 1
+  print_plist >"$PLIST" || return 1
+  say "OK  LaunchAgent written: $PLIST"
+  if [ -n "${MK3D_NO_LAUNCHCTL:-}" ]; then
+    lc bootout "$DOMAIN/$LABEL"
+    lc bootstrap "$DOMAIN" "$PLIST"
+  else
+    launchctl bootout "$DOMAIN/$LABEL" >/dev/null 2>&1 || true
+    if ! launchctl bootstrap "$DOMAIN" "$PLIST" 2>/dev/null; then
+      if service_loaded; then
+        say "(already loaded)"
+      else
+        err "launchctl bootstrap failed. Try: launchctl bootstrap $DOMAIN \"$PLIST\""
+        return 1
+      fi
+    fi
+  fi
+  say "OK  mk3d now starts at login and restarts if it dies. Log: $LOG_FILE"
+}
+
+service_uninstall() {
+  if [ -n "${MK3D_NO_LAUNCHCTL:-}" ]; then
+    lc bootout "$DOMAIN/$LABEL"
+  else
+    launchctl bootout "$DOMAIN/$LABEL" >/dev/null 2>&1 || true
+  fi
+  if [ -f "$PLIST" ]; then
+    rm "$PLIST" && say "OK  LaunchAgent removed: $PLIST"
+  else
+    say "No LaunchAgent at $PLIST"
+  fi
+}
+
+cmd_service() {
+  case "${1:-}" in
+    install) service_install ;;
+    uninstall) service_uninstall ;;
+    print) print_plist ;;
+    *) err "usage: mk3d service install|uninstall|print"; return 2 ;;
+  esac
+}
+
+# --- run / start / stop ---
+trim_log() {
+  [ -f "$LOG_FILE" ] || return 0
+  local size tmp
+  size="$(wc -c <"$LOG_FILE" | tr -d ' ')"
+  if [ "${size:-0}" -gt 5242880 ]; then
+    tmp="$LOG_FILE.tmp.$$"
+    tail -n 1000 "$LOG_FILE" >"$tmp" && cat "$tmp" >"$LOG_FILE"
+    rm -f "$tmp"
+  fi
+}
+
+cmd_run() {
+  local service=0 a node
+  local args=()
+  for a in "$@"; do
+    if [ "$a" = "--service" ]; then service=1; else args+=("$a"); fi
+  done
+  node="$(find_node)"
+  if [ -z "$node" ]; then err "Node.js was not found."; return 1; fi
+  if [ ! -f "$MAIN_JS" ]; then err "dist/ is missing. Run: mk3d setup"; return 1; fi
+  if [ "$service" -eq 1 ]; then
+    trim_log
+    if ! ni_agents stop >/dev/null 2>&1; then
+      say "mk3d: could not stop NI's hardware agents (NI apps running?); mk3d waits and retries when the MK3 is busy"
+    fi
+  fi
+  if [ "${#args[@]}" -gt 0 ]; then
+    exec "$node" "$MAIN_JS" "${args[@]}"
+  fi
+  exec "$node" "$MAIN_JS"
+}
+
+cmd_start() {
+  if [ ! -f "$PLIST" ]; then
+    say "No LaunchAgent yet; installing it (mk3d service install)."
+    service_install
+    return $?
+  fi
+  if service_loaded; then
+    say "mk3d is already loaded in launchd. Use: mk3d restart"
+    return 0
+  fi
+  lc bootstrap "$DOMAIN" "$PLIST"
+}
+
+cmd_stop() {
+  local restore=0 a
+  for a in "$@"; do
+    case "$a" in
+      --restore-ni) restore=1 ;;
+      *) err "stop: unknown option $a"; return 2 ;;
+    esac
+  done
+  if [ -n "${MK3D_NO_LAUNCHCTL:-}" ]; then
+    lc bootout "$DOMAIN/$LABEL"
+  else
+    launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || say "mk3d was not loaded in launchd."
+  fi
+  if [ "$restore" -eq 1 ]; then ni_agents start; fi
+  return 0
+}
+
+cmd_restart() {
+  if [ ! -f "$PLIST" ]; then cmd_start; return $?; fi
+  if [ -n "${MK3D_NO_LAUNCHCTL:-}" ] || service_loaded; then
+    lc kickstart -k "$DOMAIN/$LABEL"
+  else
+    lc bootstrap "$DOMAIN" "$PLIST"
+  fi
+}
+
+cmd_status() {
+  if [ ! -f "$PLIST" ]; then
+    say "LaunchAgent: not installed (mk3d service install)"
+    return 0
+  fi
+  say "LaunchAgent: installed ($PLIST)"
+  if [ -n "${MK3D_NO_LAUNCHCTL:-}" ]; then
+    lc print "$DOMAIN/$LABEL"
+    return 0
+  fi
+  local out state pid code
+  if ! out="$(launchctl print "$DOMAIN/$LABEL" 2>/dev/null)"; then
+    say "Loaded: no (mk3d start)"
+    return 0
+  fi
+  state="$(printf '%s\n' "$out" | sed -n 's/^[[:space:]]*state = //p' | head -n 1)"
+  pid="$(printf '%s\n' "$out" | sed -n 's/^[[:space:]]*pid = //p' | head -n 1)"
+  code="$(printf '%s\n' "$out" | sed -n 's/^[[:space:]]*last exit code = //p' | head -n 1)"
+  say "Loaded: yes"
+  say "Running: ${state:-unknown}"
+  say "PID: ${pid:--}"
+  say "Last exit status: ${code:--}"
+}
+
+cmd_logs() {
+  if [ ! -f "$LOG_FILE" ]; then
+    say "No log yet: $LOG_FILE"
+    return 0
+  fi
+  if [ "${1:-}" = "--no-follow" ]; then
+    tail -n 100 "$LOG_FILE"
+  else
+    exec tail -n 100 -f "$LOG_FILE"
+  fi
+}
+
+# --- doctor ---
+BAD=0
+ok() { say "✓ $*"; }
+bad() { say "✗ $*"; BAD=1; }
+warn() { say "! $*"; }
+
+cmd_doctor() {
+  local node major need target
+  node="$(find_node)"
+  need="$(required_node_major)"
+  if [ -z "$node" ]; then
+    bad "Node.js not found: brew install node"
+  else
+    major="$(node_major "$node")" || major=0
+    if [ "$major" -ge "$need" ]; then
+      ok "Node $("$node" -v) ($node)"
+    else
+      bad "Node $need or newer is needed, found $("$node" -v): brew upgrade node"
+    fi
+  fi
+
+  if [ -f "$MAIN_JS" ]; then ok "dist/ is built"; else bad "dist/ is missing: mk3d setup"; fi
+
+  if [ -d "$FL_HARDWARE_DIR" ]; then
+    ok "FL Studio hardware folder present"
+    if [ -L "$FL_LINK" ]; then
+      target="$(readlink "$FL_LINK")"
+      if [ -d "$target" ]; then
+        ok "FL script linked: $FL_LINK -> $target"
+      else
+        bad "FL script link points to a missing directory ($target): mk3d setup"
+      fi
+    elif [ -e "$FL_LINK" ]; then
+      warn "$FL_LINK exists but is not a link (a manual copy?); mk3d leaves it alone"
+    else
+      bad "FL script not linked: mk3d setup"
+    fi
+  else
+    bad "FL Studio hardware folder not found ($FL_HARDWARE_DIR): start FL Studio once, then mk3d setup"
+  fi
+
+  if [ -f "$PLIST" ]; then
+    ok "LaunchAgent installed"
+    if [ -n "${MK3D_NO_LAUNCHCTL:-}" ]; then
+      warn "launchctl checks skipped (MK3D_NO_LAUNCHCTL)"
+    elif service_loaded; then
+      ok "LaunchAgent loaded"
+      if launchctl print "$DOMAIN/$LABEL" 2>/dev/null | grep -q 'state = running'; then
+        ok "mk3d is running"
+      else
+        bad "mk3d is loaded but not running: mk3d logs, then mk3d restart"
+      fi
+    else
+      bad "LaunchAgent not loaded: mk3d start"
+    fi
+  else
+    warn "LaunchAgent not installed (optional): mk3d setup --service"
+  fi
+
+  if pgrep -x NIHardwareAgent >/dev/null 2>&1 || pgrep -x NIHostIntegrationAgent >/dev/null 2>&1; then
+    warn "NI hardware agents are running and may hold the MK3: scripts/ni-agents.sh stop, or mk3d start"
+  else
+    ok "NI hardware agents not running"
+  fi
+
+  if ioreg -p IOUSB -l -w0 2>/dev/null | grep -qi 'Maschine MK3'; then
+    ok "Maschine MK3 visible on USB"
+  else
+    bad "Maschine MK3 not seen on USB: check the cable and power"
+  fi
+
+  if [ -f "$LOG_FILE" ]; then
+    say "Last log lines ($LOG_FILE):"
+    tail -n 5 "$LOG_FILE" | sed 's/^/    /'
+  else
+    say "No log yet ($LOG_FILE)"
+  fi
+  return $BAD
+}
+
+# --- uninstall ---
+cmd_uninstall() {
+  local restore=0 a
+  for a in "$@"; do
+    case "$a" in
+      --restore-ni) restore=1 ;;
+      *) err "uninstall: unknown option $a"; return 2 ;;
+    esac
+  done
+  service_uninstall
+  if [ -L "$FL_LINK" ] && is_ours "$(readlink "$FL_LINK")"; then
+    rm "$FL_LINK" && say "OK  FL script link removed: $FL_LINK"
+  elif [ -L "$FL_LINK" ] || [ -e "$FL_LINK" ]; then
+    say "Left alone (not ours): $FL_LINK"
+  fi
+  if [ "$restore" -eq 1 ]; then ni_agents start; fi
+  say "Left in place: $HOME_DIR/Library/Application Support/mk3d (settings), $LOG_FILE (log)"
+  say "Left in place: NI's files and FL Studio's own files. Remove the package itself with: brew uninstall maschine-fl"
+}
+
+usage() {
+  cat <<'TXT'
+Usage: mk3d <command>
+
+  setup [--service]       link the FL script, show the FL settings; --service also starts mk3d at login
+  run [--service]         run the daemon in the foreground
+  start | stop | restart  control the LaunchAgent (stop --restore-ni brings NI's agents back)
+  status                  is it loaded, running, last exit status
+  logs [--no-follow]      show ~/Library/Logs/mk3d.log
+  doctor                  check the install and the setup
+  service install|uninstall|print
+  uninstall [--restore-ni]  remove the LaunchAgent and the FL script link
+  version | help
+TXT
+}
+
+case "${1:-}" in
+  setup) shift; cmd_setup "$@" ;;
+  run) shift; cmd_run "$@" ;;
+  start) cmd_start ;;
+  stop) shift; cmd_stop "$@" ;;
+  restart) cmd_restart ;;
+  status) cmd_status ;;
+  logs) shift; cmd_logs "$@" ;;
+  doctor) cmd_doctor ;;
+  service) shift; cmd_service "$@" ;;
+  uninstall) shift; cmd_uninstall "$@" ;;
+  version|--version) say "mk3d $(version)" ;;
+  help|-h|--help) usage ;;
+  *) usage >&2; exit 2 ;;
+esac
