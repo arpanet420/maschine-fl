@@ -341,40 +341,44 @@ describe("discovery", () => {
     expect(hfsToPosix("Boot:Content:NKS:", path.join(tmp, "Volumes"))).toBe("/Content/NKS");
   });
 
-  it("reads ContentDir from NI plists and finds presets at any depth, skipping dot-folders", async () => {
-    const prefs = path.join(tmp, "prefs");
-    const content = path.join(tmp, "content");
-    fs.mkdirSync(prefs);
-    const plist = (dir: string): string =>
-      `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict><key>ContentDir</key><string>${dir}</string></dict></plist>\n`;
-    const hfs = "/:" + content.split("/").filter(Boolean).join(":") + ":";
-    fs.writeFileSync(path.join(prefs, "com.native-instruments.Test.plist"), plist(hfs));
-    fs.writeFileSync(
-      path.join(prefs, "com.native-instruments.NoDir.plist"),
-      plist("").replace("ContentDir", "Other"),
-    );
-    fs.writeFileSync(path.join(prefs, "com.other.plist"), plist("/:x:"));
-    fs.mkdirSync(path.join(content, "a", "b"), { recursive: true });
-    fs.mkdirSync(path.join(content, ".hidden"), { recursive: true });
-    fs.writeFileSync(path.join(content, "top.nksf"), "x");
-    fs.writeFileSync(path.join(content, "a", "b", "deep.nksfx"), "xy");
-    fs.writeFileSync(path.join(content, "a", "readme.txt"), "x");
-    fs.writeFileSync(path.join(content, ".hidden", "no.nksf"), "x");
-    fs.writeFileSync(path.join(content, "a", "._top.nksf"), "x");
-    const opts = {
-      preferencesDir: prefs,
-      userContentDir: path.join(tmp, "none"),
-      volumesDir: path.join(tmp, "v"),
-    };
-    expect(await contentFolders(opts)).toContain(content);
-    const files = await discoverNksFiles(opts);
-    expect(files.map((f) => path.relative(content, f.path))).toEqual([
-      "a/b/deep.nksfx",
-      "top.nksf",
-    ]);
-    expect(files[0]!.size).toBe(2);
-    expect(files[0]!.mtimeMs).toBeGreaterThan(0);
-  });
+  // The plists go through plutil, which only macOS has.
+  it.runIf(process.platform === "darwin")(
+    "reads ContentDir from NI plists and finds presets at any depth, skipping dot-folders",
+    async () => {
+      const prefs = path.join(tmp, "prefs");
+      const content = path.join(tmp, "content");
+      fs.mkdirSync(prefs);
+      const plist = (dir: string): string =>
+        `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict><key>ContentDir</key><string>${dir}</string></dict></plist>\n`;
+      const hfs = "/:" + content.split("/").filter(Boolean).join(":") + ":";
+      fs.writeFileSync(path.join(prefs, "com.native-instruments.Test.plist"), plist(hfs));
+      fs.writeFileSync(
+        path.join(prefs, "com.native-instruments.NoDir.plist"),
+        plist("").replace("ContentDir", "Other"),
+      );
+      fs.writeFileSync(path.join(prefs, "com.other.plist"), plist("/:x:"));
+      fs.mkdirSync(path.join(content, "a", "b"), { recursive: true });
+      fs.mkdirSync(path.join(content, ".hidden"), { recursive: true });
+      fs.writeFileSync(path.join(content, "top.nksf"), "x");
+      fs.writeFileSync(path.join(content, "a", "b", "deep.nksfx"), "xy");
+      fs.writeFileSync(path.join(content, "a", "readme.txt"), "x");
+      fs.writeFileSync(path.join(content, ".hidden", "no.nksf"), "x");
+      fs.writeFileSync(path.join(content, "a", "._top.nksf"), "x");
+      const opts = {
+        preferencesDir: prefs,
+        userContentDir: path.join(tmp, "none"),
+        volumesDir: path.join(tmp, "v"),
+      };
+      expect(await contentFolders(opts)).toContain(content);
+      const files = await discoverNksFiles(opts);
+      expect(files.map((f) => path.relative(content, f.path))).toEqual([
+        "a/b/deep.nksfx",
+        "top.nksf",
+      ]);
+      expect(files[0]!.size).toBe(2);
+      expect(files[0]!.mtimeMs).toBeGreaterThan(0);
+    },
+  );
 
   it("indexes NI Resources by the vendor and name in the .meta, with color and logo", async () => {
     const res = path.join(tmp, "res");
