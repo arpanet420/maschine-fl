@@ -90,7 +90,7 @@ is not built yet logs `page "<name>" is not built yet` once per press and change
 
 Built so far: CHANNEL, PLUG-IN, MIXER, ARRANGER, BROWSER, SCENE, PATTERN, DUPLICATE, MUTE, SELECT, SOLO, STEP, PAD MODE,
 KEYBOARD, FILE, SETTINGS, NAVIGATE (VARIATION), GRID (SHIFT + FOLLOW) and LIVE (SHIFT + SCENE). A SHIFT + button
-page lights its button only while it is open.
+page lights its button only while it is open, except GRID: FOLLOW is dim while it is closed.
 
 ## Pad modes and channel banks
 
@@ -145,7 +145,9 @@ page lights its button only while it is open.
   of the note names the pads play (bottom-left is the base note; C notes bright with an orange
   top line) and `MIDI 36–51`. Left screen: the selected channel and the range in FL's naming,
   where note 60 is C5 and 36 is C3 (`C3–D#4`).
-- OCT± moves the base note by 12, SEMI± by 1, within 0…112. The pads play notes and light as the
+- OCT± moves the base note by 12, SEMI± by 1, within 0…112. Each channel has its own base note (the same
+  one in KEYBOARD and CHORDS, C3 until it is moved), by FL's channel index, kept until mk3d stops: it is not
+  saved, and it stays with the index if channels are moved or another project is opened. The pads play notes and light as the
   global fallback; GROUP A–H pick the channel bank.
 - **Knob 1 = scale** (turn in detents of 120 counts): Chromatic (default: `base + pad` as always),
   Major, Minor, Harmonic minor, Melodic minor, Dorian, Phrygian, Lydian, Mixolydian, Locrian, Major
@@ -822,7 +824,15 @@ Code: `src/modes/gridOverlay.ts`. FOLLOW alone keeps its STEP-page meaning. Disp
 bar fractions: NOT VERIFIED). The pads keep working under SHIFT, which is usually still down from
 opening it. LEDs: the current snap bright white, the others dim white. Left screen: the current
 snap's name big; right screen: a 4×4 grid of the names that mirrors the pads, the current one
-outlined.
+outlined, the ones that don't quantize dim.
+
+Display 2 is `INPUT Q` (bright and underlined while on): input quantize, Maschine's setting in FL's terms.
+FL has no switch of its own: the Global Snap decides (its manual: Step, Beat or Bar quantize notes as they
+are recorded, Line, Cell or None don't). Off sets None and remembers the snap value (`pages.json`), on brings
+it back, Step if there is none. So it also changes the snap of whatever edits with the Global Snap, and it
+applies to recording, not to what the pads sound like. On counts 1/6 step to Bar; the fractions and Events
+and Markers are not named in the manual and were not tried in FL. Which of a note's start and end FL
+quantizes is in the right-click menu of FL's Rec button, which scripts have no call for.
 
 ## BROWSER (main page, BROWSER)
 

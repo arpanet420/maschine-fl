@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { paletteWhite } from "../src/hw/palette.js";
-import { SNAP_VALUES, snapName } from "../src/modes/gridOverlay.js";
+import { GridOverlay, SNAP_VALUES, quantizes, snapName } from "../src/modes/gridOverlay.js";
 import { stackHarness } from "../src/tools/stackHarness.js";
 
 const DIM = paletteWhite("dim");
@@ -178,7 +178,7 @@ describe("GRID (SHIFT + FOLLOW)", () => {
     h.state.shift = false;
     h.release("follow");
     expect(h.stack.top).toBeUndefined();
-    expect(h.light("follow")).toBe("off");
+    expect(h.light("follow")).toBe("dim"); // so that it can be found
 
     h.tap("step");
     expect(h.stack.top?.page.id).toBe("step");
@@ -242,7 +242,63 @@ describe("GRID (SHIFT + FOLLOW)", () => {
     h.pad(13);
     expect(h.sent).toEqual([{ type: "setSnap", mode: 14 }]);
     expect(h.light("display1")).toBe("dim");
-    expect(h.light("display2")).toBe("off");
+    expect(h.light("display3")).toBe("off");
+  });
+
+  describe("INPUT Q (display 2)", () => {
+    const open = (snap: number) => {
+      const h = stackHarness();
+      h.ui({ snap });
+      h.state.shift = true;
+      h.press("follow");
+      return h;
+    };
+
+    it("off sets None, on brings the snap value back", () => {
+      const h = open(13);
+      expect(h.light("display2")).toBe("bright");
+      h.tap("display2");
+      expect(h.sentOf("setSnap").map((c) => c.mode)).toEqual([3]);
+      h.ui({ snap: 3 });
+      expect(h.light("display2")).toBe("dim");
+      h.tap("display2");
+      expect(h.sentOf("setSnap").map((c) => c.mode)).toEqual([3, 13]);
+    });
+
+    it("brings back the value that was set before a pad picked None", () => {
+      const h = open(14);
+      h.pad(2); // None
+      h.pad(2, "up");
+      h.ui({ snap: 3 });
+      h.tap("display2");
+      expect(h.sentOf("setSnap").map((c) => c.mode)).toEqual([3, 14]);
+    });
+
+    it("turns on with Step when no value has been seen", () => {
+      for (const snap of [0, 1, 3, 16, 17]) {
+        const h = open(snap);
+        expect(h.light("display2")).toBe("dim");
+        h.tap("display2");
+        expect(h.sentOf("setSnap").map((c) => c.mode)).toEqual([8]);
+      }
+    });
+
+    it("counts the step, beat and bar values as quantizing", () => {
+      expect(SNAP_VALUES.filter((v) => quantizes(v.mode)).map((v) => v.mode)).toEqual([
+        4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
+      ]);
+    });
+
+    it("keeps the value across a restart, and ignores one that doesn't quantize", () => {
+      const grid = new GridOverlay();
+      expect(grid.persisted.save()).toEqual({ lastQuantize: 8 });
+      grid.persisted.load({ lastQuantize: 13 });
+      expect(grid.persisted.save()).toEqual({ lastQuantize: 13 });
+      for (const bad of [{ lastQuantize: 3 }, { lastQuantize: "x" }, {}, null]) {
+        grid.persisted.load(bad);
+        expect(grid.persisted.save()).toEqual({ lastQuantize: 13 });
+      }
+    });
   });
 
   it("closes after SHIFT + FOLLOW is released and the pads play again", () => {

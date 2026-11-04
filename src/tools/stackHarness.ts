@@ -47,7 +47,11 @@ export function stackHarness(
   const fl: FlState = demoFlState({ clock: time.clock, ...options });
   const midi: number[][] = [];
   const padSettings = new PadSettings();
-  const pads = new PadState((bytes) => midi.push(bytes), padSettings);
+  const pads = new PadState(
+    (bytes) => midi.push(bytes),
+    padSettings,
+    () => fl.selectedChannel.index,
+  );
   const pages = {
     channel: new ChannelMode(time.clock),
     mixer: new MixerMode(time.clock),

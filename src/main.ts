@@ -101,7 +101,11 @@ const padSettings = new PadSettings(padConfig, {
   fullScale: numberArg("--velocity-full") !== undefined,
   exponent: numberArg("--velocity-curve") !== undefined,
 });
-const pads = new PadState((bytes) => fl.send(bytes), padSettings);
+const pads = new PadState(
+  (bytes) => fl.send(bytes),
+  padSettings,
+  () => flState.selectedChannel.index,
+);
 const strip = new StripControl((bytes) => fl.send(bytes), pads);
 const channelMode = new ChannelMode();
 const nksIndex = startNksIndex({ log: (line) => log(line) });

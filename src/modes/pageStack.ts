@@ -789,9 +789,9 @@ export class PageStack {
       let level: LightLevel = "off";
       for (const d of this.defs) {
         if (d.button !== button || !this.pages[d.id] || !connected) continue;
-        // SHIFT + button pages (GRID, LIVE) light the button while open, not before: the button alone
-        // has its own meaning.
-        if (d.shift && this.topPage?.page !== d) continue;
+        // SHIFT + button pages light the button while open, not before: the button alone has its own
+        // meaning. GRID is the exception: FOLLOW alone does nothing outside STEP and ARRANGER, and dark it cannot be found.
+        if (d.shift && d.id !== "grid" && this.topPage?.page !== d) continue;
         const bright =
           this.topPage?.page === d || d === this.mainDef || (d.control && d === this.lastControl);
         if (bright) level = "bright";

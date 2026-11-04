@@ -57,4 +57,6 @@ control's label or value on the other screen.
 - `reference/Deckard` is GPL-2.0 and this repo has no licence: ideas and hardware facts only, never
   code or data tables; credit used facts in `THIRD_PARTY_NOTICES.md`. Its `docs/controller-*.md` are a
   good description of how Maschine's pages behave.
+- Unsure how Maschine implements something? Go to Deckard first (https://github.com/Panic-Signals/Deckard,
+  cloned to `reference/Deckard`), under the licence limits above.
 - Bugs found on the hardware go in `docs/bugs.md`, numbered, with their status.

@@ -1,5 +1,5 @@
 // Pad state shared by main.ts, the page stack and the pad pages: the pad mode (KEYBOARD, CHORDS or
-// PAD MODE), the keyboard's base note, the scale and chord settings, the channel remembered per
+// PAD MODE), the keyboard's base note per channel, the scale and chord settings, the channel remembered per
 // bank, and what each held pad sent.
 // Pure: MIDI goes out through the function it is given, FL commands through the ModeContext.
 //
@@ -70,7 +70,8 @@ const notesOf = (target: Exclude<Target, { kind: "channel" }>): readonly number[
 
 export class PadState {
   mode: PadMode = "keyboard";
-  private base = DEFAULT_BASE_NOTE;
+  /** The base note of each channel (FL's index) that has moved it; null while none is selected. */
+  private readonly bases = new Map<number | null, number>();
   /** The channel last selected in each bank. */
   private readonly lastInBank = new Map<number, number>();
   private readonly held = new Map<number, Held>();
@@ -83,37 +84,40 @@ export class PadState {
     private readonly midi: (bytes: number[]) => void = () => undefined,
     /** Pad settings: FIXED VEL replaces the velocity of every note on. */
     readonly settings: PadSettings = new PadSettings(),
+    /** The selected channel: each has its own base note. */
+    private readonly channel: () => number | null = () => null,
   ) {}
 
   // ── Keyboard base note ─────────────────────────────────────────────────────
 
+  /** The selected channel's base note, the default until it is moved on that channel. */
   get baseNote(): number {
-    return this.base;
+    return this.bases.get(this.channel()) ?? DEFAULT_BASE_NOTE;
   }
 
   /** Moves the base note by `semitones`, within 0…MAX_BASE_NOTE. True if it changed. */
   shiftBase(semitones: number): boolean {
-    const base = Math.min(MAX_BASE_NOTE, Math.max(0, this.base + semitones));
-    if (base === this.base) return false;
-    this.base = base;
+    const base = Math.min(MAX_BASE_NOTE, Math.max(0, this.baseNote + semitones));
+    if (base === this.baseNote) return false;
+    this.bases.set(this.channel(), base);
     return true;
   }
 
   /** Could the base note move by `semitones` (the same limits as `shiftBase`)? */
   canShiftBase(semitones: number): boolean {
-    return semitones < 0 ? this.base > 0 : this.base < MAX_BASE_NOTE;
+    return semitones < 0 ? this.baseNote > 0 : this.baseNote < MAX_BASE_NOTE;
   }
 
   /** The note KEYBOARD's pad plays now (scale degree `pad` from the base note, within 0–127). */
   keyNote(pad: number): number {
-    return keyboardNote(this.base, this.harmony.scale, pad);
+    return keyboardNote(this.baseNote, this.harmony.scale, pad);
   }
 
   /** The chord CHORDS' pad plays now. */
   chordAt(pad: number): Chord {
     return chordAt(
       {
-        base: this.base,
+        base: this.baseNote,
         scale: this.harmony.scale,
         mode: this.harmony.mode,
         type: this.harmony.type,

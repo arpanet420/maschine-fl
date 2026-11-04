@@ -58,7 +58,11 @@ function harness({
   const fl = new FlState();
   fl.apply({ type: "hello", version: 2 });
   const midi: number[][] = [];
-  const pads = new PadState((bytes) => midi.push(bytes));
+  const pads = new PadState(
+    (bytes) => midi.push(bytes),
+    undefined,
+    () => fl.selectedChannel.index,
+  );
   const pages = {
     channel: new ChannelMode(),
     mixer: new MixerMode(),
@@ -674,6 +678,37 @@ describe("PAD MODE page", () => {
 });
 
 describe("KEYBOARD page", () => {
+  it("each channel has its own base note, and a new one starts on C3", () => {
+    const { tap, pads, select, pad, midi } = harness();
+    tap("keyboard");
+    select(0);
+    tap("display6"); // OCT+
+    expect(pads.baseNote).toBe(48);
+    select(1);
+    expect(pads.baseNote).toBe(36);
+    tap("display5"); // OCT-
+    tap("display5");
+    expect(pads.baseNote).toBe(12);
+    select(0);
+    expect(pads.baseNote).toBe(48);
+    pad(0);
+    expect(midi.at(-1)?.[1]).toBe(48);
+    select(1);
+    expect(pads.keyNote(0)).toBe(12);
+    expect(pads.canShiftBase(-12)).toBe(true);
+  });
+
+  it("a held pad ends its own note after the channel changes", () => {
+    const { tap, select, pad, midi } = harness();
+    tap("keyboard");
+    select(0);
+    tap("display6");
+    pad(0);
+    select(1);
+    pad(0, "up");
+    expect(midi.at(-1)).toEqual(NOTE_OFF_1(48));
+  });
+
   it("OCT- OCT+ SEMI- SEMI+ on display 5–8 move the base note within 0…112", () => {
     const { tap, pads, sent } = harness();
     tap("keyboard");
