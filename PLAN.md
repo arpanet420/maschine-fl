@@ -456,7 +456,9 @@ Random observations and ideas, with a first assessment of what FL's API allows:
     (2026-10-21)**: pads flash in time with their steps and clear on STOP; SELECT / MUTE / SOLO do
     not light from playback. The `> 0` test is fine, no threshold needed. Not done: KEYBOARD and
     CHORDS.
-  - **KEYBOARD / CHORDS (pads = notes of one channel): harder.** No script API reports which note
+  - **KEYBOARD: built and verified on the MK3 by the owner (2026-11-04).** The step reads turned out to see
+    recorded notes, pitch and tick included: PLAYED_NOTES, docs/sysex.md. CHORDS not done.
+  - **KEYBOARD / CHORDS (pads = notes of one channel), what was known before that:** No script API reports which note
     a channel is playing. Options to probe: the selected channel's step-sequencer steps (already
     read for STEP) plus the song position predict the root-note hits only, not piano-roll notes;
     `OnMidiOutMsg` gets notes only through a MIDI Out plugin routed to the bridge port (needs setup

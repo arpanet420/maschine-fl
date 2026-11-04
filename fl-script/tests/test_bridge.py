@@ -4389,6 +4389,64 @@ class ActivityTests(BridgeTestCase):
         self.assertTrue(self.fl.called("channels.getActivityLevel"))
 
 
+class PlayedNotesTests(BridgeTestCase):
+    """PLAYED_NOTES (0x27): the selected channel's notes starting now, from its steps and the position."""
+
+    channel_count = 4
+
+    def setUp(self):
+        super().setUp()
+        self.fl.channels[1]["selected"] = True
+        self.fl.channels[0]["selected"] = False
+        self.fl.ppq = 96  # 24 ticks to a step
+        self.fl.playing = True
+        self.fl.activity = {1: 0.5}
+        self.fl.channels[1]["grid"] = {1, 4, 7}
+        # As measured in FL: param 7 of a recorded note is its absolute tick.
+        for step, pitch, tick in ((1, 36, 25), (4, 38, 95), (7, 40, 180)):
+            self.fl.step_params[(1, step, 0)] = pitch
+            self.fl.step_params[(1, step, 7)] = tick
+        self.start()
+
+    def played_at(self, ticks):
+        self.fl.song_pos[self.script.SONGLENGTH_ABSTICKS] = ticks
+        self.clock.advance(self.script.ACTIVITY_SECONDS + 0.001)
+        self.drain()
+        found = self.frames_with(self.take(), 0x27)
+        if not found:
+            return None  # no change since the last frame
+        payload = found[-1][5:-1]
+        return payload[0] << 7 | payload[1], list(payload[3 : 3 + payload[2]])
+
+    def test_a_note_is_reported_when_it_starts_then_cleared(self):
+        self.assertEqual(self.played_at(24), None)  # before its tick (nothing was lit)
+        self.assertEqual(self.played_at(25), (1, [36]))
+        self.assertEqual(self.played_at(36), None)  # still the same note
+        self.assertEqual(self.played_at(38), (1, []))  # half a step after its start
+
+    def test_a_note_just_before_its_beat_is_seen_across_the_step(self):
+        self.assertEqual(self.played_at(96), (1, [38]))  # step 4 holds a note at tick 95, one tick earlier
+        self.assertEqual(self.played_at(110), (1, []))
+
+    def test_a_step_programmed_with_an_offset_works_too(self):
+        self.fl.step_params[(1, 4, 7)] = 3  # the documented meaning: ticks into the step
+        self.assertEqual(self.played_at(96), None)
+        self.assertEqual(self.played_at(99), (1, [38]))
+
+    def test_the_position_wraps_at_the_pattern_length(self):
+        length = self.bridge.pattern_length() * 24
+        self.assertEqual(self.played_at(length + 25), (1, [36]))
+
+    def test_a_silent_channel_reports_nothing(self):
+        self.fl.activity = {}
+        self.assertEqual(self.played_at(25), None)
+
+    def test_stopping_clears_a_lit_note(self):
+        self.assertEqual(self.played_at(25), (1, [36]))
+        self.fl.playing = False
+        self.assertEqual(self.played_at(25), (1, []))
+
+
 class PatternGridTests(BridgeTestCase):
     """PATTERN_GRID (1B) and VIEW's patternGrid flag: ARRANGER's pattern overview."""
 

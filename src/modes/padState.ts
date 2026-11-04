@@ -336,7 +336,7 @@ export class PadState {
    * roots (C notes in Chromatic; a scale's root, a chord set's I chords) brighter; channels: each pad its channel's color, the selected one bright, the rest dim, off
    * past the last channel. A held pad is pressed; so is a channel pad while FL plays that channel
    * (ACTIVITY: the sequencer, the playlist or another controller), like Maschine's pads flashing
-   * with the pattern.
+   * with the pattern, and a keyboard pad while FL plays its note (PLAYED_NOTES).
    */
   leds(leds: LedState, fl: FlState): void {
     const bank = currentBank(fl);
@@ -349,7 +349,9 @@ export class PadState {
       let led = LED_OFF;
       if (fl.connected) {
         if (this.mode !== "channels") {
-          const variant = this.isPressed(pad) ? "pressed" : this.isRootPad(pad) ? "bright" : "dim";
+          const pressed =
+            this.isPressed(pad) || (this.mode === "keyboard" && fl.notePlaying(this.keyNote(pad)));
+          const variant = pressed ? "pressed" : this.isRootPad(pad) ? "bright" : "dim";
           led = color(selected === null ? undefined : fl.selectedChannel.color, variant);
         } else {
           const index = bankFirst(bank) + pad;

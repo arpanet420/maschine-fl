@@ -71,6 +71,8 @@ export const FROM_FL = {
   activity: 0x24,
   /** One playlist track's row of the LIVE window: name, color, mute/solo, its 16 live blocks. */
   liveTrack: 0x25,
+  /** The notes of the selected channel starting now, from its steps and the song position. */
+  playedNotes: 0x27,
 } as const;
 
 /** Daemon → FL commands (40–7F). */

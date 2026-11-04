@@ -429,10 +429,36 @@ describe("pad LEDs outside overlays and tool pages", () => {
     expect(ledState().padLeds[padByte(3)]).toBe(flColorToPalette(BLUE, "dim"));
   });
 
-  it("keyboard: channel activity does not light note pads (no API says which note plays)", () => {
+  it("keyboard: channel activity alone does not light note pads (it has no pitch)", () => {
     const { ledState, fl } = harness({ selected: 2 });
     fl.apply({ type: "activity", first: 0, active: [false, false, true] });
     expect(ledState().padLeds[padByte(1)]).toBe(flColorToPalette(GREEN, "dim"));
+  });
+
+  it("keyboard: the pad of a note FL plays lights as pressed, then goes back", () => {
+    const { ledState, fl } = harness({ selected: 2 });
+    fl.apply({ type: "playedNotes", channel: 2, notes: [37] }); // the second pad of C3 chromatic
+    expect(ledState().padLeds[padByte(1)]).toBe(flColorToPalette(GREEN, "pressed"));
+    expect(ledState().padLeds[padByte(0)]).toBe(flColorToPalette(GREEN, "bright"));
+    fl.apply({ type: "playedNotes", channel: 2, notes: [] });
+    expect(ledState().padLeds[padByte(1)]).toBe(flColorToPalette(GREEN, "dim"));
+  });
+
+  it("keyboard: notes of another channel and notes outside the pads light nothing", () => {
+    const { ledState, fl } = harness({ selected: 2 });
+    const before = ledState().padLeds.slice();
+    fl.apply({ type: "playedNotes", channel: 1, notes: [37] });
+    expect(ledState().padLeds).toEqual(before);
+    fl.apply({ type: "playedNotes", channel: 2, notes: [100] });
+    expect(ledState().padLeds).toEqual(before);
+  });
+
+  it("chords: a played note lights no pad", () => {
+    const { ledState, fl, pads } = harness({ selected: 2 });
+    pads.mode = "chords";
+    const before = ledState().padLeds.slice();
+    fl.apply({ type: "playedNotes", channel: 2, notes: [36, 38] });
+    expect(ledState().padLeds).toEqual(before);
   });
 
   it("are off while FL is not connected", () => {

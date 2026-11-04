@@ -104,7 +104,8 @@ docstrings; probably "Image-Line MCP", FL's AI/assistant hooks) and the piano ro
   step parameters (`channels.getCurrentStepParam` / `setStepParameterByIndex`, params 0–7: pitch, velocity,
   release, fine pitch, pan, mod X, mod Y, shift) of the steps that are on; what fails is skipped. A few channels
   per service pass; the grid goes out once at the end; PROBE `doublePattern(1) 16 -> 32, channels 5`. Notes
-  drawn in the piano roll cannot be read by a script and are not doubled (NOT VERIFIED live: the step
+  drawn in the piano roll are not doubled (`setGridBit` does not write them; reading them step by step does
+  work, see PLAYED_NOTES in docs/sysex.md) (NOT VERIFIED live: the step
   parameter copy, the pacing).
 - **CREATE_PATTERN (an empty pad while PATTERN is held)**: `patterns.jumpToPattern(k)` creates a missing pattern
   (stub docs; NOT VERIFIED live). The script reads `patternNumber` back; if FL did not select `k` it falls back to

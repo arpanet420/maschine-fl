@@ -158,6 +158,9 @@ interface Data {
   liveTracks: Map<number, LiveTrack>;
   /** Channels (group-local index) FL is playing now, from the last ACTIVITY. */
   activeChannels: Set<number>;
+  /** The notes FL is starting now on `playedChannel`, from the last PLAYED_NOTES. */
+  playedNotes: Set<number>;
+  playedChannel: number | null;
 }
 
 /** FL's windows as far as FL has told us: nothing visible, no focus. */
@@ -217,6 +220,8 @@ function emptyData(): Data {
     liveGrid: undefined,
     liveTracks: new Map(),
     activeChannels: new Set(),
+    playedNotes: new Set(),
+    playedChannel: null,
   };
 }
 
@@ -401,6 +406,11 @@ export class FlState extends EventEmitter<{ change: [section: FlSection] }> {
   /** Is FL playing channel `index` now (ACTIVITY; only the selected channel's bank is reported)? */
   channelActive(index: number): boolean {
     return this.data.activeChannels.has(index);
+  }
+  /** Is FL playing `note` on the selected channel now (PLAYED_NOTES)? */
+  notePlaying(note: number): boolean {
+    const d = this.data;
+    return d.playedChannel === d.selectedChannel.index && d.playedNotes.has(note);
   }
 
   /** Updates the mirror; emits `change` once per affected section, only if a value differs. */
@@ -719,6 +729,18 @@ export class FlState extends EventEmitter<{ change: [section: FlSection] }> {
         const changed =
           active.size !== before.size || [...active].some((index) => !before.has(index));
         d.activeChannels = active;
+        this.changed("activity", changed);
+        break;
+      }
+      case "playedNotes": {
+        const notes = new Set(message.notes);
+        const before = d.playedNotes;
+        const changed =
+          message.channel !== d.playedChannel ||
+          notes.size !== before.size ||
+          [...notes].some((note) => !before.has(note));
+        d.playedNotes = notes;
+        d.playedChannel = message.channel;
         this.changed("activity", changed);
         break;
       }

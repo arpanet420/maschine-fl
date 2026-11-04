@@ -324,6 +324,7 @@ CMD_PARAM_NAMES = 0x22
 CMD_LIVE_GRID = 0x23
 CMD_ACTIVITY = 0x24
 CMD_LIVE_TRACK = 0x25
+CMD_PLAYED_NOTES = 0x27
 
 # mk3d -> FL
 CMD_REQUEST_STATE = 0x41
@@ -480,6 +481,10 @@ METERS_SECONDS = 0.05
 # FL's own OnUpdateLiveMode callbacks, VIEW changes and triggers (which mark them at once).
 LIVE_SECONDS = 0.05
 ACTIVITY_SECONDS = 0.04
+# channels.getCurrentStepParam: the pitch, and where the note starts (FL gives absolute ticks for
+# recorded notes, measured; the docs say an offset within the step).
+STEP_PARAM_PITCH = 0
+STEP_PARAM_TICKS = 7
 
 TEMPO_SCALE = 1000.0  # applied only when getCurrentTempo() reports more than 1000 (BPM x 1000)
 STEPS_PER_UNIT = 1  # getPatternLength is already in steps (verified in FL 26.1.5)
@@ -907,6 +912,8 @@ def encode(message):
         return frame(CMD_PARAM_NAMES, enc_u14(message["offset"]) + enc_list(message["names"], enc_str))
     if kind == "activity":
         return frame(CMD_ACTIVITY, enc_u14(message["first"]) + enc_list(message["active"], enc_flag))
+    if kind == "playedNotes":
+        return frame(CMD_PLAYED_NOTES, enc_u14(message["channel"]) + enc_list(message["notes"], enc_u7))
     if kind == "liveGrid":
         return frame(CMD_LIVE_GRID, enc_u7(message["scanned"]) + enc_flag(message["perf"]))
     if kind == "liveTrack":
@@ -2488,8 +2495,38 @@ class Bridge(object):
         first = 0 if selected is None else selected - selected % CHANNEL_WINDOW
         stop = min(first + CHANNEL_WINDOW, self.channel_total())
         active = [float(_attr(0.0, channels, "getActivityLevel", i)) > 0 for i in range(first, stop)]
-        self.activity_lit = any(active)
         self.submit("ACTIVITY", {"type": "activity", "first": first, "active": active})
+        channel = 0 if selected is None else selected
+        sounding = selected is not None and active[selected - first] and self.is_playing()
+        notes = self.played_notes(selected) if sounding else []
+        self.activity_lit = any(active) or bool(notes)
+        self.submit("PLAYED_NOTES", {"type": "playedNotes", "channel": channel, "notes": notes})
+
+    def played_notes(self, channel):
+        """PLAYED_NOTES: the notes of the selected channel starting about now, for KEYBOARD's pads. No
+        call tells which note a channel plays, but the step reads see recorded notes too (measured,
+        docs/sysex.md): a step's pitch, and in param 7 where it starts. So the song position says
+        which steps to look at. The step before counts too: a note just before its beat is in it."""
+        per_step = max(1, _probe_ppq() // 4)
+        length = self.pattern_length()
+        if length <= 0:
+            return []
+        total = length * per_step
+        position = max(0, int(_safe(0, transport.getSongPos, SONGLENGTH_ABSTICKS))) % total
+        now = position // per_step
+        notes = []
+        for step in ((now - 1) % length, now):
+            if not _safe(False, channels.getGridBit, channel, step):
+                continue
+            start = step * per_step
+            ticks = int(_attr(0, channels, "getCurrentStepParam", channel, step, STEP_PARAM_TICKS))
+            start = ticks if abs(ticks - start) < per_step else start + ticks
+            age = (position - start) % total
+            if age < per_step // 2:
+                pitch = int(_attr(-1, channels, "getCurrentStepParam", channel, step, STEP_PARAM_PITCH))
+                if 0 <= pitch <= 127 and pitch not in notes:
+                    notes.append(pitch)
+        return notes
 
     def read_features(self):
         """FEATURES: which of the hidden functions this FL version does not have."""

@@ -297,6 +297,11 @@ export type FlMessage =
    * the selected channel's bank of 16; sent while FL plays (and once after, to clear).
    */
   | { type: "activity"; first: number; active: boolean[] }
+  /**
+   * The notes of `channel`, the selected one, starting now: FL's step reads and the song position.
+   * Only what those reads can see: one note per step (docs/sysex.md). Sent while FL plays.
+   */
+  | { type: "playedNotes"; channel: number; notes: number[] }
   | ({ type: "plugin" } & PluginInfo)
   | { type: "pluginParams"; params: PluginParam[] }
   /** `names[i]` is the name of parameter `offset + i` ("" = unnamed). */
@@ -890,6 +895,11 @@ function readFlMessage(command: number, payload: number[], r: Reader): FlMessage
       if (active.length > 16) throw new BadFrame(`ACTIVITY n ${active.length} is over 16`);
       return { type: "activity", first, active };
     }
+    case FROM_FL.playedNotes: {
+      const channel = r.u14();
+      const notes = r.list(() => r.u7());
+      return { type: "playedNotes", channel, notes };
+    }
     default:
       return { type: "unknown", command, payload };
   }
@@ -1102,6 +1112,9 @@ export function encodeFlMessage(message: FlMessage): number[] {
       break;
     case "activity":
       w.u14(message.first).list(message.active, (on) => w.flag(on));
+      break;
+    case "playedNotes":
+      w.u14(message.channel).list(message.notes, (note) => w.u7(note));
       break;
   }
   return encodeSysex(FROM_FL[message.type], w.bytes);

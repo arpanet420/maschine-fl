@@ -400,6 +400,16 @@
     "hex": "f07d4d332400100401000001f7"
   },
   {
+    "name": "playedNotes",
+    "direction": "fromFl",
+    "message": {
+      "type": "playedNotes",
+      "channel": 1,
+      "notes": [36, 38]
+    },
+    "hex": "f07d4d33270001022426f7"
+  },
+  {
     "name": "requestState",
     "direction": "toFl",
     "message": {

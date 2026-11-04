@@ -148,7 +148,9 @@ page lights its button only while it is open, except GRID: FOLLOW is dim while i
 - OCT± moves the base note by 12, SEMI± by 1, within 0…112. Each channel has its own base note (the same
   one in KEYBOARD and CHORDS, C3 until it is moved), by FL's channel index, kept until mk3d stops: it is not
   saved, and it stays with the index if channels are moved or another project is opened. The pads play notes and light as the
-  global fallback; GROUP A–H pick the channel bank.
+  global fallback; GROUP A–H pick the channel bank. A pad also flashes as pressed when FL plays its note on
+  the selected channel, recorded notes included (PLAYED_NOTES, docs/sysex.md, for its limits; verified on
+  the MK3 by the owner, 2026-11-04).
 - **Knob 1 = scale** (turn in detents of 120 counts): Chromatic (default: `base + pad` as always),
   Major, Minor, Harmonic minor, Melodic minor, Dorian, Phrygian, Lydian, Mixolydian, Locrian, Major
   pent., Minor pent., Blues. The base note is the root: pad 1 plays it and the scale's root pads
