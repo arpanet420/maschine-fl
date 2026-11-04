@@ -40,8 +40,8 @@ is not built yet logs `page "<name>" is not built yet` once per press and change
 - **Main buttons** (CHANNEL, PLUG-IN, MIXER, ARRANGER, BROWSER, later SAMPLING): close the page on
   top and show that page. Pressing the button of the page already shown does nothing on the
   control pages and goes back to the last control page on the others.
-- **Overlays** (SCENE, PATTERN, EVENTS, VARIATION, DUPLICATE, SELECT, SOLO, MUTE, NOTE REPEAT;
-  SHIFT + VARIATION = NAVIGATE, SHIFT + FOLLOW = GRID; SHIFT + RESTART = LOOP, a *hold* overlay that
+- **Overlays** (SCENE, PATTERN, EVENTS, DUPLICATE, SELECT, SOLO, MUTE, NOTE REPEAT;
+  SHIFT + FOLLOW = GRID; SHIFT + RESTART = LOOP, a *hold* overlay that
   opens only after 400 ms, a tap runs its own action): hold to peek, closed on release. Display
   button 1 is the pin tab, named after the page: pressing it pins the overlay so it stays after the
   release; pressing it again unpins (and closes it at once if its button isn't held). A pinned
@@ -89,8 +89,8 @@ is not built yet logs `page "<name>" is not built yet` once per press and change
   off, **off while SHIFT is held** (SHIFT + FIXED VEL, 16 velocities, is not built: nothing happens).
 
 Built so far: CHANNEL, PLUG-IN, MIXER, ARRANGER, BROWSER, SCENE, PATTERN, DUPLICATE, MUTE, SELECT, SOLO, STEP, PAD MODE,
-KEYBOARD, FILE, SETTINGS, NAVIGATE (SHIFT + VARIATION), GRID (SHIFT + FOLLOW) and LIVE (SHIFT + SCENE). VARIATION
-alone is not built: its LED is off (a SHIFT + button page lights its button only while it is open).
+KEYBOARD, FILE, SETTINGS, NAVIGATE (VARIATION), GRID (SHIFT + FOLLOW) and LIVE (SHIFT + SCENE). A SHIFT + button
+page lights its button only while it is open.
 
 ## Pad modes and channel banks
 
@@ -189,6 +189,12 @@ takes no pad: the pads play chords through `PadState`.
 - Unbuilt: USER CHD, PADS ON, strumming.
 
 ## STEP page (tool page, STEP)
+
+**Held step.** A dark step goes on at the press. A lit step goes off on the release, unless it was held
+for 400 ms or a knob turned meanwhile. Held that long, the left screen shows `Step n`, knob 1 **Velocity**
+and knob 2 **Pitch** (60 counts a semitone), read with REQUEST_STEP_PARAMS and written with SET_STEP_PARAM
+(FL's `getCurrentStepParam` and `setStepParameterByIndex`; NOT VERIFIED in FL). The other knobs go on to the
+page underneath.
 
 Code: `src/modes/stepPage.ts`. Latched: STEP opens it, STEP again leaves it. The pad mode
 (KEYBOARD or PAD MODE) underneath is not changed and comes back when it closes. STEP's LED is
@@ -375,7 +381,7 @@ Code: `src/modes/duplicateOverlay.ts`, built on the PATTERN overlay's bank (`Pat
 ## NOTE REPEAT (hold NOTE REPEAT)
 
 Code: `src/modes/noteRepeatOverlay.ts` (the page) and `src/modes/repeatScheduler.ts` (the clock).
-Display 1 is the pin tab `NOTE RPT`. In KEYBOARD and CHORDS the button opens the arpeggiator
+Display 1 is the pin tab `NOTE RPT`. In KEYBOARD and CHORDS the button opens the arpeggiator panel, which starts on the Type Repeat (no arpeggio)
 instead ("ARP" below), as in Maschine; this part is PAD MODE's. While the overlay is
 held or pinned, **held pads repeat** their note instead of playing once; releasing a pad ends its
 repeats, closing (or unpinning, or another page replacing) the overlay ends them all, with every
@@ -385,29 +391,51 @@ PAD MODE the pad's channel (MIDI channel 2, note = the channel's index; the firs
 it). SHIFT + pad and ERASE + pad keep their actions, and the STEP page cannot be open under an
 overlay, so nothing repeats there. GROUP A–H still pick the bank.
 
-- **Rate**: display 2–4 (left screen) and 5–8 (right screen): `1/4` `1/8` `1/16` `1/32` `1/8T`
-  `1/16T` `1/32T`, default `1/16`, the current one bright. Knob 1 steps through the same list
-  (120 counts a step).
-- **Gate** (knob 2): 10–100 % of the interval, default 50 %. **Swing** (knob 3): 0–50 %, delays every
-  second repeat by that share of the interval, default 0. SHIFT = fine. Rate, gate and swing are
-  saved with the pin states (`pages.noteRepeat` in `pages.json`; a rate change at once, knob turns
-  400 ms after the last one or when the overlay closes).
+- **Rate**: twelve, default `1/16`, a note value and a unit. Display 5–8 (right screen) pick the note
+  value `1/4` `1/8` `1/16` `1/32`, as does knob 1 (120 counts a step); knob 2 **Unit** picks `Normal`,
+  `Dotted` or `Triplet` (each keeps the other). `1/8D` is a dotted eighth. The saved number is a rate's
+  place in `REPEAT_RATES`, so new rates go last there.
+- **Gate** (knob 3): 10–100 % of the interval, default 50 %; display 4 `GATE RESET` sets it to 100 %.
+  **Swing** (knob 4): 0–50 %, delays every second repeat by that share of the interval, default 0.
+  SHIFT = fine. Rate, gate, swing and HOLD are saved with the pin states (`pages.noteRepeat` in
+  `pages.json`; a rate change at once, knob turns 400 ms after the last one or when the overlay closes).
+  Two quick touches of knob 3 or 4 reset it (below, "Knob reset").
+- **LOCK** (display 2, as Maschine's): the pads keep repeating with the overlay closed; the NOTE REPEAT
+  button stays bright. Open it and press LOCK again to stop. It is not saved, so the pads never repeat
+  after a start without having asked to. The device going away stops everything, LOCK or not.
+- **HOLD** (display 3, saved): pads keep repeating once let go. The first press after every pad was let
+  go starts anew; a press while another pad is down joins. HOLD off stops what no finger is on. Closing
+  the overlay stops them unless LOCK is on.
 - **Velocity**: the first note is the hit's velocity; later repeats use the pad's pressure as
   velocity (`round(pressure × 127)`, at least 1). No aftertouch is sent while repeating.
-- **Timing**: interval = 60 / BPM × 4 / denominator (× 2/3 for triplets); BPM is `fl.tempo`, 120
-  while it is 0. All held pads share one grid. The first note sounds at the press; a pad hit within
-  a quarter interval before a slot waits for the next one. While FL plays, the grid is FL's: bar 1
-  is the origin and the position is the last SONG_POS plus the time since it arrived (16 steps per
-  bar, 24 ticks per step: NOT VERIFIED, with the other SONG_POS bases); a SONG_POS older than
-  500 ms counts as stopped. While FL is stopped the grid runs free from the press. A tempo change
-  moves the next slot without restarting the grid. One timer is set to the next due slot or note
+- **Timing**: interval = 60 / BPM × 4 / denominator (× 2/3 for triplets, × 3/2 for dotted); BPM is
+  `fl.tempo`, 120 while it is 0. All held pads share one grid.
+  - **While FL plays** the grid is FL's: bar 1 is the origin (16 steps per bar, `ppq` ticks per beat:
+    the step base is NOT VERIFIED, with the other SONG_POS bases); a SONG_POS older than 500 ms counts
+    as stopped. A dotted rate and 1/4T do not come back to the bar for several bars, so their grid
+    starts at the press instead, rounded to the straight value under the dotted one (a beat for 1/4T).
+  - **The position is a running estimate**, not the last SONG_POS. A SONG_POS can only be late (FL's
+    UI thread and the MIDI port), so the estimate runs on the tempo: a reading ahead of it corrects it
+    at once, one behind it moves it by 0.5 %. A reading more than 80 ms off is a jump only when the
+    next one agrees with it (a loop restart, a click on the timeline), not a stall of FL's UI.
+  - **A hit goes on the grid while FL plays** (as Maschine's Input Quantize treats played notes; what
+    Maschine does for the first note of Note Repeat is not documented): in the first half of a slot
+    it sounds at once and counts as that slot, in the second half it waits for the next slot. A pad
+    let go before that still plays that one note, whole, with the hit's velocity.
+  - **While FL is stopped** the grid runs free from the press and a new pad sounds at once; a pad hit
+    within a quarter interval before a slot waits for the next one.
+  - A tempo change moves the next slot without restarting the grid. One timer is set to the next due slot or note
   off (absolute times from `performance.now()`); a slot more than half an interval late is skipped,
   never played in a burst. Before each on, a note still sounding is ended.
-- **Screens**: left, the pin tab, `Note Repeat`, the rate big, the tempo and whether the grid is
-  FL's or free, and Rate / Gate / Swing under knobs 1–3; right, the rate tabs on display 5–8 and
-  two beats of repeats (start and length of each note, odd repeats mint).
-- **LEDs**: the NOTE REPEAT button bright while open, dim otherwise; display 1 bright when pinned;
-  display 2–8 the current rate bright, the others dim. The pads are the pad mode's; a repeating pad
+- **Screens**: left, tabs `NOTE RPT` `LOCK` `HOLD` `GATE RESET`, `Note Repeat`, the rate big, the tempo
+  and whether the grid is FL's or free, and Rate / Unit / Gate / Swing under knobs 1–4; right, the note
+  values on display 5–8 and two beats of repeats (start and length of each note, odd repeats mint).
+- **`MK3D_REPEAT_LOG=1`** logs every slot that plays as `[repeat] n gap late beat reading`: the time
+  since the slot before, how late the timer was, the grid position and how far the last SONG_POS was
+  from the estimate (ms).
+- **LEDs**: the NOTE REPEAT button bright while open or locked, dim otherwise; display 1 bright when
+  pinned; display 2 and 3 bright when on, dim otherwise; display 4 dim; display 5–8 the current note
+  value bright, the others dim. The pads are the pad mode's; a repeating pad
   is pressed while its note sounds, so it flashes with each repeat.
 ### ARP (NOTE REPEAT in KEYBOARD and CHORDS)
 
@@ -416,25 +444,36 @@ the engine), the clock is `repeatScheduler.ts`. Maschine's NOTE REPEAT button op
 `NOTE RPT` when the pads are in keyboard mode (RepeatPageStudio.lua); mk3d does the same for
 KEYBOARD and CHORDS, in `NoteRepeatOverlay` (same overlay rules: hold to peek, pin tab, display
 button 1). PAD MODE stays Note Repeat. If the pad mode changes while the overlay is open
-(SHIFT + PAD MODE ...), what played stops and the other kind takes over. Software only: no FL script
-change, nothing new to the MK3.
+(SHIFT + PAD MODE ...), what played stops and the other kind takes over. The arrows LEFT and RIGHT pick
+one of two knob pages. Software only: no FL script change, nothing new to the MK3.
 
+- **It starts as Note Repeat**: the first Type, `Repeat`, plays every held note together on each slot,
+  without Octaves. The pin tab is then `NOTE RPT` and the heading `Note Repeat`. Knob 1 and the presets
+  reach the arpeggio Types (pin tab `ARP`). A saved state without `typeVersion` always holds the old
+  default Up, so its Type is not restored (once).
 - **What plays**: the notes of the held pads, one at a time, on the shared repeat grid (tempo-locked,
   SONG_POS-aligned, free running while FL is stopped: exactly as Note Repeat; the engine is one
-  "pad" of the `RepeatScheduler`). KEYBOARD = each held pad's note, CHORDS = every note of each held
-  pad's chord (fixed when the pad is hit). The first note sounds at the press, the rest on the grid.
+  "pad" of the `RepeatScheduler`, which places the first note). KEYBOARD = each held pad's note,
+  CHORDS = every note of each held pad's chord (fixed when the pad is hit).
   A pad pressed or released changes the set from the next step on; the grid and the step counter go
   on. Notes go out as a hit's do (MIDI channel 1, to the selected channel) through `PadState`
   (`arpNotes`, `arpOn`, `arpOff`; a lost device ends them in `releaseAll`).
-- **Type** (knob 1, 120 counts a step): `Up`, `Down`, `Up/Down` (1 2 3 2: the ends are not
+- **Type** (page 1, knob 1, 120 counts a step): `Up`, `Down`, `Up/Down` (1 2 3 2: the ends are not
   repeated), `Down/Up`, `Played` (press order), `Random` (never the same note twice in a row, unless
-  it is the only one), `Chord` (all notes of the set together on every step). **Octaves** (knob 3,
+  it is the only one), `Chord` (all notes of the set together on every step). **Octaves** (knob 4,
   1–4, 200 counts a step) repeats the set an octave up per octave (a note above 127 is clamped and
   a duplicate sounds once; Chord plays the whole chord an octave higher on each round).
-- **Rate** (knob 2): the seven rates of Note Repeat. **Gate** (knob 4): 10–100 %. **Swing**
-  (knob 5, right screen, as Note Repeat's): 0–50 %. SHIFT = fine on Gate and Swing. Arp settings
-  are separate from Note Repeat's and saved in its state (`pages.noteRepeat.arp`: type, rate,
-  octaves, gate, swing, hold); Note Repeat's own are unchanged.
+- **Rate** (knob 2) and **Unit** (knob 3): as Note Repeat's. **Gate** (knob 5, right screen): 10–100 %;
+  display 4 `GATE RESET` sets it to 100 %. **Swing** (knob 6). SHIFT = fine on Gate and Swing. **Sequence**
+  (knob 7): `Off` or one of 8 rhythms with rests (mk3d's own, Maschine's are not documented). **Dynamic**
+  (knob 8): 10–100 %, what the velocity is multiplied by. Arp settings are separate from Note Repeat's
+  and saved in its state (`pages.noteRepeat.arp`); Note Repeat's own are unchanged.
+- **Page 2** (arrow RIGHT): **Retrigger** (knob 1, `Off` or every 1–32 slots, rests count), **Repeat**
+  (knob 2, each step plays 1–8 slots), **Offset** (knob 3, the round starts 0–15 steps later), **Inversion**
+  (knob 4, 0–3 extra passes an octave up, each starting one note later), **Min. key** and **Max. key**
+  (knob 5 and 6, notes outside are left out; they cannot cross). The names are Maschine's; what its
+  values do in detail is not documented, so these are mk3d's reading of them.
+- **LOCK** (display 2): as Note Repeat's, and shared with it.
 - **HOLD** (display 3, bright when on, persisted): released notes keep playing; the first press after
   all pads were released starts a new set (a pad pressed while another is still down joins the set).
   HOLD off drops the pads that are not down (an empty set stops, offs sent). Closing the overlay (or
@@ -442,19 +481,19 @@ change, nothing new to the MK3.
   HOLD setting itself stays. No note hangs: every on has its off (the notes of a step end at the
   gate or before the next step, and when the set empties).
 - **Velocity**: the hit velocity of the pad that owns the note (a note two pads share belongs to the
-  first pressed); FIXED VEL wins. Maschine's `Dynamic` is not built, nor are page 2 (Retrigger,
-  Repeat, Offset, Inversion, Min/Max key), Sequence, Rate unit, LOCK (display 2) and GATE RESET
-  (display 4): display 2 and 4 are empty.
+  first pressed) times Dynamic; FIXED VEL wins. On Type Repeat the later notes follow the pad's pressure,
+  as Note Repeat's do.
 - **Presets** (display 5–8): `UP 16TH` (Up, 1/16, 1 oct, 50 %), `DOWN 16TH`, `UP/DN 8TH` (Up/Down,
   1/8, 2 oct, 60 %), `RANDOM 16T` (Random, 1/16T, 2 oct, 40 %): they set Type, Rate, Octaves and
   Gate at once (Swing stays); bright while the current settings equal the preset.
-- **Screens**: left, tab `ARP` (pin, underlined when pinned) and `HOLD` (underlined when on),
-  `Arpeggiator`, `Up · 1/16` big, the tempo line and Type / Rate / Octaves / Gate under knobs 1–4.
+- **Screens**: left, tabs `ARP` (`NOTE RPT` on Repeat) `LOCK` `HOLD` `GATE RESET`,
+  `Arpeggiator`, `Up · 1/16` big (`Note Repeat` and `1/16` on Repeat, Octaves shows `–`), the tempo line and Type / Rate / Unit / Octaves under knobs 1–4.
   Right, the preset tabs, `Sequence`: one round as note names (`C3 D#3 G3 ...`, up to 3 rows, then
-  `+n more`) with the step that played last highlighted (empty: `Hold keys to arpeggiate`), and
-  Swing under knob 5.
-- **LEDs**: the NOTE REPEAT button bright while open; display 1 bright when pinned; display 3 bright
-  with HOLD; display 5–8 the matching preset bright; display 2 and 4 off. Pads as in the pad mode;
+  `+n more`) with the step that played last highlighted (empty: `Hold keys to arpeggiate`, `Hold keys to repeat` on Repeat), and
+  Gate / Swing / Sequence / Dynamic under knobs 5–8. Page 2 keeps the tabs and the sequence.
+- **LEDs**: the NOTE REPEAT button bright while open or locked; display 1 bright when pinned; display 2
+  and 3 bright when on, dim otherwise; display 4 dim; display 5–8 the matching preset bright; the arrow
+  to the other knob page dim. Pads as in the pad mode;
   a pad whose note plays is pressed (flashes with each step; in CHORDS the pad of the chord the
   note belongs to), a pad HOLD keeps is bright between its flashes.
 
@@ -716,20 +755,28 @@ undo/redo FL's undo hint with `position / count` small (from UNDO_STATE, so it f
 the press). An action that cannot run shows nothing. Each action runs once per pad press, on the
 pad's down; the pressure re-reports while the pad is held do nothing.
 
-## NAVIGATE (hold SHIFT + VARIATION)
+## NAVIGATE (VARIATION)
 
-Code: `src/modes/navigateOverlay.ts`. Display 1 is the pin tab `NAVIGATE`. Display 2–6 show the
-Mixer, Channel rack, Playlist, Piano roll and Browser (SHOW_WINDOW 0–4: a focused window is hidden
-instead), display 7 `PLUGIN` opens the selected channel's plug-in window (SHOW_EDITOR). **4D tilt**
-= FL's up/down/left/right and **push** = enter (UI actions); the turn goes on to the page or the
-quick edit.
+Code: `src/modes/navigateOverlay.ts`. A tool page: one press opens it and it stays, the next press of
+VARIATION closes it. Display 2–6 toggle the windows in the order of FL's toolbar:
+`PLAYLIST`, `PIANO`, `RACK`, `MIXER`, `BROWSER` (SHOW_WINDOW 2, 3, 1, 0, 4: a focused window is hidden, any
+other is shown and focused). Display 7 `PLUGIN` opens the selected channel's plug-in window (SHOW_EDITOR).
+The **4D encoder** works the page: turning it or tilting it left and right moves a white ring between the
+tiles, its push does what the tile's display button does; it starts on the focused window. Pads and the
+knobs go to the page underneath.
 
 - LEDs (from UI_STATE): bright = focused, dim = shown, off = hidden; PLUGIN bright while a plug-in
-  window has the focus, dim with a selected channel.
-- Left screen: tabs `NAVIGATE` `MIXER` `RACK` `PLAYLIST`; the title and the focused window in the
-  first column, a tile with a small drawing of each of the first three windows under its button.
-  Right screen: tabs `PIANO` `BROWSER` `PLUGIN`, their tiles, and a key for the tiles' look
-  (focused: orange outline, shown, hidden: dark).
+  window has the focus, dim with a selected channel. VARIATION bright while open.
+- Left screen: tabs `NAVIGATE` `PLAYLIST` `PIANO` `RACK`; the focused window in the first column, a tile
+  with an icon of each of the first three windows under its button, drawn in the manner of FL's toolbar.
+  Right screen: tabs `MIXER` `BROWSER` `PLUGIN` and their tiles. Each tile says `focused` (orange outline),
+  `shown` or `hidden` (dark).
+
+## Knob reset
+
+Two touches of a knob within 400 ms, with no turn between, put its value back (`Mode.resetKnob`, as
+Maschine and Deckard do it). MIXER: volume 0 dB (0.8) or pan centre. CHANNEL: volume (0.78125) or pan.
+NOTE REPEAT: Gate, Swing. ARP: every knob with a number. SETTINGS: its four knobs. Nothing else has one.
 
 ## LOOP (hold SHIFT + RESTART)
 
@@ -867,7 +914,8 @@ Code: `src/modes/settingsPage.ts`, `src/modes/padSettings.ts`. mk3d's own settin
   `--velocity-curve` win over them.
 - Left screen: tab `SETTINGS`, a graph of the velocity curve of the current settings (hit value on x,
   velocity 1–127 on y; with FIXED VEL on the curve is dimmed and the fixed line is drawn in mint), and
-  Full scale / Curve / Fixed vel under knobs 1–3 (columns 1–3). Right screen: the three values as text.
+  Full scale / Curve / Fixed vel under knobs 1–3. Right screen: tab `SCREEN`, how bright the screens are and
+  `Brightness` under knob 5 (5–100 %).
 - **FIXED VEL** (button): fixed velocity on or off, bright while on. While it is on, **every pad note**
   (KEYBOARD, PAD MODE and NOTE REPEAT, the first note and every repeat) goes out with the fixed value
   instead of the hit's or the pressure's: `PadState` applies it where it sends a note on. The press

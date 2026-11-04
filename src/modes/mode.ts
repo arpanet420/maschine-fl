@@ -20,7 +20,6 @@ export type PageName =
   | "liveClips"
   | "pattern"
   | "events"
-  | "variation"
   | "navigate"
   | "duplicate"
   | "select"
@@ -84,6 +83,14 @@ export interface Mode {
    * (held notes, timers). Pages that only draw and send need none.
    */
   leave?(): void;
+  /**
+   * NOTE REPEAT's LOCK: while true the page gets the pads (before the main page) even when it is not
+   * on top, and the FL changes it needs. `stopPads` ends what it plays when the device goes away.
+   */
+  locksPads?(): boolean;
+  stopPads?(): void;
+  /** Two quick touches of a knob with no turn: back to its default. True = the page has one. */
+  resetKnob?(knob: number, mc: ModeContext): boolean;
   /** Settings the page remembers: the stack saves them with the pin states and loads them back. */
   persisted?: { save(): unknown; load(data: unknown): void };
   /** A main page's current VIEW, for overlays that need another window of FL's data. */

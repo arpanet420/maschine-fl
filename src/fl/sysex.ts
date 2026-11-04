@@ -263,6 +263,7 @@ export type FlMessage =
   | ({ type: "uiState" } & UiStateInfo)
   | ({ type: "undoState" } & UndoStateInfo)
   | ({ type: "loopState" } & LoopInfo)
+  | { type: "stepParams"; channel: number; step: number; pitch: number; velocity: number }
   | ({ type: "features" } & MissingFeatures)
   | ({ type: "browserNode" } & BrowserNodeInfo)
   | ({ type: "presets" } & PresetsInfo)
@@ -379,6 +380,10 @@ export type FlCommand =
   | { type: "setLoop"; start: number; end: number }
   /** Send LOOP_STATE. */
   | { type: "requestLoop" }
+  /** Send STEP_PARAMS for this step. */
+  | { type: "requestStepParams"; channel: number; step: number }
+  /** A step's pitch (`param` 0) or velocity (`param` 1), 0–127, in the current pattern. */
+  | { type: "setStepParam"; channel: number; step: number; param: number; value: number }
   /** Set pattern `pattern`'s color (`0xRRGGBB`, the encoding FL's colors come in). */
   | { type: "setPatternColor"; pattern: number; color: number }
   /** Double pattern `pattern` (1-based, at most 127): twice the length, the grid steps copied. */
@@ -724,6 +729,14 @@ function readFlMessage(command: number, payload: number[], r: Reader): FlMessage
         current: r.index(),
         ...readPresetNames(r),
       };
+    case FROM_FL.stepParams:
+      return {
+        type: "stepParams",
+        channel: r.u14(),
+        step: r.u14(),
+        pitch: r.u7(),
+        velocity: r.u7(),
+      };
     case FROM_FL.loopState: {
       const active = r.flag();
       return { type: "loopState", active, start: r.u21(), end: r.u21() };
@@ -980,6 +993,9 @@ export function encodeFlMessage(message: FlMessage): number[] {
     case "loopState":
       w.flag(message.active).u21(message.start).u21(message.end);
       break;
+    case "stepParams":
+      w.u14(message.channel).u14(message.step).u7(message.pitch).u7(message.velocity);
+      break;
     case "features":
       w.u7(
         flagBits(
@@ -1185,6 +1201,12 @@ export function encodeCommand(command: FlCommand): number[] {
       break;
     case "requestLoop":
       break;
+    case "requestStepParams":
+      w.u14(command.channel).u14(command.step);
+      break;
+    case "setStepParam":
+      w.u14(command.channel).u14(command.step).u7(command.param).u7(command.value);
+      break;
     case "strip":
       w.u7(codeOf(STRIP_KINDS, command.kind)).u14(command.value).flag(command.release);
       break;
@@ -1325,6 +1347,16 @@ function readCommand(command: number, r: Reader): FlCommand | undefined {
       return { type: "setLoop", start: r.u21(), end: r.u21() };
     case TO_FL.requestLoop:
       return { type: "requestLoop" };
+    case TO_FL.requestStepParams:
+      return { type: "requestStepParams", channel: r.u14(), step: r.u14() };
+    case TO_FL.setStepParam:
+      return {
+        type: "setStepParam",
+        channel: r.u14(),
+        step: r.u14(),
+        param: r.u7(),
+        value: r.u7(),
+      };
     case TO_FL.setPatternColor:
       return { type: "setPatternColor", pattern: r.u14(), color: r.color() };
     case TO_FL.doublePattern: {

@@ -58,6 +58,8 @@ export const FROM_FL = {
   loopState: 0x1c,
   /** Which hidden FL functions this FL version lacks (the script checks them with `getattr`). */
   features: 0x1d,
+  /** The pitch and velocity of one step, the answer to REQUEST_STEP_PARAMS. */
+  stepParams: 0x26,
   /** The focused node of FL's browser, popup and form state (a TRIAL: the plug-in loader). */
   browserNode: 0x1e,
   plugin: 0x20,
@@ -131,6 +133,10 @@ export const TO_FL = {
   picker: 0x69,
   /** Fire (or release) LIVE scene `block` via `playlist.triggerLiveClip`, or `block` null to stop. */
   triggerLiveClip: 0x6a,
+  /** Send STEP_PARAMS for one step (STEP's held step). */
+  requestStepParams: 0x6b,
+  /** Write a step's pitch (param 0) or velocity (param 1) in the current pattern. */
+  setStepParam: 0x6c,
 } as const;
 
 export const CMD = { ...FROM_FL, ...TO_FL } as const;

@@ -11,14 +11,14 @@ and can be changed; **hard** marks places where FL's model or API doesn't fit.
 - **One home page and a stack of pages, not modes.** CONTROL (the CHANNEL/PLUG-IN page) is home.
   **Main pages** (MIXER, ARRANGER, BROWSER, SAMPLING, the plug-in loader) replace what is on
   screen; pressing the same button again goes back home.
-- **Overlays are hold-to-peek.** SCENE, PATTERN, EVENTS, VARIATION, DUPLICATE, SELECT, SOLO, MUTE,
-  GRID, NOTE REPEAT show while the button is held and vanish on release. **Display button 1 on an
+- **Overlays are hold-to-peek.** SCENE, PATTERN, EVENTS, DUPLICATE, SELECT, SOLO, MUTE,
+  GRID, NOTE REPEAT show while the button is held and vanish on release (NOTE REPEAT's LOCK keeps its pads going). **Display button 1 on an
   overlay is a pin tab named after the page**: pressing it latches the overlay (pin states are
-  saved). Tool-like pages (STEP, PAD MODE, KEYBOARD, CHORDS, FILE, SETTINGS, MACRO) are always
+  saved). Tool-like pages (STEP, PAD MODE, KEYBOARD, CHORDS, FILE, SETTINGS, MACRO, NAVIGATE) are always
   latched: press to enter, press again to leave, and you are back on the page underneath.
 - **SHIFT is read at press time** and gives the button's second label: the same screen slot
   changes text (`CREATE` → `RENAME`), a different page opens (BROWSER → plug-in loader, FOLLOW →
-  GRID, VARIATION → NAVIGATE), or an action fires without a page (FILE → save, TAP → metronome,
+  GRID), or an action fires without a page (FILE → save, TAP → metronome,
   DUPLICATE → double, MUTE → choke all). **SHIFT + pad** is a 16-action row: undo, redo, step
   undo/redo, quantize, quantize 50 %, nudge ◀ ▶, clear notes, clear automation, copy, paste,
   semitone −/+, octave −/+.
@@ -70,7 +70,7 @@ it; "Latch" = press to enter, press again to leave.
 | SETTINGS                              | Settings                        | **Built.** mk3d's own settings: knob 1 pad full-scale hit, knob 2 pad curve, knob 3 fixed velocity value, a curve graph; saved with the page state. Screen and LED brightness are not built | Latch |
 | AUTO                                  | Automation write while held     | **hard**: FL records knob moves only while recording; AUTO held = arm FL's automation recording if the API allows, else unused                                | Hold  |
 | MACRO (Set)                           | 8 macros                        | **hard**: FL has no macros. Later: 8 user-chosen parameters saved by mk3d                                                                                     | Latch |
-| NOTE REPEAT (Arp)                     | Note repeat / arpeggiator       | **Built** (hold overlay, pin tab `NOTE RPT`). mk3d generates the repeats itself, synced to FL's tempo and song position; rate 1/4–1/32T on display 2–8 and knob 1, gate knob 2, swing knob 3. In KEYBOARD and CHORDS the button opens the **arpeggiator** (pin tab `ARP`): the held pads' notes one at a time on the same grid, Type/Rate/Octaves/Gate/Swing on knobs 1–5, HOLD on display 3, four presets on display 5–8 | Hold  |
+| NOTE REPEAT (Arp)                     | Note repeat / arpeggiator       | **Built** (hold overlay, pin tab `NOTE RPT`), laid out as Maschine's page. mk3d generates the repeats itself, synced to FL's tempo and song position; display 2 LOCK, 3 HOLD, 4 GATE RESET, 5–8 the note values; knobs Rate, Unit (Normal, Dotted, Triplet), Gate, Swing. In KEYBOARD and CHORDS the button opens the same page as the **arpeggiator**: it starts on Type Repeat (the held notes together), the other Types (pin tab `ARP`) play them one at a time on the same grid; four presets on display 5–8, knobs Type, Rate, Unit, Octaves, Gate, Swing, Sequence, Dynamic, and with the arrows Retrigger, Repeat, Offset, Inversion, Min. and Max. key | Hold  |
 | LOCK                                  | Snapshot lock                   | Not mapped (no FL equivalent)                                                                                                                                 | –     |
 | VOLUME (Velocity)                     | 4D edits volume of the level    | **Built.** 4D turn = FL's main volume (`REC_MainVol`, not the Master fader), or the channel's volume while a pad is held (a group button held = mixer track is not built)                                 | Quick |
 | SWING (Position)                      | 4D edits swing                  | **Built.** 4D turn = main swing (`REC_MainShuffle`); a held pad changes nothing (no channel swing)                                                            | Quick |
@@ -83,7 +83,7 @@ it; "Latch" = press to enter, press again to leave.
 | SCENE                                 | Scenes                          | **Built.** The same marker pads; press = jump at the next bar while playing (now while stopped), `NOW` = always now, a queued pad flashes. SHIFT (sections) unbuilt — **hard**, FL has no scenes | Hold  |
 | PATTERN                               | Patterns                        | **Built.** Pads = patterns 1–16 (banks with `<<` `>>`), press = select; `DOUBLE` (twice the length, grid steps copied; not piano roll notes), `DUPLICATE` (clone the current one) and `CREATE` (new empty); a free pad (`+`) creates its pattern; knob 4 `LENGTH` (16 32 64 … 512 steps a detent, SHIFT = 1 step; `setPatternLength`) and knob 1 `COLOR` (one page); no `DELETE` (FL has no API for it) | Hold  |
 | EVENTS                                | Note editor                     | **hard**: FL's MIDI scripts can't edit piano roll notes (piano roll scripts are a separate system). Not mapped yet                                            | Hold  |
-| VARIATION (Navigate)                  | Humanize/random / view switcher | VARIATION: not mapped (**hard**, same reason). SHIFT = NAVIGATE (**built**): show/focus FL's windows (mixer, rack, playlist, piano roll, browser, plug-in)           | Hold  |
+| VARIATION (Navigate)                  | Humanize/random / view switcher | VARIATION = NAVIGATE, press to open and press to close (**built**): show/focus FL's windows (mixer, rack, playlist, piano roll, browser, plug-in)           | Hold  |
 | DUPLICATE (Double)                    | Copy pad to pad                 | **Built.** Hold + pad = clone that pattern (`patterns.clonePattern`; pin tab `DUPLICATE`). SHIFT + DUPLICATE = clone the current pattern, no page. Channels can't be cloned through the API | Hold  |
 | SELECT                                | Select sound/group              | Hold + pad = select that channel; group button = bank                                                                                                         | Hold  |
 | SOLO                                  | Hold + pad = solo               | Hold + pad = solo that channel; on the Mixer page, hold + display button = solo that track                                                                    | Hold  |

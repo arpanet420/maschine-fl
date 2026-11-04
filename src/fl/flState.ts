@@ -39,6 +39,7 @@ export type FlSection =
   | "presets"
   | "markers"
   | "loop"
+  | "stepParams"
   | "features"
   | "browserNode"
   | "pattern"
@@ -66,6 +67,7 @@ const SECTIONS: readonly FlSection[] = [
   "presets",
   "markers",
   "loop",
+  "stepParams",
   "features",
   "browserNode",
   "pattern",
@@ -131,6 +133,8 @@ interface Data {
   ppq: number;
   /** The song loop range (LOOP_STATE). */
   loop: LoopInfo;
+  /** The step FL last told about (STEP_PARAMS); undefined until one arrived. */
+  stepParams?: { channel: number; step: number; pitch: number; velocity: number };
   /** Hidden FL functions this FL version lacks (FEATURES); all present until it says otherwise. */
   missing: MissingFeatures;
   /** The last BROWSER_NODE (plug-in loader trial); undefined until one arrived. */
@@ -364,6 +368,10 @@ export class FlState extends EventEmitter<{ change: [section: FlSection] }> {
     return this.data.patternCount;
   }
   /** Steps by step number. */
+  get stepParams(): Data["stepParams"] {
+    return this.data.stepParams;
+  }
+
   get stepGrid(): StepGrid {
     return this.data.stepGrid;
   }
@@ -526,6 +534,12 @@ export class FlState extends EventEmitter<{ change: [section: FlSection] }> {
         changed = dropFrom(d.markers, message.total) || changed;
         changed = merge(d.markers, message.offset, message.entries, message.total) || changed;
         this.changed("markers", changed);
+        break;
+      }
+      case "stepParams": {
+        const { channel, step, pitch, velocity } = message;
+        d.stepParams = { channel, step, pitch, velocity };
+        this.changed("stepParams", true);
         break;
       }
       case "loopState": {

@@ -252,6 +252,20 @@ export class ChannelMode implements Mode {
     return this.moveSelection(steps, mc);
   }
 
+  /** Two touches of Volume or Pan: back to FL's default. */
+  resetKnob(knob: number, mc: ModeContext): boolean {
+    const slot = knob >= RIGHT_KNOB_BASE ? this.slot(knob - RIGHT_KNOB_BASE) : undefined;
+    const value = slot === "volume" ? 0.78125 : slot === "pan" ? 0.5 : undefined;
+    const index = mc.fl.selectedChannel.index;
+    if (value === undefined || index === null || index !== this.selected(mc)) return false;
+    const param = PARAMS.find((p) => p.what === slot);
+    if (!param) return false;
+    this.params.set(param.what, { channel: index, value, at: this.now() });
+    mc.send({ type: "setChannel", index, what: param.what, value });
+    this.renderSoon(mc);
+    return true;
+  }
+
   private turnParam(param: ParamKnob, index: number, delta: number, mc: ModeContext): void {
     const step = knobStep(delta, mc.shift);
     const old = this.paramValue(param, index, mc.fl);

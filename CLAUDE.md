@@ -18,6 +18,7 @@ scripts/install-fl-script.sh  # symlink the FL script into FL's Hardware folder
 npm run typecheck             # tsc, no output
 npm run lint                  # eslint
 npm test                      # vitest, no hardware
+npm run check                 # prettier, typecheck, lint, vitest, FL script tests (also CI)
 npm run enumerate             # list NI USB/HID devices (read-only)
 npm run enumerate -- --open   # also read HID input for 5 s
 npm run inputlog              # live input events (--raw, --moves, --record <file>, --reset)
@@ -34,7 +35,9 @@ Tools run straight from TypeScript with `tsx`; the installed daemon (`bin/mk3d`,
 - Tests never touch hardware. `hw/` is tested with recorded fixtures in `test/fixtures/`.
 - Don't guess the protocol: write a diagnostic tool, run it, document the result.
 - Never delete or edit NI files. Never send firmware commands, never touch interface 6 (DFU),
-  never send HID feature reports or output reports other than `0x80`/`0x81`.
+  never send HID feature reports or output reports other than `0x80`/`0x81`. The one approved
+  exception (owner, 2026-11-04): the screen backlight, feature reports `0xF8`/`0xF9`, read-modify-write
+  of byte 8 only (`docs/protocol.md`).
 - The FL script must catch every exception and never send large SysEx bursts in one call.
 
 ## Layout rule
@@ -51,3 +54,7 @@ control's label or value on the other screen.
   Types come from `@types/w3c-web-usb`.
 - macOS ships bash 3.2; keep shell scripts compatible with it.
 - `reference/` holds cloned reference repos (gitignored, read-only).
+- `reference/Deckard` is GPL-2.0 and this repo has no licence: ideas and hardware facts only, never
+  code or data tables; credit used facts in `THIRD_PARTY_NOTICES.md`. Its `docs/controller-*.md` are a
+  good description of how Maschine's pages behave.
+- Bugs found on the hardware go in `docs/bugs.md`, numbered, with their status.

@@ -96,10 +96,10 @@ export function parseNfo(text: string): NfoEntry[] {
   return entries;
 }
 
-function* nfoFiles(dir: string): Generator<string> {
+async function* nfoFiles(dir: string): AsyncGenerator<string> {
   let entries: fs.Dirent[];
   try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
+    entries = await fs.promises.readdir(dir, { withFileTypes: true });
   } catch {
     return;
   }
@@ -111,22 +111,25 @@ function* nfoFiles(dir: string): Generator<string> {
   }
 }
 
-/** FL's plugin database, loaded from `<root>/{Generators,Effects}/**\/*.nfo`. */
+/**
+ * FL's plugin database, loaded from `<root>/{Generators,Effects}/**\/*.nfo`.
+ *
+ * Never read these files synchronously: `~/Documents` can be in iCloud, a file the Mac has evicted is
+ * fetched when it is read, and with over a thousand files that stopped mk3d for two minutes (docs/bugs.md).
+ */
 export class FlPluginDb {
   private byName = new Map<string, NfoEntry[]>();
 
-  constructor(private readonly root = defaultFlPluginDbDir()) {
-    this.reload();
-  }
+  constructor(private readonly root = defaultFlPluginDbDir()) {}
 
-  /** Read all `.nfo` files again (synchronously; a few hundred small files). */
-  reload(): void {
+  /** Read all `.nfo` files, one at a time, without holding up anything else. */
+  async load(): Promise<void> {
     const byName = new Map<string, NfoEntry[]>();
     for (const sub of ["Generators", "Effects"]) {
-      for (const file of nfoFiles(path.join(this.root, sub))) {
+      for await (const file of nfoFiles(path.join(this.root, sub))) {
         let text: string;
         try {
-          text = fs.readFileSync(file, "utf8");
+          text = await fs.promises.readFile(file, "utf8");
         } catch {
           continue;
         }

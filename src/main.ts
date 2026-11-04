@@ -32,6 +32,8 @@ import { NavigateOverlay } from "./modes/navigateOverlay.js";
 import { NoteRepeatOverlay } from "./modes/noteRepeatOverlay.js";
 import { PadModePage } from "./modes/padModePage.js";
 import { PadSettings } from "./modes/padSettings.js";
+import { FaultReporter } from "./fault.js";
+import { PadPeakLog } from "./hw/padPeakLog.js";
 import { PadState } from "./modes/padState.js";
 import { PageStack, defaultPagesPath } from "./modes/pageStack.js";
 import { DuplicateOverlay } from "./modes/duplicateOverlay.js";
@@ -65,6 +67,7 @@ const numberArg = (name: string) => {
 };
 const LOG_PADS = args.includes("--log-pads");
 const LOG_BUTTONS = args.includes("--log-buttons");
+const padPeaks = new PadPeakLog((line) => log(line));
 const pngIndex = args.indexOf("--png");
 const PNG_DIR = pngIndex >= 0 ? (args[pngIndex + 1] ?? "out") : undefined;
 const padConfig = {
@@ -129,7 +132,9 @@ const stack = new PageStack({
     chords: new ChordsPage(pads),
     step: new StepPage(pads),
     file: new FilePage(),
-    settings: new SettingsPage(padSettings),
+    settings: new SettingsPage(padSettings, {
+      setScreenBrightness: (level) => device.setScreenBrightness(level),
+    }),
   },
   pads,
   strip,
@@ -159,13 +164,15 @@ const modeContext: ModeContext = {
 };
 
 // Plugin mode shows FL's parameter list until the NKS index is loaded, then NKS pages.
-nksIndex.onReady(() => {
+const nksChanged = () => {
   pluginMode.sourceChanged();
   if (stack.main === "plugin") {
     stack.onFlChange("plugin", modeContext);
     modeContext.requestRender();
   }
-});
+};
+nksIndex.onReady(nksChanged);
+nksIndex.onUpdate(nksChanged);
 
 // ── LEDs ─────────────────────────────────────────────────────────────────────
 
@@ -201,6 +208,8 @@ function drawWaiting(): void {
   left.fillText(`Enable "${PORT_TO_FL}" in FL's MIDI Settings`, DISPLAY_WIDTH / 2, 165);
 }
 
+const faults = new FaultReporter(log, undefined, () => updateScreens());
+
 // Coalesce redraws: song position alone arrives every 50 ms while playing.
 let screenJob: Promise<void> | undefined;
 let screenDirty = false;
@@ -211,8 +220,15 @@ function updateScreens(): void {
   screenJob ??= (async () => {
     while (screenDirty) {
       screenDirty = false;
-      if (flState.connected) stack.render(screens.left.ctx, screens.right.ctx, modeContext);
-      else drawWaiting();
+      faults.guard(
+        "screen",
+        () => {
+          if (flState.connected) stack.render(screens.left.ctx, screens.right.ctx, modeContext);
+          else drawWaiting();
+        },
+        undefined,
+      );
+      faults.draw(screens.left.ctx);
       try {
         await screens.flush();
         if (PNG_DIR) await screens.writePngs(PNG_DIR);
@@ -274,9 +290,12 @@ function handleGlobalButton(id: ButtonId, pressed: boolean): boolean {
 function handle(event: HwEvent): void {
   switch (event.type) {
     case "pad":
-      // A page that uses the pads takes them; otherwise they play notes.
-      if (stack.onEvent(event, modeContext)) modeContext.requestRender();
-      else handlePad(event);
+      // A page that uses the pads takes them; otherwise they play notes. A page that fails does
+      // not take the pad, so the pads always play.
+      if (LOG_PADS) padPeaks.onPad(event.pad, event.phase, event.pressure);
+      if (faults.guard("pad", () => stack.onEvent(event, modeContext), false)) {
+        modeContext.requestRender();
+      } else handlePad(event);
       return;
     case "strip":
       if (strip.handle(event, modeContext)) updateLeds();
@@ -341,11 +360,17 @@ const changedSections = new Set<FlSection>();
 let logTimer: NodeJS.Timeout | undefined;
 
 flState.on("change", (section) => {
-  if (section === "connection" && !flState.connected) stack.releasePads();
-  if (section === "connection" && flState.connected) stack.enter(modeContext);
-  else if (flState.connected) stack.onFlChange(section, modeContext);
-  if (section !== "songPos" && section !== "meters") updateLeds();
-  else if (section === "songPos" && strip.playPositionChanged(flState)) updateLeds();
+  faults.guard(
+    `FL ${section}`,
+    () => {
+      if (section === "connection" && !flState.connected) stack.releasePads();
+      if (section === "connection" && flState.connected) stack.enter(modeContext);
+      else if (flState.connected) stack.onFlChange(section, modeContext);
+      if (section !== "songPos" && section !== "meters") updateLeds();
+      else if (section === "songPos" && strip.playPositionChanged(flState)) updateLeds();
+    },
+    undefined,
+  );
   updateScreens();
   if (section === "songPos" || section === "meters") return;
   changedSections.add(section);
@@ -365,6 +390,7 @@ device.on("connected", ({ serial }) => {
   log(`Maschine MK3 connected (${serial ?? "?"})`);
   ledSender.resendAll();
   screens.invalidate();
+  device.setScreenBrightness(padSettings.screenBrightness);
   updateLeds();
   updateScreens();
 });
@@ -375,8 +401,9 @@ device.on("disconnected", (reason) => {
   void display.close();
 });
 device.on("unavailable", (reason) => log(`Waiting for the MK3: ${reason}`));
+device.on("brightness", (line) => log(`Screen backlight ${line}`));
 device.on("report", (report) => {
-  for (const event of parser.parse(report)) handle(event);
+  for (const event of parser.parse(report)) faults.guard("input", () => handle(event), undefined);
 });
 
 // Ctrl-C reaches us twice when run through tsx; shut down once.
@@ -410,3 +437,6 @@ log(`MIDI ports open: "${PORT_TO_FL}" (to FL) and "${PORT_FROM_FL}" (from FL)`);
 log(`Pad velocity: full at hit value ${padConfig.fullScale}, curve ${padConfig.exponent}`);
 device.start();
 requestStateUntilConnected();
+// From here on nothing may stop the daemon: timers and promises report as the pages do.
+process.on("uncaughtException", (err) => faults.report("uncaught", err));
+process.on("unhandledRejection", (err) => faults.report("rejected", err));

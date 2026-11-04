@@ -20,8 +20,8 @@
 # and FL's own midi.py. NOT VERIFIED = needs a live FL Studio test:
 #   - mixer.getCurrentTempo(): seen in FL 26.1.5, getCurrentTempo(True) gives whole BPM (140),
 #     not BPM x 1000. We read the float version and scale down anything above 1000 to be safe.
-#   - transport.getSongPos(SONGLENGTH_BARS/STEPS/TICKS) bases (is the bar 1-based, is the step
-#     0-based?). See SONGPOS_BAR_BASE / SONGPOS_STEP_BASE.
+#   - SONG_POS comes from transport.getSongPos(SONGLENGTH_ABSTICKS) and general.getRecPPQ() alone;
+#     FL's B:S:T bases do not matter (the ARRANGER probe prints them beside it, `bst=`).
 #   - patterns.getPatternLength is documented as "length in beats", but FL 26.1.5 returned 64 for
 #     a 4-bar pattern: it is steps (STEPS_PER_UNIT = 1).
 #   - plugins.getParamName for every index 0..getParamCount-1 (4240 for a VST, most unnamed at the end)
@@ -317,6 +317,7 @@ CMD_PATTERN_GRID = 0x1B
 CMD_LOOP_STATE = 0x1C
 CMD_FEATURES = 0x1D
 CMD_BROWSER_NODE = 0x1E
+CMD_STEP_PARAMS = 0x26
 CMD_PLUGIN = 0x20
 CMD_PLUGIN_PARAMS = 0x21
 CMD_PARAM_NAMES = 0x22
@@ -367,6 +368,8 @@ CMD_BROWSE = 0x67
 CMD_UI_KEY = 0x68
 CMD_PICKER = 0x69
 CMD_TRIGGER_LIVE_CLIP = 0x6A
+CMD_REQUEST_STEP_PARAMS = 0x6B
+CMD_SET_STEP_PARAM = 0x6C
 
 CONTROL_CHANNEL = 15  # MIDI channel 16, zero-based
 CHANNEL_NOTE_CHANNEL = 1  # MIDI channel 2, zero-based: PAD MODE hits, note = group-local channel index
@@ -478,8 +481,6 @@ LIVE_SECONDS = 0.05
 ACTIVITY_SECONDS = 0.04
 
 TEMPO_SCALE = 1000.0  # applied only when getCurrentTempo() reports more than 1000 (BPM x 1000)
-SONGPOS_BAR_BASE = 0  # added to getSongPos(SONGLENGTH_BARS) (NOT VERIFIED)
-SONGPOS_STEP_BASE = 1  # added to getSongPos(SONGLENGTH_STEPS) (NOT VERIFIED)
 STEPS_PER_UNIT = 1  # getPatternLength is already in steps (verified in FL 26.1.5)
 
 # Filter knobs are read and written as REC events on this 0..REC_VALUE_MAX scale (see header).
@@ -521,6 +522,7 @@ UI_ACTIONS = (
 
 UI_WINDOW_COUNT = 5  # mixer, channel rack, playlist, piano roll, browser (ui.getVisible(0..4))
 FOCUS_PLUGIN = 5  # UI_STATE focused: a plugin window (ui.getFocused(5))
+BROWSER_WINDOW = 4  # ui.showWindow(4): docked by default, and it comes up without being closed first
 FOCUS_NONE = 127  # UI_STATE focused: none of them
 TEMPO_MIN = 10  # BPM
 TEMPO_MAX = 522
@@ -775,6 +777,14 @@ def encode(message):
                 lambda e: enc_u21(MARKER_TICKS_UNKNOWN if e["ticks"] is None else e["ticks"]) + enc_str(e["name"]),
             )
             + enc_u14(message["ppq"]),
+        )
+    if kind == "stepParams":
+        return frame(
+            CMD_STEP_PARAMS,
+            enc_u14(message["channel"])
+            + enc_u14(message["step"])
+            + enc_u7(message["pitch"])
+            + enc_u7(message["velocity"]),
         )
     if kind == "loopState":
         return frame(
@@ -1034,6 +1044,16 @@ def decode(data):
             return {"type": "setLoop", "start": r.u21(), "end": r.u21()}
         if command == CMD_REQUEST_LOOP:
             return {"type": "requestLoop"}
+        if command == CMD_REQUEST_STEP_PARAMS:
+            return {"type": "requestStepParams", "channel": r.u14(), "step": r.u14()}
+        if command == CMD_SET_STEP_PARAM:
+            return {
+                "type": "setStepParam",
+                "channel": r.u14(),
+                "step": r.u14(),
+                "param": r.u7(),
+                "value": r.u7(),
+            }
         if command == CMD_STRIP:
             kind = r.u7()
             if kind >= len(STRIP_KINDS):
@@ -1142,6 +1162,15 @@ def split_probe_text(text, limit=MAX_PROBE_TEXT):
     return pieces
 
 
+def _probe_bar_step_tick():
+    # FL's own B:S:T beside `pos` and `posHint`: what read_song_pos no longer depends on.
+    return "%s:%s:%s" % (
+        transport.getSongPos(midi.SONGLENGTH_BARS),
+        transport.getSongPos(midi.SONGLENGTH_STEPS),
+        transport.getSongPos(midi.SONGLENGTH_TICKS),
+    )
+
+
 def _probe_header():
     p = _ProbeLine()
     abs_ticks = SONGLENGTH_ABSTICKS
@@ -1154,6 +1183,8 @@ def _probe_header():
         ("bars", "transport.getSongLength", lambda: transport.getSongLength(bars)),
         ("start", "playlist.getSongStartTickPos", lambda: playlist.getSongStartTickPos()),
         ("pos", "transport.getSongPos", lambda: transport.getSongPos(abs_ticks)),
+        ("bst", "transport.getSongPos", _probe_bar_step_tick),
+        ("posHint", "transport.getSongPosHint", lambda: transport.getSongPosHint()),
         ("loop", "transport.getLoopMode", lambda: transport.getLoopMode()),
     )
     return p.text(" ".join("%s=%s" % (key, p.call(name, function)) for key, name, function in fields))
@@ -1807,10 +1838,14 @@ class Bridge(object):
         )
 
     def read_song_pos(self):
-        bar = _safe(0, transport.getSongPos, midi.SONGLENGTH_BARS) + SONGPOS_BAR_BASE
-        step = _safe(0, transport.getSongPos, midi.SONGLENGTH_STEPS) + SONGPOS_STEP_BASE
-        tick = _safe(0, transport.getSongPos, midi.SONGLENGTH_TICKS)
-        self.submit("SONG_POS", {"type": "songPos", "bar": bar, "step": step, "tick": tick})
+        # One read of the absolute position: the three B:S:T reads could tear at a boundary and
+        # their bases were never verified (a step base one off puts 1/8 on the off-beat). 16 steps
+        # to the bar, as mk3d counts them.
+        ticks = max(0, int(_safe(0, transport.getSongPos, SONGLENGTH_ABSTICKS)))
+        per_step = max(1, _probe_ppq() // 4)
+        steps, tick = divmod(ticks, per_step)
+        bar, step = divmod(steps, 16)
+        self.submit("SONG_POS", {"type": "songPos", "bar": bar + 1, "step": step + 1, "tick": tick})
 
     def channel_total(self):
         total = int(_safe(0, channels.channelCount))
@@ -2997,6 +3032,12 @@ class Bridge(object):
             self.set_loop(message["start"], message["end"])
         elif kind == "requestLoop":
             self.request_loop()
+        elif kind == "requestStepParams":
+            self.send_step_params(message["channel"], message["step"])
+        elif kind == "setStepParam":
+            self.set_step_param(
+                message["channel"], message["step"], message["param"], message["value"]
+            )
         elif kind == "strip":
             self.set_strip(message["kind"], message["value"], message["release"])
         elif kind == "transpose":
@@ -3078,6 +3119,37 @@ class Bridge(object):
         with self.batch(undo_name):
             for step in range(length):
                 channels.setGridBit(channel, step, False)
+
+    def send_step_params(self, channel, step):
+        """STEP_PARAMS: what a step's pitch and velocity are now (STEP's held step)."""
+        get_param, _ = _step_param_functions()
+        if get_param is None or not 0 <= channel < self.channel_total():
+            return
+        pitch = _safe(60, get_param, channel, step, getattr(midi, "pPitch", 0))
+        velocity = _safe(100, get_param, channel, step, getattr(midi, "pVelocity", 1))
+        self.drop_family("STEP_PARAMS")
+        self.submit(
+            "STEP_PARAMS",
+            {
+                "type": "stepParams",
+                "channel": channel,
+                "step": step,
+                "pitch": max(0, min(127, int(pitch))),
+                "velocity": max(0, min(127, int(velocity))),
+            },
+        )
+
+    def set_step_param(self, channel, step, param, value):
+        """SET_STEP_PARAM: a step's pitch (0) or velocity (1) in the current pattern."""
+        _, set_param = _step_param_functions()
+        if set_param is None or param not in (0, 1) or not 0 <= channel < self.channel_total():
+            return
+        name = "pVelocity" if param == 1 else "pPitch"
+        try:
+            pattern = int(_safe(1, patterns.patternNumber))
+            set_param(channel, pattern, step, getattr(midi, name, param), max(0, min(127, value)))
+        except Exception as error:
+            _log_once("set step param", error)
 
     def transpose(self, channel, semitones):
         """TRANSPOSE: the step notes of `channel` in the current pattern by `semitones` (one undo point)."""
@@ -3382,13 +3454,16 @@ class Bridge(object):
             _log_once("set main volume", error)
 
     def show_window(self, window):
-        """A focused window is hidden; any other is shown and given the focus."""
+        """A focused window is hidden. Any other comes up with the focus. FL only raises a window it opens,
+        so one that is open behind another is closed first (the F-keys and setFocused don't raise it)."""
         if not 0 <= window < UI_WINDOW_COUNT:
             return
         try:
             if ui.getFocused(window):
                 ui.hideWindow(window)
             else:
+                if window != BROWSER_WINDOW and ui.getVisible(window):
+                    ui.hideWindow(window)
                 ui.showWindow(window)
                 ui.setFocused(window)
         except Exception as error:

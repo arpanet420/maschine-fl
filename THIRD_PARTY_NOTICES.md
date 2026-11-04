@@ -42,6 +42,14 @@ licence), itself a fork of [node-traktor-f1](https://github.com/met5678/node-tra
 not include its code; every offset was re-checked on a real device, and the places where it differed
 are written down in `docs/protocol.md`.
 
+## Deckard (GPL-2.0)
+
+Three hardware facts come from [Deckard](https://github.com/Panic-Signals/Deckard) by Panic Signals, an
+open-source Maschine clone with its own MK3 driver: the screen backlight's feature reports, the display's
+repeat command and that the knobs need a flicker filter. Its code is not included and was not ported.
+How NOTE REPEAT's page is laid out, knob reset by two touches and the 0.4 s hold on a step follow what its
+documentation says about Maschine's behaviour.
+
 ## Projects that were only read
 
 These were studied for how they work. Nothing was copied from them.

@@ -1,3 +1,4 @@
+import { REPEAT_RATES } from "../src/modes/repeatScheduler.js";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -283,64 +284,151 @@ describe("NOTE REPEAT overlay", () => {
       expect(h.pages.noteRepeat.settings).toEqual({ rate: 2, gate: 0.5, swing: 0 });
     });
 
-    it("display 2–8 pick the rate", () => {
+    it("display 5–8 pick the note value, and it keeps its unit", () => {
       const h = repeatHarness();
       h.press("noteRepeat");
-      const ids = [
-        "display2",
-        "display3",
-        "display4",
-        "display5",
-        "display6",
-        "display7",
-        "display8",
-      ] as const;
-      ids.forEach((id, rate) => {
+      const label = () => REPEAT_RATES[h.pages.noteRepeat.settings.rate]?.label;
+      (["display5", "display6", "display7", "display8"] as const).forEach((id, i) => {
         h.tap(id);
-        expect(h.pages.noteRepeat.settings.rate).toBe(rate);
+        expect(label()).toBe(["1/4", "1/8", "1/16", "1/32"][i]);
+        expect(h.light(id)).toBe("bright");
       });
+      h.tap("display6");
+      h.knob(1, 120); // Unit: Dotted
+      expect(label()).toBe("1/8D");
+      h.tap("display7");
+      expect(label()).toBe("1/16D");
     });
 
     it("the rate changes the interval of a running repeat", () => {
       const h = repeatHarness();
       h.press("noteRepeat");
       h.pad(0);
-      h.tap("display3"); // 1/8: 250 ms
+      h.tap("display6"); // 1/8: 250 ms
       h.advance(255);
       h.advance(250);
       expect(ons(h)).toHaveLength(3);
     });
 
-    it("knob 1 steps through the rates, knob 2 sets the gate, knob 3 the swing", () => {
+    it("knob 1 = rate, 2 = unit, 3 = gate, 4 = swing", () => {
       const h = repeatHarness();
       h.press("noteRepeat");
       const { settings } = h.pages.noteRepeat;
+      const label = () => REPEAT_RATES[settings.rate]?.label;
       h.knob(0, 60);
-      expect(settings.rate).toBe(2); // half a step: not yet
+      expect(label()).toBe("1/16"); // half a step: not yet
       h.knob(0, 60);
-      expect(settings.rate).toBe(3);
+      expect(label()).toBe("1/32");
       h.knob(0, -360);
-      expect(settings.rate).toBe(0);
-      h.knob(0, 5000);
-      expect(settings.rate).toBe(6);
+      expect(label()).toBe("1/4");
+      h.knob(0, 240);
+      expect(label()).toBe("1/16");
       h.knob(1, 120);
-      expect(settings.gate).toBeCloseTo(0.5 + 0.1 * 0.9, 6);
-      h.knob(1, 99999);
-      expect(settings.gate).toBe(1);
-      h.knob(1, -99999);
-      expect(settings.gate).toBeCloseTo(0.1, 6);
+      expect(label()).toBe("1/16D");
+      h.knob(1, 120);
+      expect(label()).toBe("1/16T");
+      h.knob(1, 5000);
+      expect(label()).toBe("1/16T");
+      h.knob(1, -5000);
+      expect(label()).toBe("1/16");
       h.knob(2, 120);
-      expect(settings.swing).toBeCloseTo(0.05, 6);
+      expect(settings.gate).toBeCloseTo(0.5 + 0.1 * 0.9, 6);
       h.knob(2, 99999);
-      expect(settings.swing).toBe(0.5);
+      expect(settings.gate).toBe(1);
       h.knob(2, -99999);
+      expect(settings.gate).toBeCloseTo(0.1, 6);
+      h.knob(3, 120);
+      expect(settings.swing).toBeCloseTo(0.05, 6);
+      h.knob(3, 99999);
+      expect(settings.swing).toBe(0.5);
+      h.knob(3, -99999);
       expect(settings.swing).toBe(0);
+    });
+
+    it("GATE RESET (display 4) sets the gate to 100 %", () => {
+      const h = repeatHarness();
+      h.press("noteRepeat");
+      h.tap("display4");
+      expect(h.pages.noteRepeat.settings.gate).toBe(1);
+    });
+
+    it("two quick touches of a knob reset gate and swing; a turn between does not", () => {
+      const h = repeatHarness();
+      h.press("noteRepeat");
+      const { settings } = h.pages.noteRepeat;
+      h.knob(2, 600);
+      h.touchKnob(2);
+      h.advance(100);
+      h.knob(2, 1);
+      h.touchKnob(2);
+      expect(settings.gate).not.toBe(0.5);
+      h.advance(100);
+      h.touchKnob(2);
+      expect(settings.gate).toBe(0.5);
+      h.knob(3, 600);
+      h.touchKnob(3);
+      h.advance(500); // too slow
+      h.touchKnob(3);
+      expect(settings.swing).not.toBe(0);
+      h.advance(100);
+      h.touchKnob(3);
+      expect(settings.swing).toBe(0);
+    });
+
+    it("HOLD (display 3): pads keep repeating once let go, the next press starts anew", () => {
+      const h = repeatHarness();
+      h.press("noteRepeat");
+      h.tap("display3");
+      expect(h.light("display3")).toBe("bright");
+      h.pad(0);
+      h.advance(10);
+      h.pad(0, "up");
+      const before = ons(h).length;
+      h.advance(500);
+      expect(ons(h).length).toBeGreaterThan(before);
+      const repeating = () => h.pages.noteRepeat.repeatingPads;
+      expect(repeating()).toEqual([0]);
+      h.pad(1);
+      expect(repeating()).toEqual([1]);
+      h.pad(2); // a second pad down joins
+      expect(repeating()).toEqual([1, 2]);
+      h.pad(1, "up");
+      h.pad(2, "up");
+      h.tap("display3"); // HOLD off stops what no finger is on
+      expect(repeating()).toEqual([]);
+    });
+
+    it("LOCK (display 2): the pads keep repeating with the page closed, until unlocked", () => {
+      const h = repeatHarness();
+      h.press("noteRepeat");
+      h.tap("display2");
+      expect(h.light("display2")).toBe("bright");
+      h.release("noteRepeat");
+      expect(h.stack.top).toBeUndefined();
+      expect(h.light("noteRepeat")).toBe("bright");
+      const before = ons(h).length;
+      h.pad(0);
+      h.advance(500);
+      expect(ons(h).length).toBeGreaterThan(before + 2);
+      h.pad(0, "up");
+      h.advance(10);
+      const after = ons(h).length;
+      h.advance(500);
+      expect(ons(h).length).toBe(after);
+      h.press("noteRepeat");
+      h.tap("display2");
+      h.release("noteRepeat");
+      expect(h.light("noteRepeat")).toBe("dim");
+      h.pad(0);
+      h.advance(500);
+      expect(ons(h).length).toBe(after + 1); // one plain hit
+      h.pad(0, "up");
     });
 
     it("gate and swing change the timing of the repeats", () => {
       const h = repeatHarness();
       h.press("noteRepeat");
-      h.knob(2, 1200 * 0.4); // swing 0.2 → the second repeat at 150 ms
+      h.knob(3, 1200 * 0.4); // swing 0.2 → the second repeat at 150 ms
       h.pad(0);
       h.advance(140);
       expect(ons(h)).toHaveLength(1);
@@ -348,10 +436,10 @@ describe("NOTE REPEAT overlay", () => {
       expect(ons(h)).toHaveLength(2);
     });
 
-    it("knobs 4–8 are left to the page underneath", () => {
+    it("knobs 5–8 are left to the page underneath", () => {
       const h = repeatHarness();
       h.press("noteRepeat");
-      h.knob(3, 5000);
+      h.knob(4, 5000);
       h.knob(7, 5000);
       expect(h.pages.noteRepeat.settings).toEqual({ rate: 2, gate: 0.5, swing: 0 });
     });
@@ -360,9 +448,9 @@ describe("NOTE REPEAT overlay", () => {
       const pinsPath = tempPins();
       const first = repeatHarness({ pinsPath });
       first.press("noteRepeat");
-      first.tap("display7"); // 1/16T
-      first.knob(1, 1200 * 0.2); // gate
-      first.knob(2, 1200 * 0.2); // swing
+      first.knob(1, 240); // 1/16T
+      first.knob(2, 1200 * 0.2); // gate
+      first.knob(3, 1200 * 0.2); // swing
       first.advance(1000); // the knob turns are written after a pause
       const saved = JSON.parse(readFileSync(pinsPath, "utf8")) as {
         pages: { noteRepeat: { rate: number; gate: number; swing: number } };
@@ -381,7 +469,7 @@ describe("NOTE REPEAT overlay", () => {
       const pinsPath = tempPins();
       const first = repeatHarness({ pinsPath });
       first.press("noteRepeat");
-      first.knob(1, 1200 * 0.2);
+      first.knob(2, 1200 * 0.2);
       first.release("noteRepeat");
       const second = repeatHarness({ pinsPath });
       expect(second.pages.noteRepeat.settings.gate).toBeCloseTo(0.5 + 0.2 * 0.9, 6);
@@ -391,7 +479,7 @@ describe("NOTE REPEAT overlay", () => {
       const pinsPath = tempPins();
       const first = repeatHarness({ pinsPath });
       first.press("noteRepeat");
-      first.tap("display5");
+      first.tap("display8");
       first.release("noteRepeat");
       const h = repeatHarness({ pinsPath });
       expect(h.pages.noteRepeat.settings.rate).toBe(3);

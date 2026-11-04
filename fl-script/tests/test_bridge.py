@@ -309,6 +309,7 @@ class FakeFL(object):
             record=lambda: None,
             globalTransport=lambda command, value, *rest: 0,
             getSongPos=lambda mode=-1: fl.song_pos[mode],
+            getSongPosHint=lambda: "12:03:00",
             setSongPos=lambda position, mode=-1: fl.song_pos.__setitem__(mode, int(position)),
             getLoopMode=lambda: fl.loop_mode,
             setLoopMode=lambda: setattr(fl, "loop_mode", 1 - fl.loop_mode),
@@ -1004,6 +1005,30 @@ class ToFlCommandTests(BridgeTestCase):
         self.send(frame(2, 0.0))
         self.assertFalse(self.fl.channels[5]["muted"])
 
+    def test_set_step_param_writes_the_velocity(self):
+        self.run_vector("setStepParam")
+        self.assertEqual(self.fl.step_params[(1, 17, 1)], 90)
+
+    def test_set_step_param_ignores_an_unknown_param_and_channel(self):
+        self.start()
+        self.bridge.set_step_param(1, 3, 7, 50)
+        self.bridge.set_step_param(9999, 3, 1, 50)
+        self.assertEqual(self.fl.step_params, {})
+
+    def test_a_failing_step_param_is_caught(self):
+        self.start()
+        self.fl.raise_on["channels.setStepParameterByIndex"] = RuntimeError("boom")
+        self.bridge.set_step_param(1, 3, 1, 50)
+
+    def test_request_step_params_answers_with_the_step(self):
+        self.start()
+        self.fl.step_params[(1, 17, 0)] = 60
+        self.fl.step_params[(1, 17, 1)] = 100
+        self.bridge.send_step_params(1, 17)
+        self.assertEqual(
+            self.bridge.queue["STEP_PARAMS"], self.vector("stepParams")
+        )
+
     def test_set_step(self):
         self.run_vector("setStep")
         self.assertEqual(self.fl.called("channels.setGridBit"), [(1, 17, True)])
@@ -1350,10 +1375,25 @@ class StateTests(BridgeTestCase):
         # flags 05, tempo 12850 (128.50 BPM), swing 0, main volume 0.8
         self.assertEqual(transport_frames[0].hex(), "f07d4d33020500" + "6432" + "0000" + "6632" + "f7")
 
-    def test_song_pos(self):
+    def song_pos_frame(self, ticks):
+        self.fl.song_pos[2] = ticks
         frames = self.start()
-        pos = self.frames_with(frames, 0x03)[0]
-        self.assertEqual(pos.hex(), "f07d4d3303000c" + "03" + "0000" + "f7")  # bar 12, step 2 + 1, tick 0
+        return self.frames_with(frames, 0x03)[0].hex()
+
+    def test_song_pos_comes_from_the_absolute_ticks(self):
+        # FL's own B:S:T (the fake's 12:2:0) plays no part: bar 12, step 3, tick 0.
+        ticks = (11 * 16 + 2) * 24
+        self.assertEqual(self.song_pos_frame(ticks), "f07d4d3303000c" + "03" + "0000" + "f7")
+
+    def test_song_pos_starts_at_bar_1_step_1(self):
+        self.assertEqual(self.song_pos_frame(0), "f07d4d33030001" + "01" + "0000" + "f7")
+
+    def test_song_pos_keeps_the_ticks_inside_the_step(self):
+        self.assertEqual(self.song_pos_frame(24 * 4 + 7), "f07d4d33030001" + "05" + "0007" + "f7")
+
+    def test_song_pos_follows_the_ppq(self):
+        self.fl.ppq = 192  # 48 ticks to the step
+        self.assertEqual(self.song_pos_frame(48 * 16 + 5), "f07d4d33030002" + "01" + "0005" + "f7")
 
     def test_channels_in_chunks_of_four(self):
         frames = self.start()
@@ -1440,7 +1480,7 @@ class StateTests(BridgeTestCase):
 
     def test_song_pos_is_throttled_to_50_ms(self):
         self.start()
-        self.fl.song_pos[5] = 7
+        self.fl.song_pos[2] = 7
         self.clock.advance(0.01)
         self.script.OnIdle()
         self.assertEqual(self.frames_with(self.take(), 0x03), [])
@@ -2475,30 +2515,43 @@ class QuickEditCommandTests(BridgeTestCase):
         frames = self.start()
         self.assertEqual(self.frames_with(frames, 0x02)[0][9:11], self.script.enc_norm(0))
 
-    def test_show_window_vector_shows_and_focuses_a_hidden_window(self):
+    def test_show_window_shows_and_focuses_a_hidden_window(self):
         self.run_vector("showWindow")  # window 3, the piano roll
+        self.assertEqual(self.fl.called("ui.hideWindow"), [])
         self.assertEqual(self.fl.called("ui.showWindow"), [(3,)])
         self.assertEqual(self.fl.called("ui.setFocused"), [(3,)])
-        self.assertEqual(self.fl.called("ui.hideWindow"), [])
 
     def test_show_window_hides_the_focused_window(self):
         self.start()
         self.fl.visible.add(3)
         self.fl.focused_widget = 3
         self.fl.calls[:] = []
-        self.send(self.vector("showWindow"))
+        self.send(self.script.frame(0x52, bytes([3])))
         self.assertEqual(self.fl.called("ui.hideWindow"), [(3,)])
         self.assertEqual(self.fl.called("ui.showWindow"), [])
-        self.assertNotIn(3, self.fl.visible)
 
-    def test_show_window_focuses_a_visible_window_that_is_behind(self):
+    def test_show_window_reopens_a_window_that_is_behind(self):
+        for window in (0, 1, 2, 3):
+            self.start()
+            self.fl.visible.add(window)
+            self.fl.focused_widget = (window + 1) % 4
+            self.fl.calls[:] = []
+            self.send(self.script.frame(0x52, bytes([window])))
+            ui_calls = [call for call in self.fl.calls if call[0].startswith("ui.") and "Window" in call[0]]
+            ui_calls = [call for call in ui_calls if call[0] in ("ui.hideWindow", "ui.showWindow")]
+            self.assertEqual([call[0] for call in ui_calls], ["ui.hideWindow", "ui.showWindow"])
+            self.assertEqual(self.fl.called("ui.setFocused"), [(window,)])
+            self.assertIn(window, self.fl.visible)
+
+    def test_show_window_does_not_close_the_browser_first(self):
         self.start()
-        self.fl.visible.update((3, 1))
-        self.fl.focused_widget = 1
+        self.fl.visible.add(4)
+        self.fl.focused_widget = 0
         self.fl.calls[:] = []
-        self.send(self.vector("showWindow"))
-        self.assertEqual(self.fl.called("ui.showWindow"), [(3,)])
-        self.assertEqual(self.fl.focused_widget, 3)
+        self.send(self.script.frame(0x52, bytes([4])))
+        self.assertEqual(self.fl.called("ui.hideWindow"), [])
+        self.assertEqual(self.fl.called("ui.showWindow"), [(4,)])
+        self.assertEqual(self.fl.called("ui.setFocused"), [(4,)])
 
     def test_show_window_ignores_other_windows(self):
         self.start()
@@ -3873,7 +3926,8 @@ class PlaylistProbeTests(BridgeTestCase):
         lines = self.run_probe()
         self.assertEqual(
             lines[0],
-            "perf=False tracks=500 ppq=96 songlen=3840 bars=10 start=0 pos=0 loop=0",
+            "perf=False tracks=500 ppq=96 songlen=3840 bars=10 start=0 pos=0 "
+            "bst=12:2:0 posHint=12:03:00 loop=0",
         )
         self.assertEqual(
             lines[1],

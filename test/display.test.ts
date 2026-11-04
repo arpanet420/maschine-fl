@@ -31,10 +31,59 @@ describe("buildDisplayTransfer", () => {
     expect(Array.from(t.subarray(36))).toEqual([0x03, 0, 0, 0, 0x40, 0, 0, 0]);
   });
 
-  it("is 261 148 bytes for a full screen", () => {
-    const t = buildDisplayTransfer(0, FULL_SCREEN, new Uint8Array(480 * 272 * 2));
+  it("is 261 148 bytes for a full screen of different pixels, sent raw", () => {
+    const t = buildDisplayTransfer(0, FULL_SCREEN, new Uint8Array(480 * 272 * 2), { raw: true });
     expect(t.length).toBe(261_148);
     expect(Array.from(t.subarray(16, 20))).toEqual([0, 0x00, 0xff, 0x00]); // 65 280 pairs
+  });
+
+  it("sends a flat screen as one repeat command", () => {
+    const t = buildDisplayTransfer(0, FULL_SCREEN, new Uint8Array(480 * 272 * 2).fill(7));
+    expect(Array.from(t.subarray(16))).toEqual([
+      0x01, 0x00, 0xff, 0x00, 7, 7, 7, 7, 0x03, 0, 0, 0, 0x40, 0, 0, 0,
+    ]);
+  });
+
+  it("leaves short runs as pixels and keeps the order", () => {
+    // pair values 1, 1, 1, then 2 × 5, then 3
+    const pairs = [1, 1, 1, 2, 2, 2, 2, 2, 3];
+    const pixels = Uint8Array.from(pairs.flatMap((v) => [v, v, v, v]));
+    const rect: Rect = { x: 0, y: 0, width: 18, height: 1 };
+    const t = buildDisplayTransfer(1, rect, pixels);
+    expect(Array.from(t.subarray(16))).toEqual([
+      0x00, 0, 0, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0x01, 0, 0, 5, 2, 2, 2, 2, 0x00, 0, 0, 1,
+      3, 3, 3, 3, 0x03, 0, 0, 0, 0x40, 0, 0, 0,
+    ]);
+  });
+
+  it("decodes back to the same pixels, whatever the picture", () => {
+    const rect: Rect = { x: 0, y: 10, width: 480, height: 20 };
+    let seed = 1;
+    const noise = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff);
+    const pixels = new Uint8Array(480 * 20 * 2);
+    for (let i = 0; i < pixels.length;) {
+      const run = 1 + (noise() % 40);
+      const value = noise() & 0x3;
+      for (let j = 0; j < run && i < pixels.length; j++, i++) pixels[i] = value;
+    }
+    const t = buildDisplayTransfer(0, rect, pixels);
+    const decoded: number[] = [];
+    let at = 16;
+    for (;;) {
+      const command = t[at] ?? -1;
+      const count = ((t[at + 1] ?? 0) << 16) | ((t[at + 2] ?? 0) << 8) | (t[at + 3] ?? 0);
+      at += 4;
+      if (command === 0x00) {
+        decoded.push(...t.subarray(at, at + count * 4));
+        at += count * 4;
+      } else if (command === 0x01) {
+        for (let n = 0; n < count; n++) decoded.push(...t.subarray(at, at + 4));
+        at += 4;
+      } else break;
+    }
+    expect(t[at - 4]).toBe(0x03);
+    expect(decoded).toEqual(Array.from(pixels));
+    expect(t.length).toBeLessThan(pixels.length + 28);
   });
 
   it("rejects odd pixel counts, off-screen rects and wrong pixel lengths", () => {

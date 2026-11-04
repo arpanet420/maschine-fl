@@ -1,6 +1,7 @@
 {
   "name": "maschine-fl",
-  "version": "1.0.0",
+  "version": "1.1.0",
+  "private": true,
   "description": "Maschine MK3 to FL Studio bridge daemon (mk3d)",
   "directories": {
     "doc": "docs",
@@ -13,6 +14,7 @@
     "typecheck": "tsc -p . --noEmit",
     "lint": "eslint .",
     "format": "prettier --write src",
+    "check": "prettier --check src && npm run typecheck && npm run lint && npm test && npm run test:fl",
     "enumerate": "tsx src/tools/enumerate.ts",
     "inputlog": "tsx src/tools/inputlog.ts",
     "ledtest": "tsx src/tools/ledtest.ts",

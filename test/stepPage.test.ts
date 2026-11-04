@@ -16,7 +16,8 @@ import { PadModePage } from "../src/modes/padModePage.js";
 import { PadState } from "../src/modes/padState.js";
 import { PageStack } from "../src/modes/pageStack.js";
 import { PatternOverlay } from "../src/modes/patternOverlay.js";
-import { StepPage, pageCount } from "../src/modes/stepPage.js";
+import { STEP_HOLD_MS, StepPage, pageCount } from "../src/modes/stepPage.js";
+import { stackHarness } from "../src/tools/stackHarness.js";
 
 const RED = 0xff0000;
 const BLUE = 0x0000ff;
@@ -310,7 +311,9 @@ describe("STEP page: pads", () => {
     steps([1, 5]);
     pad(0);
     pad(1);
+    pad(1, "up");
     pad(5);
+    pad(5, "up");
     pad(15);
     pad(15, "move");
     pad(15, "up");
@@ -343,6 +346,7 @@ describe("STEP page: pads", () => {
     steps([17], 16);
     pad(0);
     pad(1);
+    pad(1, "up");
     expect(sent).toEqual([
       { type: "setStep", channel: 2, step: 16, on: true },
       { type: "setStep", channel: 2, step: 17, on: false },
@@ -605,6 +609,87 @@ describe("ERASE", () => {
     sent.length = 0;
     pad(4);
     expect(sent).toEqual([{ type: "setStep", channel: 2, step: 4, on: true }]);
+  });
+
+  describe("a held step", () => {
+    const setup = () => {
+      const h = stackHarness({ selected: 2 });
+      h.tap("step");
+      h.fl.apply({
+        type: "stepGrid",
+        channel: 2,
+        pattern: h.fl.pattern.number,
+        offset: 0,
+        steps: Array.from({ length: 16 }, (_, i) => i === 1),
+      });
+      h.sent.length = 0;
+      return h;
+    };
+
+    it("a tap on a lit step removes it on the release, and a dark one goes on at the press", () => {
+      const h = setup();
+      h.pad(1);
+      expect(h.sentOf("setStep")).toEqual([]);
+      h.pad(1, "up");
+      expect(h.sentOf("setStep")).toEqual([{ type: "setStep", channel: 2, step: 1, on: false }]);
+      h.sent.length = 0;
+      h.pad(3);
+      expect(h.sentOf("setStep")).toEqual([{ type: "setStep", channel: 2, step: 3, on: true }]);
+      h.pad(3, "up");
+      expect(h.sentOf("setStep")).toHaveLength(1);
+    });
+
+    it("held long enough it stays, FL is asked for its values and the knobs edit them", () => {
+      const h = setup();
+      h.pad(1);
+      h.advance(STEP_HOLD_MS);
+      expect(h.sentOf("requestStepParams")).toEqual([
+        { type: "requestStepParams", channel: 2, step: 1 },
+      ]);
+      h.fl.apply({ type: "stepParams", channel: 2, step: 1, pitch: 62, velocity: 80 });
+      h.stack.onFlChange("stepParams", h.mc);
+      expect(() => h.render()).not.toThrow();
+      h.knob(1, 120);
+      expect(h.sentOf("setStepParam")).toEqual([
+        { type: "setStepParam", channel: 2, step: 1, param: 0, value: 64 },
+      ]);
+      h.sent.length = 0;
+      h.knob(0, 120);
+      const [velocity] = h.sentOf("setStepParam");
+      expect(velocity).toMatchObject({ channel: 2, step: 1, param: 1 });
+      expect(velocity?.value).toBeGreaterThan(80);
+      h.pad(1, "up");
+      expect(h.sentOf("setStep")).toEqual([]);
+    });
+
+    it("a knob turned during a short hold keeps the step too", () => {
+      const h = setup();
+      h.pad(1);
+      h.knob(1, 60);
+      h.pad(1, "up");
+      expect(h.sentOf("setStep")).toEqual([]);
+      expect(h.sentOf("setStepParam")).toHaveLength(1);
+    });
+
+    it("the knobs go to the page below when no step is held, and knob 3 always", () => {
+      const h = setup();
+      h.knob(0, 120);
+      expect(h.sentOf("setStepParam")).toEqual([]);
+      h.pad(1);
+      h.knob(2, 120);
+      expect(h.sentOf("setStepParam")).toEqual([]);
+      h.pad(1, "up");
+    });
+
+    it("closing the page lets go of the hold and removes nothing", () => {
+      const h = setup();
+      h.pad(1);
+      h.tap("step");
+      h.advance(STEP_HOLD_MS * 2);
+      expect(h.sentOf("requestStepParams")).toEqual([]);
+      h.pad(1, "up");
+      expect(h.sentOf("setStep")).toEqual([]);
+    });
   });
 
   it("in PAD MODE a pad clears all steps of its channel in the current pattern and plays nothing", () => {

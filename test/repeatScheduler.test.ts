@@ -4,11 +4,17 @@ import {
   DEFAULT_SETTINGS,
   REPEAT_RATES,
   RepeatScheduler,
+  anchorUnit,
   hitVelocity,
   intervalBeats,
   intervalMs,
   pressureVelocity,
+  rateIndex,
+  ratePosition,
   songBeats,
+  stepFeel,
+  stepRate,
+  feelPosition,
   type RepeatSettings,
   type RepeatTiming,
 } from "../src/modes/repeatScheduler.js";
@@ -18,12 +24,14 @@ type Event = { at: number; kind: "on" | "off"; pad: number; velocity?: number };
 function setup(initial: Partial<RepeatSettings> = {}) {
   const time = new FakeTime(1000);
   const events: Event[] = [];
+  const ended: number[] = [];
   const settings: RepeatSettings = { ...DEFAULT_SETTINGS, ...initial };
   const timing: RepeatTiming = { bpm: 120, playing: false };
   const scheduler = new RepeatScheduler({
     player: {
       on: (pad, velocity) => events.push({ at: time.now, kind: "on", pad, velocity }),
       off: (pad) => events.push({ at: time.now, kind: "off", pad }),
+      ended: (pad) => ended.push(pad),
     },
     timing: () => timing,
     settings: () => settings,
@@ -34,7 +42,7 @@ function setup(initial: Partial<RepeatSettings> = {}) {
     events.filter((e) => e.kind === "on" && (pad === undefined || e.pad === pad)).map((e) => e.at);
   const offs = (pad?: number) =>
     events.filter((e) => e.kind === "off" && (pad === undefined || e.pad === pad)).map((e) => e.at);
-  return { time, events, settings, timing, scheduler, ons, offs };
+  return { time, events, ended, settings, timing, scheduler, ons, offs };
 }
 
 const near = (actual: number[], expected: number[]) => {
@@ -43,8 +51,21 @@ const near = (actual: number[], expected: number[]) => {
 };
 
 describe("intervals", () => {
-  it("is 60 / BPM × 4 / denominator, × 2/3 for triplets", () => {
-    const expected = [500, 250, 125, 62.5, 500 / 3, 250 / 3, 125 / 3];
+  it("is 60 / BPM × 4 / denominator, × 2/3 for triplets, × 3/2 for dotted", () => {
+    const expected = [
+      500,
+      250,
+      125,
+      62.5,
+      500 / 3,
+      250 / 3,
+      125 / 3,
+      1000 / 3,
+      750,
+      375,
+      187.5,
+      93.75,
+    ];
     REPEAT_RATES.forEach((_, rate) => {
       expect(intervalMs(120, rate)).toBeCloseTo(expected[rate] ?? NaN, 6);
     });
@@ -56,7 +77,7 @@ describe("intervals", () => {
     expect(intervalMs(0, 2)).toBe(125);
   });
 
-  it("names the seven rates", () => {
+  it("names the twelve rates, the first seven where the saved state has them", () => {
     expect(REPEAT_RATES.map((r) => r.label)).toEqual([
       "1/4",
       "1/8",
@@ -65,7 +86,43 @@ describe("intervals", () => {
       "1/8T",
       "1/16T",
       "1/32T",
+      "1/4T",
+      "1/4D",
+      "1/8D",
+      "1/16D",
+      "1/32D",
     ]);
+  });
+
+  it("the rate knob moves the note value and keeps the unit, and stops at the ends", () => {
+    const label = (rate: number) => REPEAT_RATES[rate]?.label;
+    const rate = rateIndex(8, "dotted");
+    expect(label(stepRate(rate, 1))).toBe("1/16D");
+    expect(label(stepRate(rate, -1))).toBe("1/4D");
+    expect(label(stepRate(rate, 99))).toBe("1/32D");
+    expect(label(stepRate(rate, -99))).toBe("1/4D");
+    expect(ratePosition(rateIndex(4, "dotted"))).toBe(0);
+    expect(ratePosition(rateIndex(32, "triplet"))).toBe(1);
+  });
+
+  it("the unit knob moves Normal, Dotted, Triplet and keeps the note value", () => {
+    const label = (rate: number) => REPEAT_RATES[rate]?.label;
+    const rate = rateIndex(8, "straight");
+    expect(label(stepFeel(rate, 1))).toBe("1/8D");
+    expect(label(stepFeel(rate, 2))).toBe("1/8T");
+    expect(label(stepFeel(rate, 99))).toBe("1/8T");
+    expect(label(stepFeel(rate, -1))).toBe("1/8");
+    expect(feelPosition(rate)).toBe(0);
+    expect(feelPosition(rateIndex(8, "triplet"))).toBe(1);
+  });
+
+  it("only rates that do not fit the bar have an anchor", () => {
+    expect(anchorUnit(rateIndex(8, "straight"))).toBe(0);
+    expect(anchorUnit(rateIndex(16, "triplet"))).toBe(0);
+    expect(anchorUnit(rateIndex(8, "triplet"))).toBe(0);
+    expect(anchorUnit(rateIndex(4, "triplet"))).toBe(1);
+    expect(anchorUnit(rateIndex(8, "dotted"))).toBe(0.25);
+    expect(anchorUnit(rateIndex(4, "dotted"))).toBe(0.5);
   });
 
   it("reads SONG_POS as beats from bar 1 (16 steps per bar)", () => {
@@ -325,9 +382,9 @@ describe("aligned to FL's song position", () => {
     timing.playing = true;
     timing.songPos = { beats: songBeats({ bar: 3, step: 1, tick: 0 }) + 0.1, at: 1000 }; // 8.1 beats
     time.advance(20);
-    scheduler.start(0, 100, 0.5); // 8.14 beats; the next 1/16 slot is 8.25, 0.11 beat = 55 ms away
+    scheduler.start(0, 100, 0.5); // 8.14 beats: late in the slot, so it plays at 8.25, 55 ms away
     time.advance(200);
-    near(ons(), [1020, 1075, 1200]);
+    near(ons(), [1075, 1200]);
   });
 
   it("a new SONG_POS corrects the grid", () => {
@@ -336,11 +393,11 @@ describe("aligned to FL's song position", () => {
     timing.songPos = { beats: 0, at: 1000 };
     scheduler.start(0, 100, 0.5);
     time.advance(50);
-    // FL says it is already at 0.2 beats (100 ms in): the slot at 0.25 beat is 25 ms away
-    timing.songPos = { beats: 0.2, at: 1050 };
+    // FL says it is already at 0.15 beats (75 ms in): the slot at 0.25 beat is 50 ms away
+    timing.songPos = { beats: 0.15, at: 1050 };
     scheduler.refresh();
     time.advance(200);
-    near(ons(), [1000, 1075, 1200]);
+    near(ons(), [1000, 1100, 1225]);
   });
 
   it("swing delays the odd slots of the song's grid", () => {
@@ -362,8 +419,8 @@ describe("aligned to FL's song position", () => {
     timing.playing = false;
     scheduler.refresh();
     time.advance(350);
-    // free from the last grid point (the press at 1030, as no slot has played): 1155, 1280, 1405
-    near(ons(), [1030, 1155, 1280, 1405]);
+    // free from the last grid point (the slot the press counted as, 1000)
+    near(ons(), [1030, 1125, 1250, 1375]);
   });
 
   it("follows a tempo change while FL plays", () => {
@@ -378,5 +435,173 @@ describe("aligned to FL's song position", () => {
     time.advance(200);
     // slots at 0.25 beat (1060 + 0.13 × 250 = 1092.5), then every 62.5 ms
     near(ons(), [1000, 1092.5, 1155, 1217.5]);
+  });
+
+  it("a SONG_POS late by 0–30 ms does not move the notes", () => {
+    const { time, timing, scheduler, ons, settings } = setup();
+    settings.rate = 1; // 1/8: 250 ms
+    timing.playing = true;
+    // Readings every 50 ms from a 1 ms clock, each late by its own amount.
+    const lateness = [0, 30, 7, 22, 3, 28, 12, 1, 19, 25, 5, 16];
+    const start = time.now;
+    let reading = 0;
+    const feed = (until: number) => {
+      while (time.now < until) {
+        time.advance(1);
+        const due = start + reading * 50 + (lateness[reading % lateness.length] ?? 0);
+        if (time.now >= due) {
+          const sent = start + reading * 50;
+          timing.songPos = { beats: (sent - start) / 500, at: time.now };
+          scheduler.refresh();
+          reading++;
+        }
+      }
+    };
+    feed(start + 400);
+    scheduler.start(0, 100, 0.5);
+    feed(start + 3000);
+    const notes = ons();
+    expect(notes.length).toBeGreaterThan(8);
+    for (let i = 1; i < notes.length; i++) {
+      expect(Math.abs((notes[i] ?? 0) - (notes[i - 1] ?? 0) - 250)).toBeLessThanOrEqual(1.5);
+    }
+  });
+
+  it("one stalled SONG_POS does not move the grid, a loop restart does once it is confirmed", () => {
+    const { time, timing, scheduler, ons } = setup();
+    timing.playing = true;
+    timing.songPos = { beats: 0, at: 1000 };
+    scheduler.start(0, 100, 0.5);
+    time.advance(50);
+    timing.songPos = { beats: 0.1, at: 1050 };
+    scheduler.refresh();
+    time.advance(50);
+    // The UI thread hung: this reading is from 200 ms ago.
+    timing.songPos = { beats: 0.0, at: 1100 };
+    scheduler.refresh();
+    time.advance(50);
+    timing.songPos = { beats: 0.3, at: 1150 };
+    scheduler.refresh();
+    time.advance(50);
+    near(ons(), [1000, 1125]);
+    // The loop restarts: two readings agree about a new place, 40 ms before a slot.
+    timing.songPos = { beats: 4.0, at: 1200 };
+    scheduler.refresh();
+    time.advance(50);
+    timing.songPos = { beats: 4.1, at: 1250 };
+    scheduler.refresh();
+    time.advance(40);
+    near(ons(), [1000, 1125, 1250]);
+    time.advance(40);
+    near(ons(), [1000, 1125, 1250, 1325]);
+  });
+
+  describe("a hit goes on the grid", () => {
+    it("in the first half of a slot it sounds at once, and the next slot is the next repeat", () => {
+      const { time, timing, scheduler, ons, settings } = setup();
+      settings.rate = 1; // 1/8: 250 ms
+      timing.playing = true;
+      timing.songPos = { beats: 0, at: 1000 };
+      time.advance(120); // 0.48 of the slot
+      scheduler.start(0, 100, 0.5);
+      time.advance(400);
+      near(ons(), [1120, 1250, 1500]);
+    });
+
+    it("in the second half it waits for the next slot, with the hit's velocity", () => {
+      const { time, timing, scheduler, events, settings } = setup();
+      settings.rate = 1;
+      timing.playing = true;
+      timing.songPos = { beats: 0, at: 1000 };
+      time.advance(130); // 0.52 of the slot
+      scheduler.start(0, 100, 0.5);
+      expect(scheduler.isWaiting(0)).toBe(true);
+      time.advance(300);
+      const on = events.filter((e) => e.kind === "on");
+      expect(on.map((e) => e.at)).toEqual([1250]);
+      expect(on[0]?.velocity).toBe(100);
+      expect(scheduler.isWaiting(0)).toBe(false);
+    });
+
+    it("a pad let go while it waits plays one whole note, then says it ended", () => {
+      const { time, timing, scheduler, ons, offs, ended, settings } = setup({ gate: 0.5 });
+      settings.rate = 1;
+      timing.playing = true;
+      timing.songPos = { beats: 0, at: 1000 };
+      time.advance(130);
+      scheduler.start(0, 100, 0.5);
+      time.advance(10);
+      expect(scheduler.release(0)).toBe(true);
+      expect(scheduler.isRepeating(0)).toBe(true);
+      expect(ended).toEqual([]);
+      time.advance(1000);
+      near(ons(), [1250]);
+      near(offs(), [1375]);
+      expect(ended).toEqual([0]);
+      expect(scheduler.active).toBe(false);
+    });
+
+    it("a pad let go after its first note just stops", () => {
+      const { time, timing, scheduler, ons, ended } = setup();
+      timing.playing = true;
+      timing.songPos = { beats: 0, at: 1000 };
+      scheduler.start(0, 100, 0.5);
+      time.advance(10);
+      expect(scheduler.release(0)).toBe(false);
+      expect(scheduler.active).toBe(false);
+      time.advance(500);
+      near(ons(), [1000]);
+      expect(ended).toEqual([]);
+    });
+
+    it("a second pad goes on the same grid", () => {
+      const { time, timing, scheduler, ons } = setup();
+      timing.playing = true;
+      timing.songPos = { beats: 0, at: 1000 };
+      scheduler.start(0, 100, 0.5);
+      time.advance(100); // 0.8 of a 1/16
+      scheduler.start(1, 100, 0.5);
+      expect(ons(1)).toEqual([]);
+      time.advance(30);
+      near(ons(1), [1125]);
+      near(ons(0), [1000, 1125]);
+    });
+  });
+
+  describe("a rate that does not fit the bar", () => {
+    it("starts where it is first needed, on the straight value under it", () => {
+      const { time, timing, scheduler, ons, settings } = setup();
+      settings.rate = rateIndex(8, "dotted"); // 0.75 beat: 375 ms
+      timing.playing = true;
+      timing.songPos = { beats: 1.26, at: 1000 }; // just after a 1/16 on the way to a beat
+      scheduler.start(0, 100, 0.5);
+      time.advance(800);
+      // The grid starts at 1.25 beats: the press is its slot 0, then 2 and 2.75 beats.
+      near(ons(), [1000, 1370, 1745]);
+    });
+
+    it("a new press finds a new start", () => {
+      const { time, timing, scheduler, ons, settings } = setup();
+      settings.rate = rateIndex(8, "dotted");
+      timing.playing = true;
+      timing.songPos = { beats: 1, at: 1000 };
+      scheduler.start(0, 100, 0.5);
+      time.advance(100);
+      scheduler.stop(0);
+      time.advance(400); // 2 beats
+      scheduler.start(0, 100, 0.5);
+      time.advance(400);
+      near(ons(), [1000, 1500, 1875]);
+    });
+
+    it("a straight rate stays on the bar", () => {
+      const { time, timing, scheduler, ons, settings } = setup();
+      settings.rate = rateIndex(8, "straight");
+      timing.playing = true;
+      timing.songPos = { beats: 1.26, at: 1000 };
+      scheduler.start(0, 100, 0.5); // 0.52 of a 1/8: waits for 1.5 beats, 120 ms away
+      time.advance(130);
+      near(ons(), [1120]);
+    });
   });
 });

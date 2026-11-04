@@ -143,6 +143,8 @@ export class NksIndex implements NksLookup {
   private done: Promise<void> = Promise.resolve();
   private flDb: FlPluginDb | undefined;
   private flDbReadAt = 0;
+  private flDbLoading = false;
+  private updateListeners: Array<() => void> = [];
   private results = new Map<string, { result: NksLookupResult | undefined; at: number }>();
   /** Filled in when the build finishes. */
   stats: NksIndexStats | undefined;
@@ -170,6 +172,11 @@ export class NksIndex implements NksLookup {
     else this.listeners.push(listener);
   }
 
+  /** Call `listener` each time FL's plugin database has been read again (lookups may change). */
+  onUpdate(listener: () => void): void {
+    this.updateListeners.push(listener);
+  }
+
   /** Resolves when the build has finished, whether it worked or not (check `ready`). */
   whenReady(): Promise<void> {
     return this.done;
@@ -192,10 +199,16 @@ export class NksIndex implements NksLookup {
 
   private async build(): Promise<void> {
     const t0 = performance.now();
+    // FL's database can take minutes (docs/bugs.md), so it is read here, off the event loop; a plugin
+    // uses FL's own parameters until the index is ready.
+    const flDb = new FlPluginDb(this.opts.flDbDir ?? defaultFlPluginDbDir());
     const [files, resources] = await Promise.all([
       discoverNksFiles(this.opts),
       discoverResources(this.opts),
+      flDb.load(),
     ]);
+    this.flDb = flDb;
+    this.flDbReadAt = this.now();
     const signature = signatureOf(files);
     const cachePath = this.opts.cachePath ?? defaultCachePath();
     let products = await loadCache(cachePath, INDEX_FORMAT_VERSION, signature);
@@ -270,19 +283,30 @@ export class NksIndex implements NksLookup {
     return result;
   }
 
+  /** An unknown plugin may be new: read the database again in the background. */
+  private reloadFlDb(now: number): void {
+    const flDb = this.flDb;
+    if (!flDb || this.flDbLoading) return;
+    this.flDbLoading = true;
+    this.flDbReadAt = now;
+    flDb
+      .load()
+      .then(() => {
+        this.results.clear();
+        for (const listener of this.updateListeners) this.notify(listener);
+      })
+      .catch((err: unknown) => {
+        this.log(`NKS: FL's plugin database: ${err instanceof Error ? err.message : String(err)}`);
+      })
+      .finally(() => {
+        this.flDbLoading = false;
+      });
+  }
+
   private find(flName: string, now: number): NksLookupResult | undefined {
-    const dbDir = this.opts.flDbDir ?? defaultFlPluginDbDir();
-    if (this.flDb === undefined) {
-      this.flDb = new FlPluginDb(dbDir);
-      this.flDbReadAt = now;
-    }
-    let keys = this.flDb.keysForName(flName);
+    const keys = this.flDb?.keysForName(flName) ?? { vst3: [], vst2: [], vendors: [] };
     const known = keys.vst3.length > 0 || keys.vst2.length > 0 || keys.vendors.length > 0;
-    if (!known && now - this.flDbReadAt >= RETRY_MS) {
-      this.flDb.reload();
-      this.flDbReadAt = now;
-      keys = this.flDb.keysForName(flName);
-    }
+    if (!known && now - this.flDbReadAt >= RETRY_MS) this.reloadFlDb(now);
     for (const id of keys.vst3) {
       const product = this.byVst3.get(id);
       if (product !== undefined) return { product, via: "vst3" };

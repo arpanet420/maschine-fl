@@ -4,7 +4,8 @@ import HID from "node-hid";
 import { usb } from "usb";
 import { MK3_PRODUCT_ID, NI_VENDOR_ID } from "./usbIds.js";
 
-// The only output reports mk3d may send (LEDs). Everything else is off limits (docs/protocol.md).
+// The only output reports mk3d may send (LEDs). The one other thing it writes is the screens'
+// backlight (`setScreenBrightness`). Everything else is off limits (docs/protocol.md).
 const WRITABLE_REPORTS = new Set([0x80, 0x81]);
 
 export interface Mk3DeviceOptions {
@@ -19,16 +20,50 @@ export interface Mk3DeviceEvents {
   disconnected: [reason: string];
   /** Emitted once per distinct reason while the device can't be opened. */
   unavailable: [reason: string];
+  /** What setting the screen backlight read, wrote or refused (for the log). */
+  brightness: [line: string];
   report: [report: Uint8Array];
 }
 
 const EXCLUSIVE_ACCESS = /0xE00002C5/i;
+
+/** Feature reports of the two screens' settings (docs/protocol.md, "Screen backlight"). */
+const SCREEN_SETTINGS_REPORTS = [0xf8, 0xf9];
+/** A report starts with its id, then width and height (480, 272) as u16 LE. */
+const SCREEN_SETTINGS_START = [0xe0, 0x01, 0x10, 0x01];
+const SCREEN_BRIGHTNESS_BYTE = 8;
+const SCREEN_SETTINGS_LENGTH = 64;
+
+/**
+ * The report with the backlight set, or a reason not to send it. Only reports that look like the
+ * ones documented are touched, and only the one byte in them.
+ */
+export function withScreenBrightness(
+  report: readonly number[],
+  level: number,
+): { report: number[] } | { refused: string } {
+  const start = report.slice(1, 1 + SCREEN_SETTINGS_START.length);
+  if (
+    report.length <= SCREEN_BRIGHTNESS_BYTE ||
+    !SCREEN_SETTINGS_START.every((byte, i) => start[i] === byte)
+  ) {
+    return { refused: `unexpected screen settings: ${report.map(hex).join(" ")}` };
+  }
+  const changed = [...report];
+  changed[SCREEN_BRIGHTNESS_BYTE] = Math.min(100, Math.max(0, Math.round(level)));
+  return { report: changed };
+}
+
+const hex = (byte: number) => byte.toString(16).padStart(2, "0");
 
 export class Mk3Device extends EventEmitter<Mk3DeviceEvents> {
   private hid: HID.HIDAsync | undefined;
   private retryTimer: NodeJS.Timeout | undefined;
   private running = false;
   private lastUnavailable: string | undefined;
+  private wantedBrightness: number | undefined;
+  private brightnessJob: Promise<void> | undefined;
+  private brightnessLogged = false;
   private readonly pollMs: number;
   private readonly exclusive: boolean;
 
@@ -63,6 +98,45 @@ export class Mk3Device extends EventEmitter<Mk3DeviceEvents> {
     }
     if (!this.hid) throw new Error("Maschine MK3 is not connected");
     await this.hid.write(Array.from(report));
+  }
+
+  /**
+   * The screens' backlight, 0–100. Read-modify-write of the two settings feature reports; the only
+   * feature report mk3d writes. A knob's many turns collapse into the latest level.
+   */
+  setScreenBrightness(level: number): void {
+    this.wantedBrightness = level;
+    this.brightnessJob ??= this.writeBrightness().finally(() => {
+      this.brightnessJob = undefined;
+    });
+  }
+
+  private async writeBrightness(): Promise<void> {
+    while (this.wantedBrightness !== undefined && this.hid) {
+      const level = this.wantedBrightness;
+      this.wantedBrightness = undefined;
+      for (const id of SCREEN_SETTINGS_REPORTS) {
+        try {
+          const before = Array.from(await this.hid.getFeatureReport(id, SCREEN_SETTINGS_LENGTH));
+          const result = withScreenBrightness(before, level);
+          if ("refused" in result) {
+            this.emit("brightness", `0x${hex(id)}: ${result.refused}`);
+            continue;
+          }
+          await this.hid.sendFeatureReport(result.report);
+          if (!this.brightnessLogged) {
+            const after = Array.from(await this.hid.getFeatureReport(id, SCREEN_SETTINGS_LENGTH));
+            this.emit(
+              "brightness",
+              `0x${hex(id)}: ${before.map(hex).join(" ")} → ${after.map(hex).join(" ")}`,
+            );
+          }
+        } catch (err) {
+          this.emit("brightness", `0x${hex(id)} failed: ${String(err)}`);
+        }
+      }
+      this.brightnessLogged = true;
+    }
   }
 
   private async connect(): Promise<void> {

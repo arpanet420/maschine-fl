@@ -271,7 +271,7 @@ describe(".nfo parsing", () => {
     expect(entries[0]!.name).toBe("Two");
   });
 
-  it("merges formats in keysForName: VST3 ids, then compat magics, then plain magics", () => {
+  it("merges formats in keysForName: VST3 ids, then compat magics, then plain magics", async () => {
     const root = path.join(tmp, "Installed");
     fs.mkdirSync(path.join(root, "Generators", "VST"), { recursive: true });
     fs.mkdirSync(path.join(root, "Generators", "VST3"), { recursive: true });
@@ -307,6 +307,8 @@ describe(".nfo parsing", () => {
       nfoText("Other", [{ plugClass: 4, magic: 2222 }]),
     );
     const db = new FlPluginDb(root);
+    expect(db.size).toBe(0); // nothing is read until load(), and nothing synchronously
+    await db.load();
     expect(db.size).toBe(2);
     expect(db.keysForName("DIVA")).toEqual({
       vst3: ["D39D5B69D6AF42FA1234567844695661"],
@@ -315,7 +317,9 @@ describe(".nfo parsing", () => {
     });
     expect(db.keysForName("Other").vst2).toEqual([2222]);
     expect(db.keysForName("Nothing")).toEqual({ vst3: [], vst2: [], vendors: [] });
-    expect(new FlPluginDb(path.join(tmp, "missing")).size).toBe(0);
+    const missing = new FlPluginDb(path.join(tmp, "missing"));
+    await missing.load();
+    expect(missing.size).toBe(0);
   });
 });
 
@@ -651,6 +655,9 @@ describe("NksIndex", () => {
     ]);
     expect(index.lookup("Fresh")).toBeUndefined(); // remembered miss
     clock += 31_000;
+    const updated = new Promise<void>((resolve) => index.onUpdate(resolve));
+    expect(index.lookup("Fresh")).toBeUndefined(); // read in the background: nothing waits for it
+    await updated;
     expect(index.lookup("Fresh")).toMatchObject({ via: "vst2", product: { name: "Late Plugin" } });
   });
 

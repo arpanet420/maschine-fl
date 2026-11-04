@@ -18,6 +18,38 @@ import { PadProcessor, padEntryKind, type PadConfig } from "./pads.js";
 const PAD_ENTRY_COUNT = 21;
 const NAV_WHEEL_RANGE = 16;
 
+/** Counts a knob must go back against its last direction before that counts as a turn. */
+export const KNOB_REVERSE_COUNTS = 2;
+
+/**
+ * A knob resting between two counts can flip between them (+1, −1, +1 ...). Counts in the knob's
+ * direction pass at once; counts back pass once there are `KNOB_REVERSE_COUNTS`, so a resting knob
+ * turns nothing and a real turn back loses only its first count.
+ */
+export class KnobFlickerFilter {
+  private direction = 0;
+  private back = 0;
+
+  filter(delta: number): number {
+    if (delta === 0) return 0;
+    if (this.direction === 0 || Math.sign(delta) === this.direction) {
+      // Back where it was first: only what goes past that moves.
+      const net = delta + this.back;
+      this.back = 0;
+      this.direction = Math.sign(delta);
+      if (Math.sign(net) === Math.sign(delta)) return net;
+      this.back = net;
+      return 0;
+    }
+    this.back += delta;
+    if (Math.abs(this.back) < KNOB_REVERSE_COUNTS) return 0;
+    const moved = this.back;
+    this.back = 0;
+    this.direction = Math.sign(moved);
+    return moved;
+  }
+}
+
 /** Shortest signed distance from `from` to `to` on a counter that wraps at `range`. */
 export function wrappedDelta(from: number, to: number, range: number): number {
   const half = range / 2;
@@ -28,6 +60,7 @@ const u16le = (data: Uint8Array, offset: number) =>
   (data[offset] ?? 0) | ((data[offset + 1] ?? 0) << 8);
 
 export class InputParser {
+  private readonly knobs = Array.from({ length: KNOB_COUNT }, () => new KnobFlickerFilter());
   private previous: Uint8Array | undefined;
   readonly pads: PadProcessor;
 
@@ -90,7 +123,8 @@ export class InputParser {
 
     for (let index = 0; index < KNOB_COUNT; index++) {
       const offset = KNOB_FIRST_BYTE + index * 2;
-      const delta = wrappedDelta(u16le(prev, offset), u16le(report, offset), KNOB_RANGE);
+      const moved = wrappedDelta(u16le(prev, offset), u16le(report, offset), KNOB_RANGE);
+      const delta = this.knobs[index]?.filter(moved) ?? moved;
       if (delta !== 0) events.push({ type: "encoder", index, delta });
     }
 

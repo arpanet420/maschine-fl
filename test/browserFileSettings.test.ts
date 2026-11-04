@@ -623,8 +623,11 @@ describe("SETTINGS", () => {
   it("ignores the other knobs and the display buttons", () => {
     const h = stackHarness();
     h.tap("settings");
-    expect(h.knob(3, 100)).toBe(false);
+    const before = { ...h.padSettings };
+    h.knob(3, 100);
+    h.knob(5, 100);
     h.tap("display4");
+    expect({ ...h.padSettings }).toEqual(before);
   });
 
   it("saves the settings with the state file and loads them back", () => {
@@ -643,6 +646,7 @@ describe("SETTINGS", () => {
       exponent: h.padSettings.exponent,
       fixedVelocity: 37,
       fixedOn: false,
+      screenBrightness: 100,
     });
     const again = stackHarness({ pinsPath });
     expect(again.padSettings.fullScale).toBeCloseTo(h.padSettings.fullScale, 9);

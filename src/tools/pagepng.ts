@@ -166,7 +166,6 @@ async function main(): Promise<void> {
 
   // NAVIGATE: the rack has the focus, the playlist is shown.
   h = stackHarness({ selected: 2 });
-  h.state.shift = true;
   h.press("variation");
   await writeScene("navigate", h);
   h.ui({ visible: [true, true, true, true, false], focused: 3 });
@@ -189,13 +188,21 @@ async function main(): Promise<void> {
   h.pads.mode = "channels";
   h.press("noteRepeat");
   h.tap("display1");
-  h.tap("display7"); // 1/16T
-  h.knob(1, 300);
-  h.knob(2, 700);
+  h.knob(1, 240); // Unit: Triplet, 1/16T
+  h.knob(2, 300);
+  h.knob(3, 700);
   h.pad(0);
-  h.touched.add(2);
+  h.touched.add(3);
   await writeScene("noterepeat-triplet", h);
-  h.touched.delete(2);
+  h.touched.delete(3);
+  h = stackHarness({ selected: 2, tempo: 128 });
+  h.pads.mode = "channels";
+  h.press("noteRepeat");
+  h.tap("display6"); // 1/8
+  h.knob(1, 120); // Unit: Dotted
+  h.tap("display2"); // LOCK
+  h.tap("display3"); // HOLD
+  await writeScene("noterepeat-dotted", h);
 
   // ARP (NOTE REPEAT in KEYBOARD and CHORDS): nothing held, then a held C minor chord, Up/Down 1/8
   // over two octaves (the preset), HOLD on, the knob of Octaves touched, the second step playing.
@@ -211,9 +218,19 @@ async function main(): Promise<void> {
   h.tap("display7"); // UP/DN 8TH
   h.pad(0);
   h.advance(300); // two steps played: the highlight sits on the second one
-  h.touched.add(2);
+  h.touched.add(3);
   await writeScene("arp-cminor", h);
-  h.touched.delete(2);
+  h.touched.delete(3);
+  h.tap("arrowRight"); // the second knob page
+  await writeScene("arp-page2", h);
+
+  // STEP: a step held long enough shows its velocity and pitch.
+  h = stackHarness({ selected: 2 });
+  h.tap("step");
+  h.pad(5);
+  h.advance(500);
+  h.knob(0, -240);
+  await writeScene("step-held", h);
 
   // BROWSER: the cursor on the loaded preset, the cursor elsewhere in a 128-preset bank (after a
   // push, then the read-out card), a bank whose loaded preset is unknown, and the notice for a plugin

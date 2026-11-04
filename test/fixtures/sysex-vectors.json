@@ -73,7 +73,7 @@
           "muted": true,
           "solo": true,
           "color": 1193046,
-          "name": "Hö hat"
+          "name": "H\u00f6 hat"
         }
       ]
     },
@@ -375,8 +375,14 @@
       "solo": false,
       "trigSnap": 3,
       "blocks": [
-        { "status": 1, "color": 3753292 },
-        { "status": 5, "color": 16486980 }
+        {
+          "status": 1,
+          "color": 3753292
+        },
+        {
+          "status": 5,
+          "color": 16486980
+        }
       ]
     },
     "hex": "f07d4d332500100201026a5366034261737300020101650a4c05076e2444f7"
@@ -636,7 +642,7 @@
       "count": 300,
       "current": 17,
       "offset": 14,
-      "names": ["Init", "Pad A", "Bass 1", "Lead – wide", "Pluck", "Keys", "Strings", "Brass"]
+      "names": ["Init", "Pad A", "Bass 1", "Lead \u2013 wide", "Pluck", "Keys", "Strings", "Brass"]
     },
     "hex": "f07d4d3315022c001108000e496e697400506164204100426173732031004c656164207f627f007f13207769646500506c75636b004b65797300537472696e677300427261737300f7"
   },
@@ -1142,5 +1148,39 @@
       "release": false
     },
     "hex": "f07d4d336a7f7f00f7"
+  },
+  {
+    "name": "stepParams",
+    "direction": "fromFl",
+    "message": {
+      "type": "stepParams",
+      "channel": 1,
+      "step": 17,
+      "pitch": 60,
+      "velocity": 100
+    },
+    "hex": "f07d4d3326000100113c64f7"
+  },
+  {
+    "name": "requestStepParams",
+    "direction": "toFl",
+    "message": {
+      "type": "requestStepParams",
+      "channel": 1,
+      "step": 17
+    },
+    "hex": "f07d4d336b00010011f7"
+  },
+  {
+    "name": "setStepParam",
+    "direction": "toFl",
+    "message": {
+      "type": "setStepParam",
+      "channel": 1,
+      "step": 17,
+      "param": 1,
+      "value": 90
+    },
+    "hex": "f07d4d336c00010011015af7"
   }
 ]

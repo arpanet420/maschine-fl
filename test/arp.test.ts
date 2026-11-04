@@ -5,12 +5,16 @@ import { afterEach, describe, expect, it } from "vitest";
 import { CHANNEL_NOTE_CHANNEL, NOTE_CHANNEL } from "../src/fl/protocol.js";
 import {
   ARP_PRESETS,
+  ARP_RHYTHMS,
   ARP_TYPES,
+  DEFAULT_ARP_SETTINGS,
+  SEQUENCE_MAX,
   buildSteps,
   matchesPreset,
   type ArpHeld,
   type ArpType,
 } from "../src/modes/arpeggiator.js";
+import { REPEAT_RATES } from "../src/modes/repeatScheduler.js";
 import { stackHarness, type StackHarness } from "../src/tools/stackHarness.js";
 
 const dirs: string[] = [];
@@ -62,7 +66,7 @@ const slots = (h: StackHarness, count: number) => {
 const keys = (pads: number[], extra: Partial<ReturnType<typeof settings>> = {}) => {
   const h = stackHarness();
   h.press("noteRepeat");
-  Object.assign(settings(h), extra);
+  Object.assign(settings(h), { type: "up" }, extra);
   for (const pad of pads) h.pad(pad);
   return h;
 };
@@ -130,9 +134,63 @@ describe("arp sequences", () => {
   });
 });
 
+/** The overlay on an arpeggiating Type (the panel starts on Repeat); a saved state decides by itself. */
+const arpHarness = (options?: Parameters<typeof stackHarness>[0]) => {
+  const h = stackHarness(options);
+  if (!options?.pinsPath) settings(h).type = "up";
+  return h;
+};
+
 describe("ARP overlay", () => {
-  it("is NOTE REPEAT with the pin tab ARP in KEYBOARD", () => {
+  it("starts as plain Note Repeat in KEYBOARD: the held keys repeat together", () => {
     const h = stackHarness();
+    h.press("noteRepeat");
+    expect(settings(h).type).toBe("repeat");
+    h.pad(0);
+    h.pad(2);
+    slots(h, 2);
+    // The second key joins on the next slot, and then both repeat together.
+    expect(played(h)).toEqual([36, 36, 38, 36, 38]);
+    h.knob(3, 200);
+    expect(settings(h).octaves).toBe(1); // Octaves does nothing while it only repeats
+    h.pad(0, "up");
+    h.pad(2, "up");
+    h.advance(200);
+    expectBalanced(h);
+  });
+
+  it("restores a saved Type only from a state that knows Repeat", () => {
+    const h = stackHarness();
+    h.pages.noteRepeat.persisted.load({ arp: { type: "down", rate: 1 } });
+    expect(settings(h)).toMatchObject({ type: "repeat", rate: 1 });
+    h.pages.noteRepeat.persisted.load({ arp: { type: "down", typeVersion: 2 } });
+    expect(settings(h).type).toBe("down");
+    expect(h.pages.noteRepeat.persisted.save()).toMatchObject({
+      arp: { type: "down", typeVersion: 2 },
+    });
+  });
+
+  it("a key let go while the first note waits for its slot still plays that note", () => {
+    const h = stackHarness();
+    h.playing(true);
+    h.songPos(1, 1, 15); // 0.625 of a 1/16
+    h.press("noteRepeat");
+    h.pad(0); // the note waits for 0.25 beat, 47 ms away
+    expect(played(h)).toEqual([]);
+    h.pad(0, "up");
+    h.advance(60);
+    expect(played(h)).toEqual([36]);
+    h.advance(1000);
+    expect(played(h)).toEqual([36]);
+    expectBalanced(h);
+    expect(h.pages.noteRepeat.repeating).toBe(false);
+    h.pad(0); // and it starts again
+    h.advance(60);
+    expect(played(h).length).toBeGreaterThan(1);
+  });
+
+  it("is NOTE REPEAT with the pin tab ARP in KEYBOARD", () => {
+    const h = arpHarness();
     h.press("noteRepeat");
     expect(h.stack.top?.page.id).toBe("noteRepeat");
     expect(h.pages.noteRepeat.arpeggiates).toBe(true);
@@ -144,7 +202,7 @@ describe("ARP overlay", () => {
   });
 
   it("is the arpeggiator in KEYBOARD and CHORDS, Note Repeat in PAD MODE", () => {
-    const h = stackHarness();
+    const h = arpHarness();
     for (const [mode, arp] of [
       ["keyboard", true],
       ["chords", true],
@@ -155,11 +213,11 @@ describe("ARP overlay", () => {
     }
   });
 
-  it("PAD MODE repeats the pad as before (and its display 3 is a rate)", () => {
-    const h = stackHarness({ selected: 0 });
+  it("PAD MODE repeats the pad as before (and its display 6 is a note value)", () => {
+    const h = arpHarness({ selected: 0 });
     h.pads.mode = "channels";
     h.press("noteRepeat");
-    h.tap("display3");
+    h.tap("display6");
     expect(h.pages.noteRepeat.settings.rate).toBe(1);
     expect(h.pages.noteRepeat.arp.engine.holding).toBe(false);
     h.pad(3, "down", { velocity: 1 });
@@ -183,7 +241,7 @@ describe("ARP overlay", () => {
     });
 
     it("follows the base note and the scale", () => {
-      const h = stackHarness();
+      const h = arpHarness();
       h.pads.shiftBase(12);
       h.pads.harmony.scale = 2; // Minor: pad 2 = the third
       h.press("noteRepeat");
@@ -241,7 +299,7 @@ describe("ARP overlay", () => {
     });
 
     it("Played order is the press order", () => {
-      const h = stackHarness();
+      const h = arpHarness();
       h.press("noteRepeat");
       settings(h).type = "played";
       h.pad(4);
@@ -273,7 +331,7 @@ describe("ARP overlay", () => {
     it("Random never repeats a note straight away", () => {
       let seed = 0.123;
       const random = () => (seed = (seed * 9301 + 0.49297) % 1);
-      const h = stackHarness({ random });
+      const h = arpHarness({ random });
       h.press("noteRepeat");
       settings(h).type = "random";
       h.pad(0);
@@ -295,7 +353,7 @@ describe("ARP overlay", () => {
     });
 
     it("the velocity is the hit of the pad that owns the note", () => {
-      const h = stackHarness();
+      const h = arpHarness();
       h.press("noteRepeat");
       h.pad(0, "down", { velocity: 0.5 });
       h.pad(2, "down", { velocity: 1 });
@@ -310,7 +368,7 @@ describe("ARP overlay", () => {
     });
 
     it("FIXED VEL wins", () => {
-      const h = stackHarness();
+      const h = arpHarness();
       h.tap("fixedVel");
       h.press("noteRepeat");
       h.pad(0, "down", { velocity: 0.1 });
@@ -321,7 +379,7 @@ describe("ARP overlay", () => {
     });
 
     it("SHIFT + pad and ERASE + pad never arpeggiate", () => {
-      const h = stackHarness();
+      const h = arpHarness();
       h.press("noteRepeat");
       h.state.shift = true;
       h.pad(0);
@@ -338,7 +396,7 @@ describe("ARP overlay", () => {
 
   describe("CHORDS", () => {
     const minor = () => {
-      const h = stackHarness();
+      const h = arpHarness();
       h.pads.mode = "chords";
       h.pads.harmony.scale = 2; // Minor, harmonizer, Triad: pad 0 = C minor
       h.press("noteRepeat");
@@ -455,7 +513,7 @@ describe("ARP overlay", () => {
     });
 
     it("a pinned overlay keeps the held arpeggio after the pads are released", () => {
-      const h = stackHarness();
+      const h = arpHarness();
       h.press("noteRepeat");
       h.tap("display1");
       h.tap("display3");
@@ -470,11 +528,11 @@ describe("ARP overlay", () => {
 
     it("is saved and loaded", () => {
       const pinsPath = tempPins();
-      const first = stackHarness({ pinsPath });
+      const first = arpHarness({ pinsPath });
       first.press("noteRepeat");
       first.tap("display3");
       first.release("noteRepeat");
-      const second = stackHarness({ pinsPath });
+      const second = arpHarness({ pinsPath });
       expect(second.pages.noteRepeat.arp.engine.holding).toBe(true);
       second.press("noteRepeat");
       expect(second.light("display3")).toBe("bright");
@@ -508,9 +566,9 @@ describe("ARP overlay", () => {
       slots(h, 2);
       h.knob(1, 120); // rate
       h.knob(0, 120); // type
-      h.knob(2, 200); // octaves
-      h.knob(3, 600); // gate
-      h.knob(4, 600); // swing
+      h.knob(3, 200); // octaves
+      h.knob(4, 600); // gate
+      h.knob(5, 600); // swing
       slots(h, 6);
       h.pad(0, "up");
       h.pad(2, "up");
@@ -521,8 +579,8 @@ describe("ARP overlay", () => {
 
     it("keeps no note on with a full gate and swing", () => {
       const h = keys([0, 2]);
-      h.knob(3, 5000);
       h.knob(4, 5000);
+      h.knob(5, 5000);
       expect(settings(h).gate).toBe(1);
       h.advance(1500);
       h.release("noteRepeat");
@@ -531,7 +589,7 @@ describe("ARP overlay", () => {
     });
 
     it("the pad mode changing while open stops the arp and Note Repeat plays on", () => {
-      const h = stackHarness({ selected: 0 });
+      const h = arpHarness({ selected: 0 });
       h.press("noteRepeat");
       h.pad(0);
       h.advance(130);
@@ -560,7 +618,7 @@ describe("ARP overlay", () => {
 
   describe("tempo and transport", () => {
     it("follows FL's tempo", () => {
-      const h = stackHarness({ tempo: 60 });
+      const h = arpHarness({ tempo: 60 });
       h.press("noteRepeat");
       h.pad(0);
       h.advance(240);
@@ -570,7 +628,7 @@ describe("ARP overlay", () => {
     });
 
     it("aligns to FL's grid while it plays", () => {
-      const h = stackHarness({ tempo: 120 });
+      const h = arpHarness({ tempo: 120 });
       h.playing(true);
       h.songPos(1, 1, 0);
       h.advance(30);
@@ -584,14 +642,21 @@ describe("ARP overlay", () => {
   });
 
   describe("controls", () => {
-    it("starts at Up, 1/16, 1 octave, gate 50 %, swing 0", () => {
+    it("starts at Repeat, 1/16, 1 octave, gate 50 %, swing 0", () => {
       const h = stackHarness();
-      expect(settings(h)).toEqual({ type: "up", rate: 2, octaves: 1, gate: 0.5, swing: 0 });
+      expect(settings(h)).toEqual(DEFAULT_ARP_SETTINGS);
+      expect(settings(h)).toMatchObject({
+        type: "repeat",
+        rate: 2,
+        octaves: 1,
+        gate: 0.5,
+        swing: 0,
+      });
       expect(h.pages.noteRepeat.settings).toEqual({ rate: 2, gate: 0.5, swing: 0 });
     });
 
-    it("knob 1 = Type, 2 = Rate, 3 = Octaves, 4 = Gate, 5 = Swing", () => {
-      const h = stackHarness();
+    it("page 1: Type, Rate, Unit, Octaves, Gate, Swing, Sequence, Dynamic", () => {
+      const h = arpHarness();
       h.press("noteRepeat");
       h.knob(0, 60);
       expect(settings(h).type).toBe("up");
@@ -600,65 +665,154 @@ describe("ARP overlay", () => {
       h.knob(0, 99999);
       expect(settings(h).type).toBe("chord");
       h.knob(0, -99999);
+      expect(settings(h).type).toBe("repeat");
+      h.knob(0, 120);
       expect(settings(h).type).toBe("up");
-      h.knob(1, 240);
-      expect(settings(h).rate).toBe(4);
-      h.knob(1, 99999);
-      expect(settings(h).rate).toBe(6);
-      h.knob(2, 200);
+      h.knob(1, 120); // the note value, from 1/16
+      expect(REPEAT_RATES[settings(h).rate]?.label).toBe("1/32");
+      h.knob(2, 240); // the unit
+      expect(REPEAT_RATES[settings(h).rate]?.label).toBe("1/32T");
+      h.knob(3, 200);
       expect(settings(h).octaves).toBe(2);
-      h.knob(2, 99999);
-      expect(settings(h).octaves).toBe(4);
-      h.knob(2, -99999);
-      expect(settings(h).octaves).toBe(1);
-      h.knob(3, 120);
-      expect(settings(h).gate).toBeCloseTo(0.5 + 0.1 * 0.9, 6);
       h.knob(3, 99999);
-      expect(settings(h).gate).toBe(1);
+      expect(settings(h).octaves).toBe(4);
+      h.knob(3, -99999);
+      expect(settings(h).octaves).toBe(1);
       h.knob(4, 120);
-      expect(settings(h).swing).toBeCloseTo(0.05, 6);
+      expect(settings(h).gate).toBeCloseTo(0.5 + 0.1 * 0.9, 6);
       h.knob(4, 99999);
+      expect(settings(h).gate).toBe(1);
+      h.knob(5, 120);
+      expect(settings(h).swing).toBeCloseTo(0.05, 6);
+      h.knob(5, 99999);
       expect(settings(h).swing).toBe(0.5);
+      h.knob(6, 120);
+      expect(settings(h).sequence).toBe(1);
+      h.knob(7, -99999);
+      expect(settings(h).dynamic).toBeCloseTo(0.1, 6);
       // Note Repeat's own settings stay as they were
       expect(h.pages.noteRepeat.settings).toEqual({ rate: 2, gate: 0.5, swing: 0 });
     });
 
-    it("knobs 6–8 are left to the page underneath", () => {
-      const h = stackHarness();
+    it("the arrows pick page 2: Retrigger, Repeat, Offset, Inversion, Min. and Max. Key", () => {
+      const h = arpHarness();
       h.press("noteRepeat");
-      const before = JSON.stringify(settings(h));
-      h.knob(5, 5000);
-      h.knob(7, 5000);
-      expect(JSON.stringify(settings(h))).toBe(before);
+      expect(h.light("arrowRight")).toBe("dim");
+      h.tap("arrowRight");
+      expect(h.light("arrowLeft")).toBe("dim");
+      expect(h.light("arrowRight")).toBe("off");
+      h.knob(0, 240);
+      expect(settings(h).retrigger).toBe(2);
+      h.knob(1, 120);
+      expect(settings(h).stepRepeat).toBe(2);
+      h.knob(2, 360);
+      expect(settings(h).offset).toBe(3);
+      h.knob(3, 200);
+      expect(settings(h).inversion).toBe(1);
+      h.knob(4, 400);
+      expect(settings(h).minKey).toBe(10);
+      h.knob(5, -400);
+      expect(settings(h).maxKey).toBe(117);
+      h.knob(4, 99999); // the keys cannot cross
+      expect(settings(h).minKey).toBe(10);
+      expect(() => h.render()).not.toThrow();
+      h.tap("arrowLeft");
+      h.knob(0, 60);
+      expect(settings(h).type).toBe("up");
     });
 
-    it("display 2 and 4 do nothing, and no display button reaches the page underneath", () => {
-      const h = stackHarness();
+    it("LOCK and GATE RESET are display 2 and 4", () => {
+      const h = arpHarness();
       h.press("noteRepeat");
-      const before = JSON.stringify(settings(h));
-      h.tap("display2");
+      h.knob(4, 300);
       h.tap("display4");
-      expect(JSON.stringify(settings(h))).toBe(before);
-      expect(h.pages.noteRepeat.arp.engine.holding).toBe(false);
-      expect(h.light("display2")).toBe("off");
-      expect(h.light("display4")).toBe("off");
+      expect(settings(h).gate).toBe(1);
+      h.tap("display2");
+      expect(h.light("display2")).toBe("bright");
+      expect(h.pages.noteRepeat.locksPads()).toBe(true);
+      h.tap("display2");
+      expect(h.pages.noteRepeat.locksPads()).toBe(false);
     });
 
     it("the rate changes the interval of a running arp", () => {
       const h = keys([0]);
-      h.knob(1, -120); // 1/8: 250 ms
+      h.knob(1, -120); // from 1/16 to 1/8: 250 ms
       h.advance(255);
       h.advance(250);
       expect(ons(h)).toHaveLength(3);
+    });
+
+    it("two quick touches reset a knob's setting", () => {
+      const h = arpHarness();
+      h.press("noteRepeat");
+      h.knob(3, 200);
+      h.touchKnob(3);
+      expect(settings(h).octaves).toBe(2);
+      h.touchKnob(3);
+      expect(settings(h).octaves).toBe(1);
+    });
+  });
+
+  describe("shaping the round", () => {
+    const after = (h: StackHarness, count: number) => {
+      const before = played(h).length;
+      slots(h, count);
+      return played(h).slice(before);
+    };
+    const octave = held([36, 40, 43]);
+
+    it("Repeat plays each step that many slots", () => {
+      expect(after(keys([0, 2], { stepRepeat: 2 }), 7)).toEqual([36, 38, 38, 36, 36, 38, 38]);
+    });
+
+    it("Offset starts the round later", () => {
+      expect(after(keys([0, 2, 4], { offset: 1 }), 5)).toEqual([40, 36, 38, 40, 36]);
+    });
+
+    it("Retrigger starts the round over", () => {
+      expect(after(keys([0, 2, 4], { retrigger: 2 }), 6)).toEqual([38, 36, 38, 36, 38, 36]);
+    });
+
+    it("Sequence rests on some slots", () => {
+      const h = keys([0], { sequence: 1 }); // x.x.
+      const before = played(h).length;
+      const counts = [0, 1, 2, 3].map(() => {
+        slots(h, 1);
+        return played(h).length - before;
+      });
+      expect(counts).toEqual([0, 1, 1, 2]);
+      expect(ARP_RHYTHMS).toHaveLength(SEQUENCE_MAX);
+    });
+
+    it("Dynamic scales the velocity", () => {
+      const velocity = (h: StackHarness) => Number(ons(h).at(-1)?.[3] ?? 0);
+      const soft = keys([0], { dynamic: 0.5 });
+      const full = keys([0]);
+      slots(soft, 2);
+      slots(full, 2);
+      expect(velocity(soft)).toBe(Math.round(velocity(full) * 0.5));
+    });
+
+    it("Inversion adds passes an octave up, each starting one note later", () => {
+      const notesOf = (inversion: number) =>
+        buildSteps(octave, "up", 1, { inversion }).flatMap((step) => step.map((n) => n.note));
+      expect(notesOf(0)).toEqual([36, 40, 43]);
+      expect(notesOf(1)).toEqual([36, 40, 43, 52, 55, 48]);
+    });
+
+    it("Min. and Max. Key leave notes out", () => {
+      const steps = buildSteps(octave, "up", 1, { minKey: 37, maxKey: 42 });
+      expect(steps.flatMap((step) => step.map((n) => n.note))).toEqual([40]);
+      expect(buildSteps(octave, "up", 1, { minKey: 50 })).toEqual([]);
     });
   });
 
   describe("presets", () => {
     const [up, down, upDown, random] = ARP_PRESETS;
     it("display 5–8 set Type, Rate, Octaves and Gate at once", () => {
-      const h = stackHarness();
+      const h = arpHarness();
       h.press("noteRepeat");
-      h.knob(4, 300);
+      h.knob(5, 300);
       const swing = settings(h).swing;
       h.tap("display7");
       expect(settings(h)).toMatchObject({ type: "upDown", rate: 1, octaves: 2, gate: 0.6 });
@@ -678,13 +832,13 @@ describe("ARP overlay", () => {
     });
 
     it("the LED of the preset equal to the settings is bright", () => {
-      const h = stackHarness();
+      const h = arpHarness();
       h.press("noteRepeat");
       const leds = () => (["display5", "display6", "display7", "display8"] as const).map(h.light);
       expect(leds()).toEqual(["bright", "dim", "dim", "dim"]);
       h.tap("display7");
       expect(leds()).toEqual(["dim", "dim", "bright", "dim"]);
-      h.knob(3, 600); // gate moves away
+      h.knob(4, 600); // gate moves away
       expect(leds()).toEqual(["dim", "dim", "dim", "dim"]);
       h.tap("display8");
       expect(leds()).toEqual(["dim", "dim", "dim", "bright"]);
@@ -693,7 +847,7 @@ describe("ARP overlay", () => {
     });
 
     it("matchesPreset compares the four settings", () => {
-      const base = { type: "up", rate: 2, octaves: 1, gate: 0.5, swing: 0.3 } as const;
+      const base = { ...DEFAULT_ARP_SETTINGS, type: "up", rate: 2, gate: 0.5, swing: 0.3 } as const;
       expect(matchesPreset(base, ARP_PRESETS[0]!)).toBe(true);
       expect(matchesPreset({ ...base, octaves: 2 }, ARP_PRESETS[0]!)).toBe(false);
       expect(matchesPreset({ ...base, gate: 0.55 }, ARP_PRESETS[0]!)).toBe(false);
@@ -714,7 +868,7 @@ describe("ARP overlay", () => {
 
   describe("LEDs", () => {
     it("lights the button bright while open, display 1 with the pin, display 3 with HOLD", () => {
-      const h = stackHarness();
+      const h = arpHarness();
       h.press("noteRepeat");
       expect(h.light("noteRepeat")).toBe("bright");
       expect(h.light("display1")).toBe("dim");
@@ -726,7 +880,7 @@ describe("ARP overlay", () => {
     });
 
     it("a pad flashes when its note plays and a latched pad is lit", () => {
-      const h = stackHarness();
+      const h = arpHarness();
       h.press("noteRepeat");
       const idle = h.padLed(0);
       const idleOther = h.padLed(2);
@@ -762,10 +916,10 @@ describe("ARP overlay", () => {
   describe("persistence", () => {
     it("the arp settings are saved with the page stack and loaded again", () => {
       const pinsPath = tempPins();
-      const first = stackHarness({ pinsPath });
+      const first = arpHarness({ pinsPath });
       first.press("noteRepeat");
       first.tap("display8");
-      first.knob(4, 1200 * 0.2);
+      first.knob(5, 1200 * 0.2);
       first.advance(1000);
       const saved = JSON.parse(readFileSync(pinsPath, "utf8")) as {
         pages: { noteRepeat: { rate: number; arp: Record<string, unknown> } };
@@ -777,7 +931,7 @@ describe("ARP overlay", () => {
         octaves: 2,
         hold: false,
       });
-      const second = stackHarness({ pinsPath });
+      const second = arpHarness({ pinsPath });
       expect(settings(second)).toMatchObject({ type: "random", rate: 5, octaves: 2 });
       expect(settings(second).gate).toBeCloseTo(0.4, 9);
       expect(settings(second).swing).toBeCloseTo(0.1, 9);
@@ -786,27 +940,44 @@ describe("ARP overlay", () => {
 
     it("saves a knob turn when the overlay closes before the pause is over", () => {
       const pinsPath = tempPins();
-      const first = stackHarness({ pinsPath });
+      const first = arpHarness({ pinsPath });
       first.press("noteRepeat");
-      first.knob(3, 1200 * 0.2);
+      first.knob(4, 1200 * 0.2);
       first.release("noteRepeat");
-      const second = stackHarness({ pinsPath });
+      const second = arpHarness({ pinsPath });
       expect(settings(second).gate).toBeCloseTo(0.5 + 0.2 * 0.9, 6);
     });
 
     it("loads an old file with no arp part and ignores damaged values", () => {
       const h = stackHarness();
       h.pages.noteRepeat.persisted.load({ rate: 3, gate: 0.7, swing: 0.1 });
-      expect(settings(h)).toEqual({ type: "up", rate: 2, octaves: 1, gate: 0.5, swing: 0 });
+      expect(settings(h)).toEqual(DEFAULT_ARP_SETTINGS);
       h.pages.noteRepeat.persisted.load({
-        arp: { type: "sideways", rate: "fast", octaves: 12, gate: 7, swing: -1, hold: "yes" },
+        arp: {
+          type: "sideways",
+          rate: "fast",
+          octaves: 12,
+          gate: 7,
+          swing: -1,
+          hold: "yes",
+          sequence: 99,
+          dynamic: 0,
+          minKey: -4,
+        },
       });
-      expect(settings(h)).toEqual({ type: "up", rate: 2, octaves: 4, gate: 1, swing: 0 });
+      expect(settings(h)).toEqual({
+        ...DEFAULT_ARP_SETTINGS,
+        octaves: 4,
+        gate: 1,
+        sequence: SEQUENCE_MAX,
+        dynamic: 0.1,
+      });
       expect(h.pages.noteRepeat.arp.engine.holding).toBe(false);
     });
 
     it("every Type is known", () => {
       expect(ARP_TYPES.map((t) => t.label)).toEqual([
+        "Repeat",
         "Up",
         "Down",
         "Up/Down",
@@ -820,7 +991,7 @@ describe("ARP overlay", () => {
 
   describe("screens", () => {
     it("draws both screens with and without notes", () => {
-      const h = stackHarness();
+      const h = arpHarness();
       h.press("noteRepeat");
       expect(() => h.render()).not.toThrow();
       h.pad(0);
@@ -830,10 +1001,10 @@ describe("ARP overlay", () => {
     });
 
     it("shows many notes without throwing (4 octaves of a chord)", () => {
-      const h = stackHarness();
+      const h = arpHarness();
       h.pads.mode = "chords";
       h.press("noteRepeat");
-      h.knob(2, 99999);
+      h.knob(3, 99999);
       for (let pad = 0; pad < 16; pad++) h.pad(pad);
       expect(() => h.render()).not.toThrow();
     });

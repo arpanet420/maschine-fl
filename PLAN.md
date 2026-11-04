@@ -592,6 +592,8 @@ feedback on the feel before the next mode is started.
 3. **Never touch NI's files.** Start and stop agents with launchctl, never delete or modify
    anything under `/Library` or in NI's program folders. Never send firmware commands
    to the device.
+   Feature reports stay off limits too, with one exception the owner approved on 2026-11-04: the screen
+   backlight, `0xF8`/`0xF9`, read-modify-write of byte 8 only (`docs/protocol.md`).
 4. **The FL script must be defensive.** FL can crash or hang if the script throws errors in
    callbacks. Catch exceptions, log with `print` (visible in FL's Script output) and never send
    large SysEx bursts in a single call.

@@ -7,7 +7,7 @@ git clone. Both give you one command, `mk3d`, that does the rest.
 
 ```bash
 brew tap arpanet420/maschine-fl https://github.com/arpanet420/maschine-fl
-brew install --HEAD maschine-fl      # no release is tagged yet, so --HEAD
+brew install --HEAD maschine-fl      # the formula only has head
 mk3d setup --service
 ```
 

@@ -385,20 +385,20 @@ describe("PageStack: overlays", () => {
   });
 
   it("reads SHIFT at press time: the release goes to the page the press opened", () => {
-    const navigate = new FakePage("navigate");
-    const variation = new FakePage("variation");
-    const { stack, state, press, release } = setup({ navigate, variation });
+    const liveClips = new FakePage("liveClips");
+    const scene = new FakePage("scene");
+    const { stack, state, press, release } = setup({ liveClips, scene });
     state.shift = true;
-    press("variation");
-    expect(stack.top?.page.id).toBe("navigate");
+    press("scene");
+    expect(stack.top?.page.id).toBe("liveClips");
     state.shift = false;
-    release("variation");
+    release("scene");
     expect(stack.top).toBeUndefined();
 
-    press("variation");
-    expect(stack.top?.page.id).toBe("variation");
+    press("scene");
+    expect(stack.top?.page.id).toBe("scene");
     state.shift = true;
-    release("variation");
+    release("scene");
     expect(stack.top).toBeUndefined();
   });
 
@@ -471,8 +471,10 @@ describe("PageStack: pages that are not built", () => {
       "off",
     ]);
     state.shift = true;
+    press("restart");
+    state.shift = false;
     press("variation");
-    expect(log[2]).toBe('page "navigate" is not built yet');
+    expect(log.at(-1)).toBe('page "navigate" is not built yet');
   });
 
   it("does not touch an overlay that is open", () => {

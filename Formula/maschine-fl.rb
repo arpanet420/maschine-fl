@@ -3,7 +3,7 @@
 #   brew tap arpanet420/maschine-fl https://github.com/arpanet420/maschine-fl
 #   brew install --HEAD maschine-fl
 #
-# There is no tagged release yet, so only `head` exists. When a release is tagged, add above `head`:
+# Only `head` exists. To install a tagged release, add above `head`:
 #   url "https://github.com/arpanet420/maschine-fl/archive/refs/tags/vX.Y.Z.tar.gz"
 #   sha256 "<shasum -a 256 of that tarball>"
 # NOTE: written by hand against Homebrew's documented formula API and never run (Homebrew is not

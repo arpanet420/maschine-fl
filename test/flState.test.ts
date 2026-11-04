@@ -39,7 +39,7 @@ describe("FlState", () => {
     expect(state.version).toBe(2);
     expect(state.channels.size).toBe(0); // the script resends everything after HELLO
     expect(events.filter((e) => e === "connection")).toHaveLength(1);
-    expect(events).toHaveLength(1 + 25);
+    expect(events).toHaveLength(1 + 26);
 
     events.length = 0;
     state.apply({ type: "alive" });
@@ -48,7 +48,7 @@ describe("FlState", () => {
 
     state.apply({ type: "goodbye" });
     expect(state.connected).toBe(false);
-    expect(events).toHaveLength(25);
+    expect(events).toHaveLength(26);
   });
 
   it("tells a swing change on its own, and keeps FL's windows and snap mode from UI_STATE", () => {
@@ -542,6 +542,7 @@ describe("FlState", () => {
         "presets",
         "markers",
         "loop",
+        "stepParams",
         "features",
         "browserNode",
         "pattern",
@@ -555,7 +556,7 @@ describe("FlState", () => {
         "activity",
       ]),
     );
-    expect(events).toHaveLength(25);
+    expect(events).toHaveLength(26);
     expect(state.connected).toBe(false);
     expect(state.tempo).toBe(0);
     expect(state.transport.playing).toBe(false);
@@ -567,6 +568,6 @@ describe("FlState", () => {
 
     // HELLO tells every section again.
     state.apply(msg("hello"));
-    expect(events).toHaveLength(50);
+    expect(events).toHaveLength(52);
   });
 });

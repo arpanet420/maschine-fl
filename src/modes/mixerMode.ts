@@ -53,6 +53,10 @@ const NAV_STEP = 0.01;
 const HOLD_MS = 700;
 const FALL_PER_SECOND = 0.6;
 
+/** FL's default track volume (0 dB) and the middle of the pan, 0–1 on the wire. */
+const MIXER_DEFAULT_VOLUME = 0.8;
+const PAN_CENTER = 0.5;
+
 type Prop = "volume" | "pan" | "mute" | "solo";
 type Held = "mute" | "solo";
 
@@ -240,6 +244,19 @@ export class MixerMode implements Mode {
     this.pending.set(key(track, prop), { value, at: this.now() });
     mc.send({ type: "setTrack", index: track, what: WHAT[prop], value });
     this.redraw.request(mc);
+  }
+
+  /** Two touches of a knob: the track's volume back to FL's default, or its pan to the middle. */
+  resetKnob(knob: number, mc: ModeContext): boolean {
+    if (knob >= BANK) return false;
+    const track = this.offset + knob;
+    if (track >= mc.fl.mixerTotal) return false;
+    const prop = this.prop();
+    const value = prop === "volume" ? MIXER_DEFAULT_VOLUME : PAN_CENTER;
+    this.pending.set(key(track, prop), { value, at: this.now() });
+    mc.send({ type: "setTrack", index: track, what: WHAT[prop], value });
+    this.redraw.request(mc);
+    return true;
   }
 
   private toggle(track: number, prop: "mute" | "solo", mc: ModeContext): void {

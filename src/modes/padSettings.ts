@@ -19,6 +19,10 @@ export const EXPONENT_MAX = 2;
 export const FIXED_VELOCITY_MIN = 1;
 export const FIXED_VELOCITY_MAX = 127;
 export const DEFAULT_FIXED_VELOCITY = 100;
+/** The screens' backlight, 0–100 (docs/protocol.md). */
+export const SCREEN_BRIGHTNESS_MIN = 5;
+export const SCREEN_BRIGHTNESS_MAX = 100;
+export const DEFAULT_SCREEN_BRIGHTNESS = 100;
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const finite = (value: unknown): number | undefined =>
@@ -35,6 +39,7 @@ export class PadSettings {
   readonly config: PadConfig;
   /** FIXED VEL is on. */
   fixedOn = false;
+  private brightnessExact = DEFAULT_SCREEN_BRIGHTNESS;
   private fixedExact = DEFAULT_FIXED_VELOCITY;
 
   constructor(
@@ -60,6 +65,15 @@ export class PadSettings {
     this.config.exponent = clamp(value, EXPONENT_MIN, EXPONENT_MAX);
   }
 
+  /** The screens' backlight, a whole number. */
+  get screenBrightness(): number {
+    return Math.round(this.brightnessExact);
+  }
+
+  set screenBrightness(value: number) {
+    this.brightnessExact = clamp(value, SCREEN_BRIGHTNESS_MIN, SCREEN_BRIGHTNESS_MAX);
+  }
+
   /** The fixed velocity, a whole number 1–127. */
   get fixedVelocity(): number {
     return Math.round(this.fixedExact);
@@ -67,6 +81,11 @@ export class PadSettings {
 
   set fixedVelocity(value: number) {
     this.fixedExact = clamp(value, FIXED_VELOCITY_MIN, FIXED_VELOCITY_MAX);
+  }
+
+  /** Moves the backlight by `steps` (fractions count: a slow turn adds up). */
+  nudgeScreenBrightness(steps: number): void {
+    this.screenBrightness = this.brightnessExact + steps;
   }
 
   /** Moves the fixed velocity by `steps` (fractions count: a slow turn adds up). */
@@ -92,6 +111,7 @@ export class PadSettings {
       exponent: this.exponent,
       fixedVelocity: this.fixedVelocity,
       fixedOn: this.fixedOn,
+      screenBrightness: this.screenBrightness,
     }),
     load: (data: unknown) => {
       const saved = data as Record<string, unknown> | null;
@@ -103,6 +123,8 @@ export class PadSettings {
       if (exponent !== undefined && !this.locks.exponent) this.exponent = exponent;
       if (fixed !== undefined) this.fixedVelocity = fixed;
       if (typeof saved?.fixedOn === "boolean") this.fixedOn = saved.fixedOn;
+      const brightness = finite(saved?.screenBrightness);
+      if (brightness !== undefined) this.screenBrightness = brightness;
     },
   };
 }

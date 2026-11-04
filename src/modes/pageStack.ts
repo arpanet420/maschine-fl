@@ -61,6 +61,9 @@ import { realTimers, type RepeatTimers } from "./repeatScheduler.js";
 import { isStripMode, NO_STRIP_MODE, stripModeOf, type StripControl } from "../strip.js";
 import { runShiftAction, shiftActionAvailable, shiftActionOf } from "./shiftPads.js";
 
+/** Two touches of a knob this close, with no turn between, reset it (`Mode.resetKnob`). */
+const KNOB_DOUBLE_TOUCH_MS = 400;
+
 export type PageKind = "main" | "overlay" | "tool";
 
 export interface PageDef {
@@ -99,8 +102,7 @@ export const PAGE_DEFS: readonly PageDef[] = [
   def("liveClips", "LIVE", "overlay", "scene", { shift: true }),
   def("pattern", "PATTERN", "overlay", "pattern"),
   def("events", "EVENTS", "overlay", "events"),
-  def("variation", "VARIATION", "overlay", "variation"),
-  def("navigate", "NAVIGATE", "overlay", "variation", { shift: true }),
+  def("navigate", "NAVIGATE", "tool", "variation"),
   def("duplicate", "DUPLICATE", "overlay", "duplicate"),
   def("select", "SELECT", "overlay", "select"),
   def("solo", "SOLO", "overlay", "solo"),
@@ -161,6 +163,11 @@ export class PageStack {
   private readonly pads: PadState | undefined;
   private readonly strip: StripControl | undefined;
   private readonly timers: RepeatTimers;
+  private readonly clock: () => number;
+  private readonly knobTouches = new Map<
+    number,
+    { at: number; clean: () => boolean; turned: () => void }
+  >();
   /** Hold overlay buttons that are down: the timer, and whether it fired (the overlay is open). */
   private readonly holds = new Map<ButtonId, { def: PageDef; timer: unknown; opened: boolean }>();
   private readonly pins = new Map<PageName, boolean>();
@@ -190,6 +197,7 @@ export class PageStack {
     this.pads = options.pads;
     this.strip = options.strip;
     this.timers = options.timers ?? realTimers;
+    this.clock = options.now ?? Date.now;
     const home = this.find(HOME_PAGE);
     this.mainDef = home;
     this.lastControl = home;
@@ -308,6 +316,38 @@ export class PageStack {
     }
     this.mainMode()?.onFlChange?.(section, this.mainContext(mc));
     this.topMode()?.onFlChange?.(section, this.topContext(mc));
+    const locked = this.lockedPage();
+    if (locked && locked !== this.topMode()) locked.onFlChange?.(section, this.mainContext(mc));
+  }
+
+  /** A second quick touch of a knob, with no turn since the first: the page resets the value. */
+  private touchKnob(knob: number, mc: ModeContext): void {
+    const now = this.clock();
+    const last = this.knobTouches.get(knob);
+    const again = last !== undefined && last.clean() && now - last.at <= KNOB_DOUBLE_TOUCH_MS;
+    if (!again) {
+      let clean = true;
+      this.knobTouches.set(knob, {
+        at: now,
+        clean: () => clean,
+        turned: () => {
+          clean = false;
+        },
+      });
+      return;
+    }
+    this.knobTouches.delete(knob);
+    if (!mc.fl.connected) return;
+    const top = this.topMode();
+    const reset =
+      top?.resetKnob?.(knob, this.topContext(mc)) ??
+      this.mainMode()?.resetKnob?.(knob, this.mainContext(mc));
+    if (reset) mc.requestRender();
+  }
+
+  /** The page that keeps the pads while closed (NOTE REPEAT's LOCK). */
+  private lockedPage(): Mode | undefined {
+    return Object.values(this.pages).find((page) => page?.locksPads?.());
   }
 
   // ── Events ─────────────────────────────────────────────────────────────────
@@ -315,6 +355,8 @@ export class PageStack {
   /** True = handled; the caller plays an unhandled pad as a note. */
   onEvent(event: HwEvent, mc: ModeContext): boolean {
     if (event.type === "pad") return this.onPad(event, mc);
+    if (event.type === "encoder") this.knobTouches.get(event.index)?.turned();
+    if (event.type === "encoderTouch" && event.touched) this.touchKnob(event.index, mc);
     if (event.type === "button" && this.onHoldButton(event, mc)) return true;
     if (event.type === "button" && quickModeOf(event.id)) return this.onQuickButton(event, mc);
     if (event.type === "button" && this.strip && stripModeOf(event.id)) {
@@ -445,6 +487,7 @@ export class PageStack {
   releasePads(): void {
     this.clearHolds();
     this.topMode()?.leave?.();
+    this.lockedPage()?.stopPads?.();
     this.padOwner.clear();
     this.quickEdit.reset();
     this.strip?.release();
@@ -525,8 +568,11 @@ export class PageStack {
       const top = this.topMode();
       const main = this.mainMode();
       let owner: Mode | null = null;
+      const locked = this.lockedPage();
       if (top?.onEvent(event, this.topContext(mc))) owner = top;
-      else if (main?.onEvent(event, this.mainContext(mc))) owner = main;
+      else if (locked && locked !== top && locked.onEvent(event, this.mainContext(mc))) {
+        owner = locked;
+      } else if (main?.onEvent(event, this.mainContext(mc))) owner = main;
       if (owner === null && this.eraseHeld && this.pads) {
         // ERASE held and no page wants the pad: it must not play a note either.
         this.padOwner.set(event.pad, "erase");
@@ -704,6 +750,7 @@ export class PageStack {
     this.mainMode()?.leds(leds, this.mainContext(mc));
     this.topMode()?.leds(leds, this.topContext(mc));
     this.pageButtonLeds(leds, mc.fl.connected);
+    if (mc.fl.connected && this.lockedPage()) leds.setLight("noteRepeat", "bright");
     this.quickEdit.leds(leds, mc.fl.connected);
     this.strip?.leds(leds, mc);
     if (mc.shift && mc.fl.connected && !this.pageUsesShiftPads()) this.shiftPadLeds(leds, mc);
@@ -742,8 +789,8 @@ export class PageStack {
       let level: LightLevel = "off";
       for (const d of this.defs) {
         if (d.button !== button || !this.pages[d.id] || !connected) continue;
-        // SHIFT + button pages (NAVIGATE, GRID) light the button while open, not before: the button
-        // alone (VARIATION) can still be unbuilt.
+        // SHIFT + button pages (GRID, LIVE) light the button while open, not before: the button alone
+        // has its own meaning.
         if (d.shift && this.topPage?.page !== d) continue;
         const bright =
           this.topPage?.page === d || d === this.mainDef || (d.control && d === this.lastControl);

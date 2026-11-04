@@ -60,7 +60,7 @@ export function stackHarness(
     padMode: new PadModePage(pads),
     keyboard: new KeyboardPage(pads, { timers: time.timers }),
     chords: new ChordsPage(pads, { timers: time.timers }),
-    step: new StepPage(pads),
+    step: new StepPage(pads, time.timers),
     navigate: new NavigateOverlay(),
     grid: new GridOverlay(),
     noteRepeat: new NoteRepeatOverlay(pads, {
@@ -141,6 +141,11 @@ export function stackHarness(
     if (!stack.onEvent(event, mc)) pads.handlePad(event, mc);
   };
   const turn = (delta: number) => stack.onEvent({ type: "nav", action: "turn", delta }, mc);
+  /** A short touch of a knob. */
+  const touchKnob = (index: number) => {
+    stack.onEvent({ type: "encoderTouch", index, touched: true }, mc);
+    stack.onEvent({ type: "encoderTouch", index, touched: false }, mc);
+  };
   const push = (pressed = true) => stack.onEvent({ type: "nav", action: "push", pressed }, mc);
   const tilt = (direction: "up" | "down" | "left" | "right", pressed = true) =>
     stack.onEvent({ type: "nav", action: "tilt", direction, pressed }, mc);
@@ -319,6 +324,7 @@ export function stackHarness(
     tap,
     pad,
     turn,
+    touchKnob,
     push,
     tilt,
     advance,

@@ -271,6 +271,21 @@ takes ~7.7 MB/s. That caps full redraws at ~29 screens/s: ~29 fps for one screen
 both. Our rendering and RGB565 conversion take ~1.3 ms for both screens. Small partial updates
 run at 150+ fps. mk3d therefore sends only the changed bounding box.
 
+### Display command `0x01`: repeat a pixel pair
+
+**Status: reference (Deckard, `docs/mk3-usb.md`), in use since 2026-11-04, not yet confirmed here.** `Mk3Display`
+sends long runs of one colour as command `01` + count + the pixel pair instead of raw pixels
+(`src/hw/display.ts`). A bad transfer can need a power cycle (above), so `MK3D_DISPLAY_RAW=1` goes back to raw pixels.
+
+### Screen backlight: feature reports `0xF8` (read) / `0xF9` (write)
+
+**Status: verified 2026-11-04 (SETTINGS knob 5 changes the brightness on our unit; found in Deckard). Approved
+by the owner as the one exception to the rule against feature reports.** Byte 8 is the brightness, 0–100. mk3d reads `0xF8`, checks
+that bytes 1–4 are `e0 01 10 01` (otherwise it writes nothing and logs it), changes byte 8 only and writes
+the report back as `0xF9` (`src/hw/device.ts`). The first write logs `before → after`. Deckard's own listing
+is not quite consistent about which byte it is. On our unit (2026-11-04) `0xF8` reads
+`f8 e0 01 10 01 10 60 01 64 32 00`: the prefix fits and byte 8 is `0x64` = 100.
+
 ## macOS notes
 
 - NI's `NIHostIntegrationAgent` runs as a login-item app (launchd label

@@ -3,8 +3,9 @@
 // `stepOffset` = page × 16, merged into the main page's VIEW). The pad mode underneath (KEYBOARD or
 // PAD MODE) is not touched, so it comes back when the page closes.
 //
-// - A pad press toggles the step (SET_STEP). Held-step editing (velocity, pitch of a held step)
-//   comes later: today the press acts at once and the release means nothing.
+// - A press on a dark step turns it on at once. A press on a lit step removes it on the release, unless
+//   it was held for `STEP_HOLD_MS` or a knob turned meanwhile. While a step is held for that long the
+//   left screen shows it: knob 1 = its velocity, knob 2 = its pitch (REQUEST_STEP_PARAMS, SET_STEP_PARAM).
 // - ERASE held + pad clears that step (the stack tells the page through `mc.erase`).
 // - Steps past the pattern length have no LED and ignore presses.
 // - Display 7 and 8 (`<<` `>>`) and the arrow buttons page through the pattern, 16 steps at a time.
@@ -13,7 +14,7 @@
 // - GROUP A–H still pick the channel bank, so the steps switch to the channel selected there.
 // - The play position comes from SONG_POS, assuming 16 steps per bar: position in the pattern =
 //   ((bar − 1) × 16 + step − 1) mod pattern length (docs/mapping.md).
-// - Knobs, the 4D encoder and everything else fall through to the main page underneath.
+// - Other knobs, the 4D encoder and everything else fall through to the main page underneath.
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import type { FlSection, FlState } from "../fl/flState.js";
 import type { HwEvent } from "../hw/events.js";
@@ -22,14 +23,52 @@ import { PAD_COUNT } from "../hw/ids.js";
 import type { Rect } from "../hw/display.js";
 import type { LedState } from "../hw/leds.js";
 import { LED_OFF, contrastPalette } from "../hw/palette.js";
-import { TAB_HEIGHT, clear, drawTabs, fitText, font, theme } from "../render/widgets.js";
+import {
+  TAB_HEIGHT,
+  clear,
+  drawKnobRow,
+  drawTabs,
+  fitText,
+  font,
+  theme,
+} from "../render/widgets.js";
 import { setBankLeds, groupBank } from "./channelBank.js";
 import { DISPLAY_BUTTONS } from "./channelPadPage.js";
 import { FULL } from "./draw.js";
+import { knobStep } from "./knob.js";
 import { flColorToCss, flColorToPalette } from "./format.js";
 import type { Mode, ModeContext, ViewCommand } from "./mode.js";
 import { padCellRect } from "./padGrid.js";
-import type { PadState } from "./padState.js";
+import { noteName, type PadState } from "./padState.js";
+import { realTimers, type RepeatTimers } from "./repeatScheduler.js";
+
+/** A step held this long stays when let go, and the page shows its values. */
+export const STEP_HOLD_MS = 400;
+/** Knob counts that move a held step's pitch one semitone. */
+const PITCH_COUNTS = 60;
+/** The MIDI values FL starts a step with (`midi.pPitch`, `midi.pVelocity`). */
+const DEFAULT_PITCH = 60;
+const DEFAULT_VELOCITY = 100;
+const PARAM_PITCH = 0;
+const PARAM_VELOCITY = 1;
+
+/** A pad held on the page. */
+interface HeldStep {
+  pad: number;
+  channel: number;
+  step: number;
+  /** It was on when pressed: the release removes it unless it was held or edited. */
+  wasOn: boolean;
+  /** Held long enough or edited: it stays, and the screen shows it. */
+  kept: boolean;
+  timer: unknown;
+  pitch: number;
+  velocity: number;
+  /** Knob counts not yet a semitone. */
+  pitchTurn: number;
+}
+
+const clamp127 = (value: number): number => Math.min(127, Math.max(0, value));
 
 /** Steps on the pads. */
 export const STEPS_PER_PAGE = PAD_COUNT;
@@ -70,6 +109,7 @@ export function playHeadStep(fl: FlState): number | undefined {
 
 export class StepPage implements Mode {
   readonly name = "step";
+  private held: HeldStep[] = [];
   private page = 0;
   private follow = true;
   /** The page the play head was last on; undefined while stopped. */
@@ -77,7 +117,15 @@ export class StepPage implements Mode {
   /** The play position last drawn, so a new frame is only asked for when it moves. */
   private shownHead: number | undefined;
 
-  constructor(private readonly pads: PadState) {}
+  constructor(
+    private readonly pads: PadState,
+    private readonly timers: RepeatTimers = realTimers,
+  ) {}
+
+  /** Closed with a step held: the step stays as it is. */
+  leave(): void {
+    for (const held of [...this.held]) this.forgetHeld(held.pad);
+  }
 
   // ── Window ─────────────────────────────────────────────────────────────────
 
@@ -112,6 +160,16 @@ export class StepPage implements Mode {
   }
 
   onFlChange(section: FlSection, mc: ModeContext): void {
+    if (section === "stepParams") {
+      const answer = mc.fl.stepParams;
+      const held = this.held.find((h) => h.channel === answer?.channel && h.step === answer.step);
+      if (answer && held) {
+        held.pitch = answer.pitch;
+        held.velocity = answer.velocity;
+        mc.requestRender();
+      }
+      return;
+    }
     switch (section) {
       case "pattern":
         // The pattern may be shorter than the page we are on.
@@ -170,7 +228,10 @@ export class StepPage implements Mode {
       case "pad":
         // Down acts; move and up are ours too so no pad ever plays a note under the page.
         if (event.phase === "down") this.padPressed(event.pad, mc);
+        else if (event.phase === "up") this.padReleased(event.pad, mc);
         return true;
+      case "encoder":
+        return this.turnHeldStep(event.index, event.delta, mc);
       case "button": {
         const bank = groupBank(event.id);
         if (bank !== undefined) {
@@ -204,9 +265,90 @@ export class StepPage implements Mode {
     const channel = fl.selectedChannel.index;
     const step = this.page * STEPS_PER_PAGE + pad;
     if (channel === null || step >= fl.pattern.length) return;
-    // ERASE held: clear the step; otherwise toggle it.
-    const on = mc.erase ? false : !this.stepOn(fl, step);
-    mc.send({ type: "setStep", channel, step, on });
+    // ERASE held: clear the step.
+    if (mc.erase) {
+      mc.send({ type: "setStep", channel, step, on: false });
+      return;
+    }
+    const wasOn = this.stepOn(fl, step);
+    if (!wasOn) mc.send({ type: "setStep", channel, step, on: true });
+    this.forgetHeld(pad);
+    const held: HeldStep = {
+      pad,
+      channel,
+      step,
+      wasOn,
+      kept: false,
+      timer: undefined,
+      pitch: DEFAULT_PITCH,
+      velocity: DEFAULT_VELOCITY,
+      pitchTurn: 0,
+    };
+    held.timer = this.timers.set(() => this.keepHeld(held, mc), STEP_HOLD_MS);
+    this.held.push(held);
+  }
+
+  /** It has been held long enough: it stays, and FL says what its values are. */
+  private keepHeld(held: HeldStep, mc: ModeContext): void {
+    held.timer = undefined;
+    if (!this.held.includes(held)) return;
+    held.kept = true;
+    mc.send({ type: "requestStepParams", channel: held.channel, step: held.step });
+    mc.requestRender();
+  }
+
+  private padReleased(pad: number, mc: ModeContext): void {
+    const held = this.held.find((h) => h.pad === pad);
+    if (!held) return;
+    this.forgetHeld(pad);
+    if (held.wasOn && !held.kept) {
+      mc.send({ type: "setStep", channel: held.channel, step: held.step, on: false });
+    }
+    if (held.kept) mc.requestRender();
+  }
+
+  private forgetHeld(pad: number): void {
+    const held = this.held.find((h) => h.pad === pad);
+    if (!held) return;
+    if (held.timer !== undefined) this.timers.clear(held.timer);
+    this.held = this.held.filter((h) => h !== held);
+  }
+
+  /** The step the knobs edit: the one pressed last. */
+  private get editing(): HeldStep | undefined {
+    return this.held.at(-1);
+  }
+
+  /** Knob 1 = velocity, knob 2 = pitch of the held step. False = no step held, or another knob. */
+  private turnHeldStep(knob: number, delta: number, mc: ModeContext): boolean {
+    const held = this.editing;
+    if (!held || knob > 1) return false;
+    if (!held.kept) this.keepHeld(held, mc);
+    if (held.timer !== undefined) {
+      this.timers.clear(held.timer);
+      held.timer = undefined;
+    }
+    if (knob === 0) {
+      const velocity = clamp127(held.velocity + knobStep(delta, mc.shift) * 127);
+      if (Math.round(velocity) !== Math.round(held.velocity)) {
+        this.sendParam(held, PARAM_VELOCITY, Math.round(velocity), mc);
+      }
+      held.velocity = velocity;
+    } else {
+      held.pitchTurn += delta;
+      const steps = Math.trunc(held.pitchTurn / PITCH_COUNTS);
+      if (steps !== 0) {
+        held.pitchTurn -= steps * PITCH_COUNTS;
+        held.pitch = clamp127(held.pitch + steps);
+        this.sendParam(held, PARAM_PITCH, held.pitch, mc);
+      }
+    }
+    mc.requestRender();
+    return true;
+  }
+
+  private sendParam(held: HeldStep, param: number, value: number, mc: ModeContext): void {
+    mc.send({ type: "setStepParam", channel: held.channel, step: held.step, param, value });
   }
 
   /** Is the step on, as far as FL has told us (for the selected channel in the current pattern)? */
@@ -225,9 +367,36 @@ export class StepPage implements Mode {
     this.renderRight(right, mc);
   }
 
+  /** The held step's values, in the columns over knobs 1 and 2. */
+  private renderHeld(ctx: SKRSContext2D, held: HeldStep, mc: ModeContext): void {
+    clear(ctx, FULL);
+    drawTabs(ctx, { ...FULL, height: TAB_HEIGHT }, { tabs: ["STEP"], active: [0] });
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillStyle = theme.dimText;
+    ctx.font = font(15);
+    ctx.fillText(mc.fl.selectedChannel.name, 14, TAB_HEIGHT + 18);
+    ctx.fillStyle = theme.accent;
+    ctx.font = font(44, "bold");
+    ctx.fillText(`Step ${held.step + 1}`, 14, TAB_HEIGHT + 42);
+    drawKnobRow(ctx, { ...FULL, y: FULL.height - 110, height: 110 }, [
+      {
+        label: "Velocity",
+        valueText: String(Math.round(held.velocity)),
+        value: held.velocity / 127,
+      },
+      { label: "Pitch", valueText: noteName(held.pitch), value: held.pitch / 127 },
+    ]);
+  }
+
   private renderLeft(ctx: SKRSContext2D, mc: ModeContext): void {
     const { fl } = mc;
     const { pattern, selectedChannel } = fl;
+    const held = this.editing;
+    if (held?.kept) {
+      this.renderHeld(ctx, held, mc);
+      return;
+    }
     clear(ctx, FULL);
     drawTabs(ctx, { ...FULL, height: TAB_HEIGHT }, { tabs: ["STEP"], active: [0] });
     if (selectedChannel.index === null) {
