@@ -346,6 +346,7 @@ describe("FlState", () => {
       value: 1,
       name: "Res",
       valueText: "100 %",
+      known: true,
     });
 
     // Same plugin, different parameter count: parameters stay.
@@ -396,7 +397,7 @@ describe("FlState", () => {
     const { state, events } = setup();
     state.apply(msg("pluginParams"));
     state.apply(
-      msg("pluginParams", { params: [{ index: 12, value: 0.75, name: "Cutoff", valueText: "x" }] }),
+      msg("pluginParams", { params: [{ index: 12, value: 0.75, name: "Cutoff", valueText: "x", known: true }] }),
     );
     expect(events).toEqual(["pluginParams", "pluginParams"]);
     expect(state.pluginParams.size).toBe(2);

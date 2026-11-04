@@ -62,6 +62,7 @@ const report = (...indexes: number[]): FlMessage => ({
     value: 0.5,
     name: NAMES.find(([i]) => i === index)?.[1] ?? "",
     valueText: `${index} dB`,
+    known: true,
   })),
 });
 
@@ -353,10 +354,28 @@ describe("PluginMode knobs", () => {
     state.time += 400;
     feed({
       type: "pluginParams",
-      params: [{ index: 0, value: 0.3, name: "main: Param 0", valueText: "x" }],
+      params: [{ index: 0, value: 0.3, name: "main: Param 0", valueText: "x", known: true }],
     });
     turn(0, 120);
     expect(setParam(sent[2])?.value).toBeCloseTo(0.4, 6);
+  });
+
+  it("a parameter FL gives no 0–1 position for shows no position and is moved relatively", () => {
+    const { feed, turn, sent, draw } = setup();
+    feed({
+      type: "pluginParams",
+      params: [{ index: 0, value: 1, name: "main: Param 0", valueText: "47.75", known: false }],
+    });
+    expect(draw().texts.left).toContain("47.75");
+    turn(0, 120);
+    expect(sent).toEqual([{ type: "nudgeParam", param: 0, step: 0.1 }]);
+    // Once FL gives the position, turns are absolute again.
+    feed({
+      type: "pluginParams",
+      params: [{ index: 0, value: 0.5, name: "main: Param 0", valueText: "50", known: true }],
+    });
+    turn(0, 120);
+    expect(setParam(sent[1])?.value).toBeCloseTo(0.6, 6);
   });
 
   it("drops a turn until FL has reported the parameter", () => {

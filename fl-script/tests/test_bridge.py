@@ -1071,6 +1071,114 @@ class ToFlCommandTests(BridgeTestCase):
         self.send(s.frame(0x48, s.enc_u14(9000) + s.enc_norm(0.5)))
         self.assertEqual(self.fl.called("plugins.setParamValue"), [])
 
+    def units_plugin(self, shown, late_sets=0, text=None):
+        """A plugin like Repro-5 on the selected channel: parameter 0 reads `shown` in its own units until its
+        first set, then 0-1; the text is 0...100 (or `text(value)`), from the start. The first `late_sets`
+        sets don't read back yet."""
+        s = self.script
+        self.start()
+        index = s._bridge.selected_channel_index()
+        params = self.fl.plugin(index)["params"]
+        params[0]["value"] = shown
+        params[0]["real"] = shown / 100.0
+        params[0]["late"] = late_sets
+        show = text or (lambda v: "%.2f " % (v * 100.0))
+        plugins = sys.modules["plugins"]
+        real_set = plugins.setParamValue
+
+        def set_value(value, param, i, *rest):
+            if param != 0:
+                return real_set(value, param, i, *rest)
+            self.sets.append(value)
+            params[0]["real"] = value
+            if params[0]["late"] > 0:
+                params[0]["late"] -= 1
+            else:
+                params[0]["value"] = value
+
+        real_text = plugins.getParamValueString
+        plugins.setParamValue = set_value
+        plugins.getParamValueString = lambda p, i, *rest: show(params[0]["real"]) if p == 0 else real_text(p, i, *rest)
+        self.sets = []
+        self.addCleanup(setattr, plugins, "setParamValue", real_set)
+        self.addCleanup(setattr, plugins, "getParamValueString", real_text)
+        return index, params[0]
+
+    def nudge(self, step):
+        s = self.script
+        self.send(s.frame(s.CMD_NUDGE_PARAM, s.enc_u14(0) + s.enc_pan(step)))
+
+    def test_nudge_finds_the_position_from_the_text(self):
+        _, param = self.units_plugin(47.75)
+        self.nudge(0.01)
+        self.assertAlmostEqual(param["real"], 0.4875, delta=0.0005)
+        self.assertLessEqual(len(self.sets), self.script.PARAM_SEARCH_STEPS)
+
+    def test_nudge_finds_a_falling_parameter(self):
+        _, param = self.units_plugin(25.0, text=lambda v: "%.2f " % ((1.0 - v) * 100.0))
+        param["real"] = 0.75
+        self.nudge(0.01)
+        self.assertAlmostEqual(param["real"], 0.76, delta=0.0005)
+
+    def test_nudge_stays_on_the_closest_when_no_text_matches(self):
+        _, param = self.units_plugin(40.0, text=lambda v: "%d " % (int(v * 4.0) * 25 + 1))
+        param["real"] = 0.4
+        self.nudge(0.0)
+        self.assertLess(abs(int(param["real"] * 4.0) * 25 + 1 - 26), 26)
+
+    def test_nudge_after_the_first_goes_from_the_value(self):
+        _, param = self.units_plugin(47.75)
+        self.nudge(0.01)
+        self.sets[:] = []
+        self.nudge(0.01)
+        self.assertEqual(len(self.sets), 1)
+        self.assertAlmostEqual(param["real"], 0.4975, delta=0.0005)
+
+    def test_nudge_waits_for_a_set_fl_has_not_taken(self):
+        _, param = self.units_plugin(47.75, late_sets=1)
+        self.nudge(0.01)
+        self.assertEqual(len(self.sets), 1)  # the first set didn't read back: nothing more this time
+        self.nudge(0.01)
+        self.assertAlmostEqual(param["real"], 0.4875, delta=0.0005)  # the text from before the first set
+
+    def test_nudge_gives_up_on_a_set_fl_never_takes(self):
+        _, param = self.units_plugin(47.75, late_sets=1000)
+        for _ in range(3):
+            self.nudge(0.01)
+        self.assertAlmostEqual(self.sets[-1], 1.0)  # the old way: from FL's value, cut to 0...1
+
+    def test_nudge_without_a_number_in_the_text_goes_from_the_value(self):
+        _, param = self.units_plugin(47.75, text=lambda v: "Saw")
+        self.nudge(0.01)
+        self.assertEqual(self.sets, [1.0])
+
+    def test_nudge_does_not_search_while_recording(self):
+        self.fl.recording = True
+        self.fl.playing = True
+        _, param = self.units_plugin(47.75)
+        self.nudge(0.01)
+        self.assertEqual(self.sets, [])  # no search, and no jump in the recording either
+
+    def test_params_say_whether_the_value_is_known(self):
+        s = self.script
+        index, param = self.units_plugin(47.75)
+        bridge = s._bridge
+        self.assertFalse(bridge.param_is_known(index, 0, 47.75))
+        param["value"] = 0.5
+        self.assertFalse(bridge.param_is_known(index, 0, 0.5))  # in range, but the plugin reports units
+        bridge.params_anchored.add((bridge.param_instance(index), 0))
+        self.assertTrue(bridge.param_is_known(index, 0, 0.5))
+        self.assertFalse(bridge.param_is_known(index, 0, 47.75))  # a new state can come back in units
+
+    def test_params_of_a_0_to_1_plugin_are_known(self):
+        self.start()
+        s = self.script
+        index = s._bridge.selected_channel_index()
+        for param in self.fl.plugin(index)["params"]:
+            param["value"] = 0.5
+        s._bridge.param_units.clear()  # start() has looked at the fixture's values already
+        self.assertTrue(s._bridge.param_is_known(index, 0, 0.5))
+
     def test_select_pattern(self):
         self.run_vector("selectPattern")
         self.assertEqual(self.fl.called("patterns.jumpToPattern"), [(2,)])

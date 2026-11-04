@@ -241,6 +241,8 @@ export interface PluginParam {
   value: number;
   name: string;
   valueText: string;
+  /** False: FL hasn't given this parameter's 0–1 position, `value` means nothing; `valueText` is right. */
+  known: boolean;
 }
 
 export type FlMessage =
@@ -336,6 +338,8 @@ export type FlCommand =
   | { type: "selectTrack"; index: number }
   | { type: "setTrack"; index: number; what: TrackProp; value: number }
   | { type: "setParam"; param: number; value: number }
+  /** `step` (−1…1) from where the parameter really is, for one that isn't `known`. */
+  | { type: "nudgeParam"; param: number; step: number }
   | { type: "selectPattern"; number: number }
   /** Clone pattern `number` (1-based). */
   | { type: "clonePattern"; number: number }
@@ -851,6 +855,7 @@ function readFlMessage(command: number, payload: number[], r: Reader): FlMessage
           value: r.norm(),
           name: r.str(),
           valueText: r.str(),
+          known: r.flag(),
         })),
       };
     case FROM_FL.paramNames:
@@ -1074,7 +1079,9 @@ export function encodeFlMessage(message: FlMessage): number[] {
       w.index(message.channel).flag(message.valid).u14(message.paramCount).str(message.name);
       break;
     case "pluginParams":
-      w.list(message.params, (p) => w.u14(p.index).norm(p.value).str(p.name).str(p.valueText));
+      w.list(message.params, (p) =>
+        w.u14(p.index).norm(p.value).str(p.name).str(p.valueText).flag(p.known),
+      );
       break;
     case "paramNames":
       w.u14(message.offset).list(message.names, (name) => w.str(name));
@@ -1142,6 +1149,9 @@ export function encodeCommand(command: FlCommand): number[] {
       break;
     case "setParam":
       w.u14(command.param).norm(command.value);
+      break;
+    case "nudgeParam":
+      w.u14(command.param).pan(command.step);
       break;
     case "selectPattern":
     case "clonePattern":
@@ -1301,6 +1311,8 @@ function readCommand(command: number, r: Reader): FlCommand | undefined {
       };
     case TO_FL.setParam:
       return { type: "setParam", param: r.u14(), value: r.norm() };
+    case TO_FL.nudgeParam:
+      return { type: "nudgeParam", param: r.u14(), step: r.pan() };
     case TO_FL.selectPattern:
       return { type: "selectPattern", number: r.u14() };
     case TO_FL.clonePattern:

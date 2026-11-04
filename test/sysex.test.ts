@@ -44,6 +44,7 @@ const TOLERANCE: Record<string, number> = {
   cutoff: 1 / 16383,
   resonance: 1 / 16383,
   value: 1 / 16383,
+  step: 2 / 16383,
   swing: 1 / 16383,
   mainVolume: 1 / 16383,
   peaks: 1 / 127,
@@ -71,8 +72,8 @@ const fromFl = vectors.filter((v) => v.direction === "fromFl");
 const toFl = vectors.filter((v) => v.direction === "toFl");
 
 describe("shared SysEx vectors", () => {
-  it("has the 98 vectors of the spec", () => {
-    expect(vectors).toHaveLength(98);
+  it("has the 99 vectors of the spec", () => {
+    expect(vectors).toHaveLength(99);
   });
 
   describe.each(fromFl)("FL → mk3d: $name", ({ message, hex }) => {

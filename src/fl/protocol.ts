@@ -137,6 +137,8 @@ export const TO_FL = {
   requestStepParams: 0x6b,
   /** Write a step's pitch (param 0) or velocity (param 1) in the current pattern. */
   setStepParam: 0x6c,
+  /** Move a parameter whose 0–1 value isn't known by `step`, from where it really is (docs/sysex.md). */
+  nudgeParam: 0x6d,
 } as const;
 
 export const CMD = { ...FROM_FL, ...TO_FL } as const;

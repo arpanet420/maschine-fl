@@ -73,7 +73,7 @@
           "muted": true,
           "solo": true,
           "color": 1193046,
-          "name": "H\u00f6 hat"
+          "name": "Hö hat"
         }
       ]
     },
@@ -330,17 +330,19 @@
           "index": 12,
           "value": 0.5,
           "name": "Cutoff",
-          "valueText": "64.0"
+          "valueText": "64.0",
+          "known": true
         },
         {
           "index": 300,
           "value": 1,
           "name": "Res",
-          "valueText": "100 %"
+          "valueText": "100 %",
+          "known": true
         }
       ]
     },
-    "hex": "f07d4d332102000c40004375746f66660036342e3000022c7f7f52657300313030202500f7"
+    "hex": "f07d4d332102000c40004375746f66660036342e300001022c7f7f5265730031303020250001f7"
   },
   {
     "name": "paramNames",
@@ -496,6 +498,16 @@
     "hex": "f07d4d334801482633f7"
   },
   {
+    "name": "nudgeParam",
+    "direction": "toFl",
+    "message": {
+      "type": "nudgeParam",
+      "param": 200,
+      "step": 0.5
+    },
+    "hex": "f07d4d336d01485f7ff7"
+  },
+  {
     "name": "selectPattern",
     "direction": "toFl",
     "message": {
@@ -642,7 +654,7 @@
       "count": 300,
       "current": 17,
       "offset": 14,
-      "names": ["Init", "Pad A", "Bass 1", "Lead \u2013 wide", "Pluck", "Keys", "Strings", "Brass"]
+      "names": ["Init", "Pad A", "Bass 1", "Lead – wide", "Pluck", "Keys", "Strings", "Brass"]
     },
     "hex": "f07d4d3315022c001108000e496e697400506164204100426173732031004c656164207f627f007f13207769646500506c75636b004b65797300537472696e677300427261737300f7"
   },

@@ -209,9 +209,15 @@ export class PluginMode implements Mode {
     if (!this.target(fl)) return true;
     const param = this.current(fl)?.params[knob];
     if (param === undefined) return false;
+    const step = knobStep(delta, mc.shift);
+    if (fl.pluginParams.get(param)?.known === false) {
+      // No 0–1 position to add to; the FL script finds it from the value text (docs/bugs.md #6).
+      mc.send({ type: "nudgeParam", param, step });
+      return true;
+    }
     const old = this.valueOf(param, fl);
     if (old === undefined) return true; // FL hasn't reported it yet
-    const value = clamp(old + knobStep(delta, mc.shift), 0, 1);
+    const value = clamp(old + step, 0, 1);
     if (value === old) return true;
     this.pending.set(param, { value, at: this.now() });
     mc.send({ type: "setParam", param, value });
@@ -219,12 +225,12 @@ export class PluginMode implements Mode {
     return true;
   }
 
-  /** Ours for a moment after a turn, then FL's; undefined until FL has reported it. */
+  /** Ours for a moment after a turn, then FL's; undefined until FL has given a 0–1 position. */
   private valueOf(param: number, fl: FlState): number | undefined {
     const pending = this.pending.get(param);
-    return isLive(pending, this.now()) && pending
-      ? pending.value
-      : fl.pluginParams.get(param)?.value;
+    if (isLive(pending, this.now()) && pending) return pending.value;
+    const info = fl.pluginParams.get(param);
+    return info?.known ? info.value : undefined;
   }
 
   // ── Output ─────────────────────────────────────────────────────────────────

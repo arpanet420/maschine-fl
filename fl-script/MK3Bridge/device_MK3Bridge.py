@@ -370,6 +370,7 @@ CMD_PICKER = 0x69
 CMD_TRIGGER_LIVE_CLIP = 0x6A
 CMD_REQUEST_STEP_PARAMS = 0x6B
 CMD_SET_STEP_PARAM = 0x6C
+CMD_NUDGE_PARAM = 0x6D
 
 CONTROL_CHANNEL = 15  # MIDI channel 16, zero-based
 CHANNEL_NOTE_CHANNEL = 1  # MIDI channel 2, zero-based: PAD MODE hits, note = group-local channel index
@@ -617,6 +618,24 @@ def enc_index(value):
 
 def enc_flag(on):
     return enc_u7(1 if on else 0)
+
+
+# Docs/bugs.md #6: how far find_param_norm goes, and when a read-back counts as the value just set.
+PARAM_SEARCH_STEPS = 14
+PARAM_SEARCH_READBACK = 0.001
+# A set FL has not taken yet comes back as the old value; try this many times, then go on without.
+PARAM_SEARCH_LATE_TRIES = 3
+PARAM_ANCHOR_WAIT = "wait"
+# Parameters looked at to tell a plugin that reports its own units (plugin_reports_units).
+PARAM_UNITS_SCAN = 128
+
+
+def param_number(text):
+    """The number a plugin's value text starts with, None if it doesn't start with one."""
+    try:
+        return float(str(text).split()[0])
+    except (ValueError, IndexError):
+        return None
 
 
 def enc_norm(value):
@@ -880,7 +899,8 @@ def encode(message):
                 lambda p: enc_u14(p["index"])
                 + enc_norm(p["value"])
                 + enc_str(p["name"])
-                + enc_str(p["valueText"]),
+                + enc_str(p["valueText"])
+                + enc_flag(p["known"]),
             ),
         )
     if kind == "paramNames":
@@ -997,6 +1017,8 @@ def decode(data):
             return {"type": "setTrack", "index": index, "what": TRACK_WHAT[what], "value": r.norm()}
         if command == CMD_SET_PARAM:
             return {"type": "setParam", "param": r.u14(), "value": r.norm()}
+        if command == CMD_NUDGE_PARAM:
+            return {"type": "nudgeParam", "param": r.u14(), "step": r.norm() * 2.0 - 1.0}
         if command == CMD_SELECT_PATTERN:
             return {"type": "selectPattern", "number": r.u14()}
         if command == CMD_CLONE_PATTERN:
@@ -1575,6 +1597,9 @@ class Bridge(object):
         # The playlist probe (a diagnostic, see probe_lines): lines not yet built (callables, one is
         # run per service pass) and PROBE texts built but not yet sent (a long line is cut up).
         self.probe_todo = []
+        self.param_units = {}  # plugin_reports_units
+        self.params_anchored = set()  # param_is_known: parameters FL gives as 0-1 because we set them
+        self.param_search_late = {}  # find_param_norm: (text wanted, tries) while FL lags behind
         self.probe_texts = []
         self.probe_count = 0
         # Plug-in loader trial: the label of the browser / key / picker command whose answer (BROWSER_NODE
@@ -2188,12 +2213,14 @@ class Bridge(object):
         for param in self.view.params:
             if param >= count:
                 continue
+            value = _safe(0.0, plugins.getParamValue, param, index)
             entries.append(
                 {
                     "index": param,
-                    "value": _safe(0.0, plugins.getParamValue, param, index),
+                    "value": value,
                     "name": _safe("", plugins.getParamName, param, index),
                     "valueText": _safe("", plugins.getParamValueString, param, index),
+                    "known": self.param_is_known(index, param, value),
                 }
             )
         keys = []
@@ -2962,6 +2989,9 @@ class Bridge(object):
         elif kind == "setParam":
             self.set_param(message["param"], message["value"])
             self.mark("params")
+        elif kind == "nudgeParam":
+            self.nudge_param(message["param"], message["step"])
+            self.mark("params")
         elif kind == "selectPattern":
             number = message["number"]
             current = int(_safe(1, patterns.patternNumber))
@@ -3388,7 +3418,9 @@ class Bridge(object):
         if self.perform is None:
             param = self.perform_param(index)
             if param is not None:
-                before = float(_safe(0.0, plugins.getParamValue, param, index))
+                before = self.param_anchor(index, param)
+                if before is None or before == PARAM_ANCHOR_WAIT:
+                    before = _clamp01(float(_safe(0.0, plugins.getParamValue, param, index)))
             else:
                 rec = _safe(None, channels.getRecEventId, index)
                 before = self.read_rec_norm(rec + midi.REC_Chan_FCut) if rec is not None else 0.0
@@ -3641,6 +3673,112 @@ class Bridge(object):
         if param >= plugins.getParamCount(index):
             return
         plugins.setParamValue(value, param, index)
+        self.params_anchored.add((self.param_instance(index), param))
+
+    def nudge_param(self, param, step):
+        """Move a parameter whose 0-1 value mk3d doesn't know by `step` from where it really is."""
+        index = self.selected_channel_index()
+        if index is None or not plugins.isValid(index):
+            return
+        if param >= plugins.getParamCount(index):
+            return
+        anchor = self.param_anchor(index, param)
+        if anchor is None:
+            anchor = _clamp01(float(_safe(0.0, plugins.getParamValue, param, index)))  # no text to go by
+        elif anchor == PARAM_ANCHOR_WAIT:
+            return
+        plugins.setParamValue(_clamp01(anchor + step), param, index)
+        self.params_anchored.add((self.param_instance(index), param))
+
+    def param_instance(self, index):
+        """Which plugin instance sits on a channel: channels move, and clones share the plugin's name."""
+        return (
+            index,
+            str(_safe("", channels.getChannelName, index)),
+            str(_safe("", plugins.getPluginName, index)),
+        )
+
+    def plugin_reports_units(self, index):
+        """Does this instance give values in its own units instead of 0-1 (docs/bugs.md #6)? Decided once."""
+        key = self.param_instance(index)
+        if key not in self.param_units:
+            count = int(_safe(0, plugins.getParamCount, index))
+            self.param_units[key] = any(
+                not 0.0 <= float(_safe(0.0, plugins.getParamValue, param, index)) <= 1.0
+                for param in range(min(count, PARAM_UNITS_SCAN))
+            )
+        return self.param_units[key]
+
+    def param_is_known(self, index, param, value):
+        """Is `value`, as FL gave it, this parameter's 0-1 position?"""
+        if not 0.0 <= value <= 1.0:
+            return False
+        return not self.plugin_reports_units(index) or (self.param_instance(index), param) in self.params_anchored
+
+    def param_anchor(self, index, param):
+        """The parameter's 0-1 position, found if FL doesn't give it. None: no way to tell, PARAM_ANCHOR_WAIT:
+        not now (FL has not taken the search's first set yet, or it is recording), try on the next call."""
+        value = float(_safe(0.0, plugins.getParamValue, param, index))
+        if self.param_is_known(index, param, value):
+            return value
+        if _safe(False, transport.isRecording) and _safe(False, transport.isPlaying):
+            return PARAM_ANCHOR_WAIT  # the search's sets must not end up as recorded automation
+        return self.find_param_norm(index, param)
+
+    def find_param_norm(self, index, param):
+        """Docs/bugs.md #6: until a parameter's first set, plugins.getParamValue gives some plugins' own units
+        from when the instance was loaded. Only the value text is right, so find the 0-1 value that shows the
+        same text: bisect, rising, then falling, and stay on the closest one if neither matches. It moves the
+        parameter for as long as this call takes; once per parameter, when it is first turned."""
+        key = (self.param_instance(index), param)
+        text, tries = self.param_search_late.pop(key, (None, 0))
+        if text is None:
+            text = str(_safe("", plugins.getParamValueString, param, index))
+        target = param_number(text)
+        if target is None:
+            self.queue_probe('param search ch%d p%d "%s": no number in the text' % (index, param, text))
+            return None
+        started = time.time()
+        sets = 0
+        best = None
+        best_miss = 0.0
+        for rising in (True, False):
+            low, high = 0.0, 1.0
+            for _ in range(PARAM_SEARCH_STEPS):
+                norm = (low + high) / 2.0
+                plugins.setParamValue(norm, param, index)
+                sets += 1
+                if abs(float(_safe(-1.0, plugins.getParamValue, param, index)) - norm) > PARAM_SEARCH_READBACK:
+                    self.queue_probe('param search ch%d p%d "%s": FL has not taken the set (try %d)' % (index, param, text, tries + 1))
+                    if tries + 1 >= PARAM_SEARCH_LATE_TRIES:
+                        return None
+                    self.param_search_late[key] = (text, tries + 1)
+                    return PARAM_ANCHOR_WAIT
+                shown = str(_safe("", plugins.getParamValueString, param, index))
+                number = param_number(shown)
+                if shown == text or number == target:
+                    self.queue_probe(
+                        'param search ch%d p%d "%s" -> %.5f, %d sets, %.1f ms'
+                        % (index, param, text, norm, sets, (time.time() - started) * 1000.0)
+                    )
+                    return norm
+                if number is None:
+                    break
+                miss = abs(number - target)
+                if best is None or miss < best_miss:
+                    best, best_miss = norm, miss
+                if (number < target) == rising:
+                    low = norm
+                else:
+                    high = norm
+        if best is None:
+            return None
+        plugins.setParamValue(best, param, index)
+        self.queue_probe(
+            'param search ch%d p%d "%s" -> closest %.5f (off by %s), %d sets, %.1f ms'
+            % (index, param, text, best, best_miss, sets + 1, (time.time() - started) * 1000.0)
+        )
+        return best
 
     def run_step_edit(self, function):
         """A clipboard action: an error in FL is logged, never raised."""
@@ -3849,6 +3987,9 @@ def OnDirtyMixerTrack(index):
 def OnProjectLoad(status):
     try:
         _bridge.mark_all()
+        _bridge.param_units.clear()
+        _bridge.params_anchored.clear()
+        _bridge.param_search_late.clear()
         if status not in (midi.PL_Start, getattr(midi, "PL_LoadError", -1)):
             _bridge.marker_stale = True  # a new project: scan its markers as soon as FL is stopped
         if status != midi.PL_Start:
