@@ -18,7 +18,7 @@ scripts/install-fl-script.sh  # symlink the FL script into FL's Hardware folder
 npm run typecheck             # tsc, no output
 npm run lint                  # eslint
 npm test                      # vitest, no hardware
-npm run check                 # prettier, typecheck, lint, vitest, FL script tests (also CI)
+npm run check                 # prettier, typecheck, lint, vitest, FL script tests
 npm run enumerate             # list NI USB/HID devices (read-only)
 npm run enumerate -- --open   # also read HID input for 5 s
 npm run inputlog              # live input events (--raw, --moves, --record <file>, --reset)
