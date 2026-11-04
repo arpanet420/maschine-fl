@@ -1,161 +1,132 @@
 # maschine-fl
 
-Control **FL Studio directly with the Maschine workflow**: a **Native Instruments Maschine MK3** that
-works as FL Studio's own hardware controller on macOS, with Maschine's way of working on the pads,
-knobs and buttons and FL Studio's look on the two screens.
-
-## The goal
-
-Maschine is a great way to make music, and FL Studio is where many people already have their
-projects, plugins and habits. Normally you pick one: the MK3 drives NI's Maschine software or
-Komplete Kontrol, or you map it to FL as a plain MIDI box and lose the workflow. This project aims at
-the third option: **FL Studio stays the DAW** (its channel rack, patterns, mixer, plugins and
-projects), and **the MK3 behaves like Maschine** on top of it: hold PATTERN to pick and double
-patterns, play the pads as a keyboard, chords or arpeggios, turn the eight knobs on the plugin's own
-parameters (NKS pages), step-sequence on the pads, browse presets, see FL's mixer and meters on the
-screens, and launch the scenes of FL's performance mode from the pads. No NI software runs, and
+**Use a Native Instruments Maschine MK3 as FL Studio's own controller, with Maschine's way of working.**
+FL Studio stays the DAW, with its channel rack, patterns, mixer, plug-ins and projects. The MK3 behaves
+like Maschine on top of it, and its two screens are drawn in FL's look. NI's software doesn't run, and
 nothing in FL needs to be mapped by hand.
 
-> **Experimental, vibe-coded software.** This project was built by prompting an AI coding
-> assistant ([Claude Code](https://claude.com/claude-code)) and testing the result on real hardware.
-> One person has tried it, on one MK3, with FL Studio 26.1.5 on macOS 27. Expect rough edges and
-> things that only work on that setup. It is not reviewed by a team, it has no warranty, and it is
-> not affiliated with Native Instruments or Image-Line. Please read [Status](#status) before you
-> install it, and tell us what breaks. See [How this was made](#how-this-was-made).
+![The MK3's two screens on the ARRANGER page: the current pattern as channels and steps](docs/images/arranger.png)
 
-![Arranger: the current pattern as channels × steps](docs/images/arranger.png)
+> **Experimental, vibe-coded software.** It was built by prompting an AI coding assistant
+> ([Claude Code](https://claude.com/claude-code)) and testing the result on real hardware. One person has
+> tried it, on one MK3, with FL Studio 26.1.5 on macOS 27. Expect rough edges and things that only work on
+> that setup. It has no warranty, and it isn't affiliated with Native Instruments or Image-Line. Read
+> [Status](#status) before you install it, and keep FL's autosave on.
 
-The MK3 normally only works properly with NI's own software. This project replaces that layer:
+## Platforms
 
-- **mk3d**, a small macOS background daemon (Node + TypeScript), takes over the MK3 over USB. It
-  reads the pads, buttons, knobs, 4D encoder and touch strip, and drives the two colour screens
-  and every LED.
-- **MK3Bridge**, a MIDI controller script for FL Studio (Python), talks to mk3d over virtual MIDI
-  ports and SysEx. It sends FL's state (channels, mixer, patterns, plugins, transport) to the MK3
-  and carries out what you do on the hardware.
+| Platform                  | State                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| **macOS** (Apple Silicon) | Works, on the author's machine                                                                                                          |
+| **Windows**               | Port begun: the tests pass there, but it hasn't run with an MK3 or FL Studio yet and the screens have no route yet. See [docs/windows.md](docs/windows.md) |
 
-```
- Maschine MK3 ──USB/HID──▶ mk3d ──virtual MIDI + SysEx──▶ FL Studio (MK3Bridge script)
-   pads, knobs, 4D,        (Node)  "MK3 Bridge" / "MK3 Bridge FB"
-   strip, buttons  ◀──screens and LEDs──┘
-```
-
-While mk3d has the device, NI's own software cannot use it. Nothing on the MK3 is modified: mk3d
-only sends the standard LED and display reports (`0x80` / `0x81`), never firmware or feature
-reports.
+Other controllers (MK2, Mikro, Studio), Intel Macs and other FL versions are untested.
 
 ## What it does
 
-The buttons work the way they do in Maschine, mapped to the nearest FL Studio concept:
+The buttons work as they do in Maschine, mapped to the nearest thing in FL Studio.
 
-| On the MK3                       | In FL Studio                                                                                                                                                                    |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **CHANNEL / PLUG-IN**            | The selected channel and its plugin's parameters on the 8 knobs; NKS pages (names, sections, logo) for NKS-ready plugins such as u-he Diva, FL's own parameter list otherwise   |
-| **MIXER**                        | FL's mixer in FL's look: tracks tinted with their colour, volume, pan, meters, mute/solo per strip                                                                              |
-| **ARRANGER**                     | The current pattern as channels × steps, with the play head                                                                                                                     |
-| **PATTERN** (hold)               | Pick, **create** (a pad that is empty), duplicate and **double** patterns (the notes are copied); pattern length (16, 32, 64 …) and colour on the knobs                         |
-| **STEP**                         | Step sequencer for the selected channel, 16 steps per page                                                                                                                      |
-| **PAD MODE / KEYBOARD / CHORDS** | Play channels, a scale, or chords (harmonizer and chord sets); in PAD MODE a channel's pad lights up while FL plays it                                                          |
-| **NOTE REPEAT**                  | Note repeat with straight, dotted and triplet rates, LOCK, HOLD and GATE RESET; in KEYBOARD and CHORDS it can also arpeggiate (types, octaves, presets, rhythms, inversions, key range) |
-| **NAVIGATE** (VARIATION)         | One press opens it: toggle FL's Playlist, Piano roll, Channel rack, Mixer, Browser and plug-in window from the display buttons                                                 |
-| **SELECT / MUTE / SOLO** (hold)  | Per channel, in banks of 16 picked with GROUP A–H                                                                                                                               |
-| **BROWSER**                      | The selected plugin's presets (scroll, highlight, load); **PLUG-INS** opens FL's plugin picker to add an instrument as a new channel                                            |
-| **SCENE**, **SHIFT + RESTART**   | Jump between playlist markers, set the song loop                                                                                                                                |
-| **SHIFT + SCENE** (LIVE)         | FL's performance mode: a pad launches a scene (a column of clips) at the track's trigger snap; the screens show the tracks and the clip matrix with pattern names, bar and beat |
-| **VOLUME / SWING / TEMPO**       | Quick edit with the 4D encoder                                                                                                                                                  |
-| **SHIFT + pads**                 | Undo, redo, quantize, clear, copy, paste, octave and semitone                                                                                                                   |
-| **Touch strip**                  | Pitch bend, mod wheel, filter sweep, or play notes; play position when idle                                                                                                     |
-| **FILE / SETTINGS / FIXED VEL**  | Save, save a new version; pad velocity curve; fixed velocity                                                                                                                    |
+| On the MK3                       | In FL Studio                                                                                                                                                            |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **CHANNEL / PLUG-IN**            | The selected channel and its plug-in's parameters on the 8 knobs. NKS pages (names, sections, logo) for NKS-ready plug-ins, FL's own parameter list otherwise           |
+| **MIXER**                        | FL's mixer in FL's look: tracks in their colour, volume, pan, meters, mute and solo per strip                                                                           |
+| **ARRANGER**                     | The current pattern as channels and steps, with the play head                                                                                                           |
+| **PATTERN** (hold)               | Pick, create, duplicate and double patterns, with the notes copied; length (16, 32, 64 …) and colour on the knobs                                                       |
+| **STEP**                         | Step sequencer for the selected channel, 16 steps per page. Hold a step to edit its velocity and pitch                                                                  |
+| **PAD MODE / KEYBOARD / CHORDS** | Play channels, a scale or chords (harmonizer and chord sets). KEYBOARD keeps its octave per channel. In PAD MODE a pad lights up while FL plays its channel              |
+| **NOTE REPEAT**                  | Straight, dotted and triplet rates, LOCK, HOLD and GATE RESET. In KEYBOARD and CHORDS it can also arpeggiate (types, octaves, presets, rhythms, inversions, key range)  |
+| **NAVIGATE** (VARIATION)         | Press to open: show or hide FL's Playlist, Piano roll, Channel rack, Mixer, Browser and plug-in window from the display buttons                                         |
+| **GRID** (SHIFT + FOLLOW)        | FL's snap on the pads, and input quantize on display 2                                                                                                                  |
+| **SELECT / MUTE / SOLO** (hold)  | Per channel, in banks of 16 picked with GROUP A–H                                                                                                                       |
+| **BROWSER**                      | The selected plug-in's presets (scroll, highlight, load). **PLUG-INS** opens FL's plug-in picker to add an instrument as a new channel                                  |
+| **SCENE**, **SHIFT + RESTART**   | Jump between playlist markers, set the song loop                                                                                                                        |
+| **SHIFT + SCENE** (LIVE)         | FL's performance mode: a pad launches a scene at the track's trigger snap, and the screens show the tracks and the clip matrix with pattern names, bar and beat         |
+| **VOLUME / SWING / TEMPO**       | Quick edit with the 4D encoder                                                                                                                                          |
+| **SHIFT + pads**                 | Undo, redo, quantize, clear, copy, paste, octave and semitone                                                                                                           |
+| **Touch strip**                  | Pitch bend, mod wheel, filter sweep, or play notes; play position when idle                                                                                             |
+| **FILE / SETTINGS / FIXED VEL**  | Save, save a new version; pad velocity curve and screen brightness; fixed velocity                                                                                      |
 
-Page buttons also bring up the matching FL window (mixer, playlist, channel rack, piano roll).
+Touching a knob twice resets it on the pages that have a default, and the page buttons also bring up the
+matching FL window. Every control is in [docs/mapping.md](docs/mapping.md).
 
 |                                                       |                                                                        |
 | ----------------------------------------------------- | ---------------------------------------------------------------------- |
+| ![NAVIGATE](docs/images/navigate.png)                 | ![Note repeat](docs/images/note-repeat.png)                            |
+| **NAVIGATE**: FL's windows on the display buttons     | **NOTE REPEAT**: rate, gate, swing and the rhythm it plays             |
 | ![Step sequencer](docs/images/step-playing-page2.png) | ![Mixer with the quick-edit read-out](docs/images/quickedit-mixer.png) |
 | **STEP**: 64-step pattern, page 2, play head          | **MIXER** with the VOLUME quick edit                                   |
 | ![Pattern page](docs/images/pattern-double.png)       | ![Chords](docs/images/chords-set.png)                                  |
 | **PATTERN**: DOUBLE, length knob, empty slots         | **CHORDS**: diatonic chord set in C minor                              |
 | ![Arpeggiator](docs/images/arp-cminor.png)            | ![Preset browser](docs/images/browser-cursor.png)                      |
-| **ARP**: Up/Down over 2 octaves                       | **BROWSER**: highlight vs loaded preset                                |
+| **ARP**: Up/Down over 2 octaves                       | **BROWSER**: highlight and loaded preset                               |
 | ![Touch strip read-out](docs/images/strip-pitch.png)  | ![LIVE](docs/images/live.png)                                          |
 | **Touch strip** in PITCH mode                         | **LIVE**: performance-mode scenes, one playing and one queued          |
 
-The screen images come from `npm run pagepng`, which renders every page from a demo project
-without the hardware. The full control list is in [docs/mapping.md](docs/mapping.md).
+The images come from `npm run pagepng`, which renders every page from a demo project without the hardware.
 
 ## Status
 
-Everything below was tried by the author on one MK3 and FL Studio 26.1.5 (macOS 27, Apple
-Silicon) unless it says otherwise.
+Tried by the author on one MK3 with FL Studio 26.1.5 (macOS 27, Apple Silicon), unless it says otherwise.
 
-**Works well (tried on hardware):**
+**Works on the hardware**
 
-- **Making patterns:** the page model and every page button listed above; pads in all three pad
-  modes, with PAD MODE's pads lighting up while the sequencer plays their channel; STEP; recording
-  from the pads; PATTERN (create, length, double, colour); SHIFT + pads (undo, redo, quantize,
-  clear, copy, paste); NOTE REPEAT and the arpeggiator; CHORDS.
-- **Sound and mix:** CHANNEL / PLUG-IN knobs with NKS pages; the MIXER with meters; BROWSER
-  presets; adding an instrument through FL's plugin picker; the touch strip in PITCH, MOD and
-  NOTES modes.
-- **Song:** ARRANGER (pattern overview), SCENE (jumps between playlist markers), the song loop
-  on and off (SHIFT + RESTART), FILE (save).
-- **Performance (LIVE):** launching scenes in FL's performance mode (every track with a clip in
-  that column starts, the others stop, at each track's trigger snap), STOP, paging through 16
-  columns at a time, and screens that show which track plays which pattern without looking at
-  the computer.
+- **Making patterns:** the page model, the pads in all three pad modes, STEP, recording from the pads,
+  PATTERN (create, length, double, colour), SHIFT + pads, NOTE REPEAT, the arpeggiator and CHORDS.
+- **Sound and mix:** CHANNEL and PLUG-IN knobs with NKS pages, MIXER with meters, BROWSER presets, adding an
+  instrument through FL's plug-in picker, the touch strip in PITCH, MOD and NOTES, and screen brightness.
+- **Song:** ARRANGER, SCENE, the song loop on and off (SHIFT + RESTART), FILE, and NAVIGATE, including a
+  window behind another coming up on the first press.
+- **Performance:** launching scenes in LIVE, STOP, paging through 16 columns at a time, and screens that show
+  which track plays which pattern.
 
-In short: everything up to and including playing a set works from the MK3. Putting the clips of
-a set into the playlist does not (see [Limits](#limits)).
+In short, you can make patterns and play a set from the MK3. Placing the clips of that set in the playlist
+still takes the computer (see [Limits](#limits)).
 
-**Known problems and not yet tried:**
+**Built, not yet confirmed on the hardware**
 
-- **SHIFT + pads 13–16 (octave and semitone) move the notes of a step-sequencer channel, but
-  notes recorded or drawn in the piano roll are moved wrongly** (one note per step, chords can
-  split). FL's script API cannot select or move piano roll notes. Use FL's own transpose for those.
-- **BROWSER on plugins with their own patch browser** (u-he Diva, for example) steps FL's generic
-  "Program n" list, not the plugin's patches: each step renames the channel and adds an undo step.
-  It works as intended on plugins whose presets FL lists.
-- **SCENE's marker positions** come from a scan that can be off after edits in FL until SCENE is
-  opened again. The LOOP overlay (holding SHIFT + RESTART to move the loop's ends) is not
-  confirmed on hardware yet.
-- **Touch strip PERFORM** (filter sweep) finds the plugin's cutoff parameter by name; the fix for
-  picking the wrong parameter is not yet confirmed on hardware.
-- **FL windows following the page buttons** works, but it is not certain it is useful; it may
-  change.
-- **FL Studio froze once** during a session with the script running (2026-10-21); macOS recorded no
-  details and the cause is unknown. Keep FL's autosave on.
-- **The installer is untested on other machines**: the `mk3d` command, the login item
-  (LaunchAgent) and the Homebrew formula are written and tested without hardware only, and the
-  formula has never run under Homebrew. See [docs/install.md](docs/install.md).
-- **Other hardware and versions** (Maschine MK2, Mikro, Studio, Intel Macs, other FL versions,
-  Windows) are untested. A Windows port has begun, see [docs/windows.md](docs/windows.md); it hasn't
-  run with an MK3 yet.
-- A **sample editor** is an idea, not built.
+- PLUG-IN's fix for parameters that jump on the first turn ([bug 6](docs/bugs.md)). FL can't report such a
+  parameter's position until it has been set once, so its knob shows the value without a position until you
+  first turn it, and while FL records, it doesn't move at all.
+- KEYBOARD's octave per channel, and whether GRID's input quantize changes what you record as FL's manual says.
+- NOTE REPEAT's LOCK and HOLD, holding a step to edit it, and touching a knob twice to reset it.
+- The LOOP overlay (holding SHIFT + RESTART to move the loop's ends), and touch strip PERFORM picking the
+  plug-in's cutoff by name.
 
-## Requirements
+**Known problems**
 
-- macOS (tested on macOS 27 on Apple Silicon)
-- Maschine MK3
-- FL Studio 2026 (tested with 26.1.5). Some features use functions added to FL's scripting API in
-  2026, and fall back gracefully on older versions.
-- Node.js 22 or newer (tested with 24), installed by Homebrew if you use it; Python 3 for the FL script's tests
+- **SHIFT + pads 13–16 (octave and semitone)** move the notes of a step-sequencer channel, but move notes
+  recorded or drawn in the piano roll wrongly: one note per step, and chords can split. FL's script API can't
+  select or move piano roll notes, so use FL's own transpose for those.
+- **BROWSER on plug-ins with their own patch browser**, u-he Diva for example, steps FL's generic "Program n"
+  list. Each step renames the channel and adds an undo step. It works as intended on plug-ins whose presets
+  FL lists.
+- **SCENE's marker positions** come from a scan that can be off after edits in FL until SCENE is opened again.
+- **FL Studio froze once** with the script running (2026-10-21). macOS recorded no details and the cause is
+  unknown.
+- **The installer is untested on other machines.** The `mk3d` command, the login item and the Homebrew formula
+  are tested without hardware only, and the formula has never run under Homebrew.
+
+Bugs found on the hardware are numbered in [docs/bugs.md](docs/bugs.md).
 
 ## Getting started
+
+You need:
+
+- A Maschine MK3
+- macOS (tested on macOS 27, Apple Silicon)
+- FL Studio 2026 (tested with 26.1.5). Some features use functions added to FL's scripting API in 2026 and fall
+  back on older versions
+- Node.js 22 or newer (tested with 24), which Homebrew installs for you
 
 With [Homebrew](https://brew.sh):
 
 ```bash
 brew tap arpanet420/maschine-fl https://github.com/arpanet420/maschine-fl
 brew install --HEAD maschine-fl
-mk3d setup --service   # link the FL script, start mk3d at login
+mk3d setup --service
 ```
 
-Then, in FL Studio under Options → **MIDI Settings**, enable the **MK3 Bridge** input with
-controller type **MK3 Bridge**, and give the **MK3 Bridge FB** output the same port number.
-`mk3d doctor` checks the install. See [docs/install.md](docs/install.md) (upgrading, uninstalling,
-troubleshooting) and [docs/setup.md](docs/setup.md) (FL's settings step by step).
-
-From a clone, without Homebrew:
+Or from a clone:
 
 ```bash
 git clone https://github.com/arpanet420/maschine-fl.git
@@ -164,91 +135,119 @@ npm install
 ./bin/mk3d setup --service
 ```
 
-`mk3d stop --restore-ni` gives the MK3 back to NI's software, and `mk3d uninstall` removes
-everything it installed. mk3d never deletes or edits NI's files.
+`mk3d setup --service` links the FL script and starts mk3d at login. Then, in FL Studio under
+Options → **MIDI Settings**:
+
+1. Select the **MK3 Bridge** input, enable it, set its controller type to **MK3 Bridge** and give it a port number.
+2. Give the **MK3 Bridge FB** output the same port number.
+
+`mk3d doctor` checks the install. [docs/install.md](docs/install.md) covers upgrading, uninstalling and
+troubleshooting, and [docs/setup.md](docs/setup.md) goes through FL's settings step by step.
+
+**Going back to NI's software:** while mk3d has the MK3, NI's software can't use it. `mk3d stop --restore-ni` gives
+it back, and `mk3d uninstall` removes everything mk3d installed. mk3d never edits or deletes NI's files.
+
+## How it works
+
+```
+ Maschine MK3 ──USB/HID──▶ mk3d ──MIDI + SysEx──▶ FL Studio (MK3Bridge script)
+   pads, knobs, 4D,       (Node)  "MK3 Bridge" / "MK3 Bridge FB"
+   strip, buttons  ◀──screens and LEDs──┘
+```
+
+- **mk3d** is a small background daemon in Node and TypeScript. It takes over the MK3 over USB, reads the pads,
+  buttons, knobs, 4D encoder and touch strip, and drives the two colour screens and every LED.
+- **MK3Bridge** is a MIDI controller script for FL Studio, in Python. It sends FL's state (channels, mixer,
+  patterns, plug-ins, transport) to mk3d and carries out what you do on the hardware.
+
+Nothing on the MK3 is modified. mk3d sends LED and display reports, plus one feature report that sets the screen
+brightness from SETTINGS. It never sends firmware commands.
 
 ## Limits
 
-FL Studio's scripting API does not expose everything Maschine can do. These are the walls we
-hit, each tried before it was written down:
+FL Studio's scripting API doesn't expose everything Maschine can do. Each of these was tried before it was
+written down.
 
-- **Building a performance set needs the computer.** No script call places, moves or deletes
-  playlist clips. FL's own way of placing a clip without the mouse, recording in Song mode, does
-  not work once performance mode is on (the song position can't be set to a column, and nothing is
-  recorded). Arrange the clips in FL's playlist, then play the set from the MK3.
-- **The playlist is only readable in performance mode**, and then only as filled / queued /
-  playing blocks with a colour: no clip names. LIVE names a clip by the one pattern that has its
-  colour, so give your patterns distinct colours (PATTERN, knob 1). LIVE reads the first 8 tracks
-  and launches whole scenes, not single clips (yet).
-- **Piano roll notes can't be read or edited**, so ARRANGER shows step-sequencer patterns and
-  there is no Maschine-style EVENTS page.
-- **Plugins can't be loaded from a script**, only through FL's plugin picker (BROWSER, PLUG-INS);
-  mk3d can't show the names there, you pick by looking at FL's screen.
-- **NKS presets can't be loaded from the MK3.** The preset list a script can step is FL's, which
-  for many plugins is not the plugin's own patch library ([docs/nks.md](docs/nks.md)).
-- **No pattern delete, step undo, nudge or audio sampling**: FL has no script call for them.
+- **Building a performance set needs the computer.** No script call places, moves or deletes playlist clips, and
+  recording in Song mode doesn't work once performance mode is on. Arrange the clips in FL's playlist, then play
+  the set from the MK3.
+- **The playlist is only readable in performance mode**, and only as filled, queued or playing blocks with a
+  colour, without clip names. LIVE names a clip by the one pattern that has its colour, so give your patterns
+  distinct colours. LIVE reads the first 8 tracks and launches whole scenes, not single clips.
+- **Piano roll notes can't be read or edited**, so ARRANGER shows step-sequencer patterns and there is no
+  Maschine-style EVENTS page.
+- **Plug-ins can't be loaded from a script**, only through FL's picker, where mk3d can't show the names. You pick by
+  looking at FL's screen.
+- **NKS presets can't be loaded from the MK3.** The list a script can step is FL's, which for many plug-ins isn't
+  the plug-in's own patch library ([docs/nks.md](docs/nks.md)).
+- **A plug-in's parameter position can be unknown.** Some plug-ins, u-he Repro-5 for one, report no usable
+  position to a script until the parameter has been set once.
+- **No pattern delete, step undo, nudge or audio sampling:** FL has no script call for them. A sample editor is an
+  idea, not built.
 
-[docs/workflow.md](docs/workflow.md) lists what maps and what doesn't.
+[docs/workflow.md](docs/workflow.md) lists what maps to FL and what doesn't.
 
-## Research notes
+## Documentation
 
-Much of the work was finding out how things behave, and the findings are written down in
-[docs](docs/) in case they help someone else:
+Much of the work was finding out how things behave, and it is written down in case it helps someone else.
 
-| Doc                             | What                                                                                                               |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| [protocol.md](docs/protocol.md) | The MK3's USB / HID protocol: input reports, pads, screens, LEDs, each fact marked verified or not                 |
-| [sysex.md](docs/sysex.md)       | The SysEx protocol between mk3d and the FL script, with shared test vectors                                        |
-| [nks.md](docs/nks.md)           | How NKS plugin pages, preset names and logos are found in NI's installed files (read-only)                         |
-| [fl-ilmcp.md](docs/fl-ilmcp.md) | FL Studio 2026's undocumented scripting functions: what exists, what works from a controller script, what does not |
-| [design.md](docs/design.md)     | How FL draws its mixer and controls, and how the screens copy the look                                             |
-| [workflow.md](docs/workflow.md) | Maschine's workflow mapped to FL, and what has no equivalent                                                       |
-| [mapping.md](docs/mapping.md)   | Every control, page and overlay                                                                                    |
+| Doc                             | What                                                                                     |
+| ------------------------------- | ---------------------------------------------------------------------------------------- |
+| [mapping.md](docs/mapping.md)   | Every control, page and overlay                                                          |
+| [workflow.md](docs/workflow.md) | Maschine's workflow mapped to FL, and what has no equivalent                             |
+| [install.md](docs/install.md)   | Installing, upgrading, uninstalling, troubleshooting                                     |
+| [setup.md](docs/setup.md)       | FL Studio's settings, step by step                                                       |
+| [windows.md](docs/windows.md)   | The Windows port: status, setup, timers, how the screens could work                      |
+| [bugs.md](docs/bugs.md)         | Bugs found on the hardware, numbered, with their status                                  |
+| [protocol.md](docs/protocol.md) | The MK3's USB and HID protocol, each fact marked verified or not                         |
+| [sysex.md](docs/sysex.md)       | The SysEx protocol between mk3d and the FL script, with shared test vectors              |
+| [nks.md](docs/nks.md)           | How NKS pages, preset names and logos are found in installed files (read-only)           |
+| [fl-ilmcp.md](docs/fl-ilmcp.md) | FL Studio 2026's undocumented scripting functions: what exists and what works            |
+| [design.md](docs/design.md)     | How FL draws its mixer and controls, and how the screens copy the look                   |
 
-The protocol facts come from observing the author's own unit with small diagnostic tools in
-`src/tools/` and from reading NI's installed agent for interoperability. Treat anything marked
-unverified as a guess.
+The protocol facts come from observing the author's own unit with the diagnostic tools in `src/tools/`, from reading
+NI's installed agent for interoperability, and from the projects under [Acknowledgements](#acknowledgements). Treat
+anything marked unverified as a guess.
 
 ## How this was made
 
-The code, the tests and the documents were written by Claude Code from the author's prompts,
-specifications and hardware test results, in small steps: the author tried each change on the
-MK3 and in FL Studio and reported what happened, and the next change followed from that.
-[CLAUDE.md](CLAUDE.md) holds the rules the assistant works under (for example, nothing is ever
-sent to the MK3 except LED and display reports, tests never touch hardware, and the FL script
-must catch every exception) and [PLAN.md](PLAN.md) is the plan and hardware test log. The automated tests (about 1,200 in TypeScript, 390 in Python) check the logic
-without hardware, but only the author's own use shows whether it feels right, so read the code
-before you trust it with a project you care about, and keep FL's own backups on.
+Claude Code wrote the code, the tests and the documents from the author's prompts, specifications and hardware
+test results, in small steps. The author tried each change on the MK3 and in FL Studio and reported what happened,
+and the next change followed from that. [CLAUDE.md](CLAUDE.md) holds the rules the assistant works under, such as
+which reports may go to the MK3, that tests never touch hardware and that the FL script must catch every exception.
+[PLAN.md](PLAN.md) is the plan and the hardware test log.
+
+About 1,300 tests in TypeScript and 400 in Python check the logic without hardware, but only real use shows whether
+it feels right. Read the code before you trust it with a project you care about, and keep FL's own backups on.
 
 ## Contributing
 
-Reports from other setups are the most useful thing right now: which MK3 firmware, which macOS
-and FL versions, what worked, what did not. The daemon's log (`mk3d logs`) shows what FL and the
-MK3 said; it contains your MK3's serial number, so remove that before you paste it anywhere.
-Pull requests are welcome, small ones first. Run `npm run typecheck`, `npm run lint`,
-`npm test` and `npm run test:fl` before you send one.
+Reports from other setups are the most useful thing right now: which MK3 firmware, which macOS and FL versions, what
+worked and what didn't. The daemon's log (`mk3d logs`) shows what FL and the MK3 said. It contains your MK3's serial
+number, so remove that before you paste it anywhere.
+
+Pull requests are welcome, small ones first. Run `npm run check` before you send one.
 
 ## Development
 
 ```bash
-npm run typecheck   # tsc
-npm run lint        # eslint
-npm test            # vitest, no hardware needed
-npm run test:fl     # the FL script's Python tests
-npm run build       # compile to dist/ for the installed daemon
-npm run pagepng     # render every page to out/*.png
+npm run check      # prettier, typecheck, lint, the vitest tests and the FL script's tests (no hardware)
+npm run mk3d       # run the daemon from source
+npm run pagepng    # render every page to out/*.png from a demo project
+npm run build      # compile to dist/ for the installed daemon
 ```
 
-| Path                   | What                                                                                                                                                                                                                         |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bin/mk3d`             | The installed command: setup, service, doctor, logs                                                                                                                                                                          |
-| `Formula/`             | The Homebrew formula                                                                                                                                                                                                         |
-| `src/hw/`              | USB/HID input, LEDs and the two displays                                                                                                                                                                                     |
-| `src/modes/`           | The page model and every page (Maschine's page stack: home, main pages, hold-to-peek overlays, tool pages)                                                                                                                   |
-| `src/fl/`              | The SysEx protocol and FL's state on the mk3d side                                                                                                                                                                           |
-| `src/nks/`             | NKS lookup: matching FL plugins to NKS presets and their knob pages                                                                                                                                                          |
-| `fl-script/MK3Bridge/` | The FL Studio MIDI script                                                                                                                                                                                                    |
-| `docs/`                | Protocol notes ([USB](docs/protocol.md), [SysEx](docs/sysex.md)), the [control mapping](docs/mapping.md), the [workflow design](docs/workflow.md) and notes on FL's undocumented functions ([fl-ilmcp.md](docs/fl-ilmcp.md)) |
+| Path                   | What                                                                 |
+| ---------------------- | -------------------------------------------------------------------- |
+| `src/hw/`              | USB and HID input, LEDs and the two displays                         |
+| `src/modes/`           | The page model and every page                                        |
+| `src/fl/`              | The SysEx protocol and FL's state on the mk3d side                   |
+| `src/nks/`             | Matching FL's plug-ins to NKS presets and their knob pages           |
+| `src/platform.ts`      | What differs between macOS and Windows                               |
+| `src/tools/`           | Diagnostic tools: enumerate, input log, LED and display tests        |
+| `fl-script/MK3Bridge/` | The FL Studio MIDI script                                            |
+| `bin/mk3d`, `Formula/` | The installed command and the Homebrew formula                       |
+| `scripts/`             | NI's agents, linking the FL script, copying to a Windows machine     |
 
 ## Acknowledgements
 
@@ -269,9 +268,14 @@ This would have taken far longer without other people's open work. Thank you to:
   together.
 - [**IL-Group/FL-Studio-API-Stubs**](https://github.com/IL-Group/FL-Studio-API-Stubs) (LGPL-3.0), by
   Image-Line: the documentation of FL Studio's MIDI scripting API that the FL script was checked against.
+- [**Panic-Signals/Deckard**](https://github.com/Panic-Signals/Deckard) (GPL-2.0), an open-source Maschine clone with
+  its own MK3 driver: the first place to look when unsure how Maschine behaves, and the source of three hardware
+  facts, among them the screen brightness report.
+- [**RufusIbiza/Encdr**](https://github.com/RufusIbiza/Encdr) (GPL-3.0), a Rust library for NI controllers, which draws
+  the MK3's screens through NI's own service on Windows: the likely route for this project's Windows port.
 
-Nothing from these projects is copied into this repository (the palette table, from cabl, is
-credited with its licence in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)). Thanks also to the
+No code from these projects is in this repository; the palette table from cabl and the facts taken from others are
+credited in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Thanks also to the
 authors of [node-hid](https://github.com/node-hid/node-hid), [node-usb](https://github.com/node-usb/node-usb),
 [@julusian/midi](https://github.com/Julusian/node-midi) and
 [@napi-rs/canvas](https://github.com/Brooooooklyn/canvas), which mk3d is built on.

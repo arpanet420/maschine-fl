@@ -15,9 +15,6 @@ mk3d setup --service
 `~/Documents/Image-Line/FL Studio/Settings/Hardware/`, and installs a per-user LaunchAgent so mk3d
 starts at login and restarts if it dies. Then do FL's MIDI settings (below).
 
-The repository is currently private, so `brew tap` needs a GitHub login that can read it
-(`gh auth login`, or a credential helper for git).
-
 **UNVERIFIED:** the formula (`Formula/maschine-fl.rb`) has only been syntax-checked with `ruby -c`;
 Homebrew was not available when it was written.
 
