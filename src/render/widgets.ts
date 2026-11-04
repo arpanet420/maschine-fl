@@ -40,7 +40,7 @@ export const theme = {
   record: "#e85028",
 };
 
-/** A canvas font string: Barlow (SemiBold for bold) from FL's bundle, else Helvetica Neue. */
+/** A canvas font string: Barlow (SemiBold for bold) from FL's install, else the fallback font. */
 export const font = (size: number, weight: "normal" | "bold" = "normal") => {
   const bold = weight === "bold";
   const family = fontFamily(bold);

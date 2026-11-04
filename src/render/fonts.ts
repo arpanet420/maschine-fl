@@ -3,16 +3,12 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { GlobalFonts } from "@napi-rs/canvas";
-
-const FONT_DIRS = [
-  "/Applications/FL Studio 2026.app/Contents/Resources/FL/Shared/Artwork/Fonts",
-  "/Applications/FL Studio 2025.app/Contents/Resources/FL/Shared/Artwork/Fonts",
-];
+import { fallbackFont, flFontDirs } from "../platform.js";
 
 /** Canvas family names the two weights are registered under. */
 export const BARLOW_MEDIUM = "Barlow Medium";
 export const BARLOW_SEMIBOLD = "Barlow SemiBold";
-export const FALLBACK_FAMILY = "Helvetica Neue";
+export const FALLBACK_FAMILY = fallbackFont();
 
 const FILES: ReadonlyArray<[file: string, family: string]> = [
   ["Barlow-Medium.ttf", BARLOW_MEDIUM],
@@ -25,7 +21,7 @@ let registered: boolean | undefined;
  * Registers Barlow Medium and SemiBold once (later calls return the first result). True when
  * both weights are available. Never throws.
  */
-export function registerFonts(dirs: readonly string[] = FONT_DIRS): boolean {
+export function registerFonts(dirs: readonly string[] = flFontDirs()): boolean {
   if (registered !== undefined) return registered;
   registered = false;
   try {
@@ -46,7 +42,7 @@ export function registerFonts(dirs: readonly string[] = FONT_DIRS): boolean {
   return registered;
 }
 
-/** The canvas family for a weight: Barlow when registered, else Helvetica Neue. */
+/** The canvas family for a weight: Barlow when registered, else the fallback font. */
 export function fontFamily(bold: boolean): string {
   if (!registerFonts()) return FALLBACK_FAMILY;
   return bold ? BARLOW_SEMIBOLD : BARLOW_MEDIUM;

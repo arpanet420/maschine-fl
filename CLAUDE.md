@@ -26,6 +26,7 @@ npm run ledtest -- <mode>     # LEDs: walk | levels | ladder | rainbow | palette
 npm run displaytest -- <mode> # screens: bars | grid | text | partial | anim | widgets (--png: write out/*.png)
 npm run pagepng               # quick edit, NAVIGATE, GRID, NOTE REPEAT and ARP, BROWSER, FILE, SETTINGS, ARRANGER (pattern overview), SCENE, PATTERN (length and color on one page, double), touch strip read-outs, LOOP, LIVE, KEYBOARD scales, CHORDS, SHIFT-pad LEDs and read-outs as out/ui-*.png (demo project)
 scripts/ni-agents.sh status   # NI agents: status | stop | start
+scripts/winsync.sh 'npm test' # copy the working tree to the Windows PC and run a command there (docs/windows.md)
 ```
 
 Tools run straight from TypeScript with `tsx`; the installed daemon (`bin/mk3d`, Homebrew formula in `Formula/`) runs the compiled `dist/main.js` with plain `node`.

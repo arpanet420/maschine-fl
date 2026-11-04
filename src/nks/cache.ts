@@ -1,12 +1,12 @@
 // On-disk cache of the NKS index, so a restart doesn't re-read thousands of preset files.
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
+import { cacheDir } from "../platform.js";
 import type { NksProduct } from "./types.js";
 
-/** Default `~/Library/Caches/mk3d/nks-index.json`. */
+/** Default `nks-index.json` in the cache folder (`src/platform.ts`). */
 export function defaultCachePath(): string {
-  return path.join(os.homedir(), "Library", "Caches", "mk3d", "nks-index.json");
+  return path.join(cacheDir(), "nks-index.json");
 }
 
 interface CacheFile {

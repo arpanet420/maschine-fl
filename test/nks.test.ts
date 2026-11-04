@@ -324,7 +324,7 @@ describe(".nfo parsing", () => {
 });
 
 describe("discovery", () => {
-  it("converts HFS paths", () => {
+  it.skipIf(process.platform === "win32")("converts HFS paths", () => {
     expect(
       hfsToPosix(
         "Macintosh HD:Library:Application Support:u-he:Diva:NKS:Diva:",
@@ -341,7 +341,7 @@ describe("discovery", () => {
     expect(hfsToPosix("Boot:Content:NKS:", path.join(tmp, "Volumes"))).toBe("/Content/NKS");
   });
 
-  it("reads ContentDir from NI plists and finds presets at any depth, skipping dot-folders", async () => {
+  it.skipIf(process.platform !== "darwin")("reads ContentDir from NI plists and finds presets at any depth, skipping dot-folders", async () => {
     const prefs = path.join(tmp, "prefs");
     const content = path.join(tmp, "content");
     fs.mkdirSync(prefs);

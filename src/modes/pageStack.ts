@@ -43,9 +43,9 @@
 //   have them saved with the pin states (NOTE REPEAT's rate, gate and swing, SCENE's NOW, the
 //   scale and chord settings of KEYBOARD and CHORDS).
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { SKRSContext2D } from "@napi-rs/canvas";
+import { settingsDir } from "../platform.js";
 import type { FlSection } from "../fl/flState.js";
 import type { HwEvent } from "../hw/events.js";
 import type { ButtonId } from "../hw/ids.js";
@@ -123,7 +123,7 @@ export const PAGE_DEFS: readonly PageDef[] = [
 export const HOLD_MS = 400;
 
 export function defaultPagesPath(): string {
-  return join(homedir(), "Library", "Application Support", "mk3d", "pages.json");
+  return join(settingsDir(), "pages.json");
 }
 
 export interface PageStackOptions {

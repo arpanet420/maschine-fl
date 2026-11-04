@@ -128,7 +128,8 @@ a set into the playlist does not (see [Limits](#limits)).
   (LaunchAgent) and the Homebrew formula are written and tested without hardware only, and the
   formula has never run under Homebrew. See [docs/install.md](docs/install.md).
 - **Other hardware and versions** (Maschine MK2, Mikro, Studio, Intel Macs, other FL versions,
-  Windows) are untested; there is no Windows support at all.
+  Windows) are untested. A Windows port has begun, see [docs/windows.md](docs/windows.md); it hasn't
+  run with an MK3 yet.
 - A **sample editor** is an idea, not built.
 
 ## Requirements

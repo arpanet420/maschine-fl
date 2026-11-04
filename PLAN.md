@@ -23,7 +23,7 @@ USB and turns it into a tightly integrated controller for FL Studio:
 
 - Sample chopping, waveforms and audio analysis.
 - Coexistence with the Maschine software. We take exclusive control of the device.
-- Windows. The architecture should still not lock Windows out unnecessarily.
+- Windows was out of scope at first; the port began on 2026-11-04, see `docs/windows.md`.
 
 ---
 

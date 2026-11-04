@@ -18,6 +18,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+// bin/mk3d is a bash script with launchd; Windows has neither (docs/windows.md).
+const unixDescribe = describe.skipIf(process.platform === "win32");
+
 const REPO = resolve(import.meta.dirname, "..");
 const MK3D = join(REPO, "bin", "mk3d");
 const LABEL = "io.github.arpanet420.mk3d";
@@ -52,7 +55,7 @@ afterEach(() => {
   rmSync(home, { recursive: true, force: true });
 });
 
-describe("setup", () => {
+unixDescribe("setup", () => {
   it("links the FL script and is idempotent", () => {
     const first = run(["setup"]);
     expect(first.code).toBe(0);
@@ -105,7 +108,7 @@ describe("setup", () => {
   });
 });
 
-describe("service", () => {
+unixDescribe("service", () => {
   it("print has the label, keep-alive, log paths and the program", () => {
     const r = run(["service", "print"]);
     expect(r.code).toBe(0);
@@ -149,7 +152,7 @@ describe("service", () => {
   });
 });
 
-describe("uninstall", () => {
+unixDescribe("uninstall", () => {
   it("removes the plist and our link", () => {
     run(["setup", "--service"]);
     const r = run(["uninstall"]);
@@ -170,7 +173,7 @@ describe("uninstall", () => {
   });
 });
 
-describe("misc", () => {
+unixDescribe("misc", () => {
   it("help exits 0, unknown commands exit 2 with the usage", () => {
     expect(run(["help"]).code).toBe(0);
     const bad = run(["frobnicate"]);

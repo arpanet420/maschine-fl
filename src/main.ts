@@ -45,7 +45,7 @@ import { SceneOverlay } from "./modes/sceneOverlay.js";
 import { SettingsPage } from "./modes/settingsPage.js";
 import { SoloOverlay } from "./modes/soloOverlay.js";
 import { StepPage } from "./modes/stepPage.js";
-import { registerFonts } from "./render/fonts.js";
+import { FALLBACK_FAMILY, registerFonts } from "./render/fonts.js";
 import { Screens } from "./render/screens.js";
 import { clear, drawHeader, font, theme } from "./render/widgets.js";
 import { StripControl } from "./strip.js";
@@ -217,6 +217,7 @@ const faults = new FaultReporter(log, undefined, () => updateScreens());
 // Coalesce redraws: song position alone arrives every 50 ms while playing.
 let screenJob: Promise<void> | undefined;
 let screenDirty = false;
+let lastScreenError: string | undefined;
 
 function updateScreens(): void {
   if (stopping) return;
@@ -236,8 +237,11 @@ function updateScreens(): void {
       try {
         await screens.flush();
         if (PNG_DIR) await screens.writePngs(PNG_DIR);
+        lastScreenError = undefined;
       } catch (err) {
-        log("screen update failed:", String(err));
+        // On Windows without access to the screens every frame fails the same way: say it once.
+        if (String(err) !== lastScreenError) log("screen update failed:", String(err));
+        lastScreenError = String(err);
       }
     }
     screenJob = undefined;
@@ -433,9 +437,14 @@ async function shutdown(): Promise<void> {
 process.on("SIGINT", () => void shutdown());
 process.on("SIGTERM", () => void shutdown());
 
-fl.open();
+try {
+  fl.open();
+} catch (err) {
+  log(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+}
 log(
-  `Screen font: ${registerFonts() ? "Barlow (from FL Studio)" : "Helvetica Neue (FL Studio fonts not found)"}`,
+  `Screen font: ${registerFonts() ? "Barlow (from FL Studio)" : `${FALLBACK_FAMILY} (FL Studio fonts not found)`}`,
 );
 log(`MIDI ports open: "${PORT_TO_FL}" (to FL) and "${PORT_FROM_FL}" (from FL)`);
 log(`Pad velocity: full at hit value ${padConfig.fullScale}, curve ${padConfig.exponent}`);
