@@ -86,7 +86,10 @@ export class GridOverlay implements Mode {
 
   onEvent(event: HwEvent, mc: ModeContext): boolean {
     const snap = mc.fl.uiState.snap;
-    if (quantizes(snap)) this.lastQuantize = snap;
+    if (quantizes(snap) && snap !== this.lastQuantize) {
+      this.lastQuantize = snap;
+      mc.saveState?.();
+    }
     switch (event.type) {
       case "pad": {
         // Down sets the snap; move and up are ours too so no pad plays a note under the page.

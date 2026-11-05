@@ -1,3 +1,6 @@
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { paletteWhite } from "../src/hw/palette.js";
 import { GridOverlay, SNAP_VALUES, quantizes, snapName } from "../src/modes/gridOverlay.js";
@@ -169,6 +172,25 @@ describe("NAVIGATE (VARIATION)", () => {
 });
 
 describe("GRID (SHIFT + FOLLOW)", () => {
+  it("saves the snap INPUT Q goes back to as soon as it changes", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mk3d-grid-"));
+    try {
+      const pinsPath = join(dir, "pages.json");
+      const h = stackHarness({ pinsPath });
+      h.state.shift = true;
+      h.press("follow");
+      h.state.shift = false;
+      h.ui({ snap: 13 });
+      h.pad(0);
+      const saved = JSON.parse(readFileSync(pinsPath, "utf8")) as {
+        pages: { grid: { lastQuantize: number } };
+      };
+      expect(saved.pages.grid.lastQuantize).toBe(13);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("opens while held and pins with display button 1; FOLLOW alone is still the STEP page's", () => {
     const h = stackHarness();
     h.state.shift = true;

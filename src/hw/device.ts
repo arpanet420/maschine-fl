@@ -35,15 +35,18 @@ const SCREEN_BRIGHTNESS_BYTE = 8;
 const SCREEN_SETTINGS_LENGTH = 64;
 
 /**
- * The report with the backlight set, or a reason not to send it. Only reports that look like the
- * ones documented are touched, and only the one byte in them.
+ * The report `id` with the backlight set, or a reason not to send it. Only reports that look like
+ * the ones documented are touched, and only the one byte in them. The first byte says which report
+ * a write goes to, so an answer with any other id is refused too.
  */
 export function withScreenBrightness(
+  id: number,
   report: readonly number[],
   level: number,
 ): { report: number[] } | { refused: string } {
   const start = report.slice(1, 1 + SCREEN_SETTINGS_START.length);
   if (
+    report[0] !== id ||
     report.length <= SCREEN_BRIGHTNESS_BYTE ||
     !SCREEN_SETTINGS_START.every((byte, i) => start[i] === byte)
   ) {
@@ -118,7 +121,7 @@ export class Mk3Device extends EventEmitter<Mk3DeviceEvents> {
       for (const id of SCREEN_SETTINGS_REPORTS) {
         try {
           const before = Array.from(await this.hid.getFeatureReport(id, SCREEN_SETTINGS_LENGTH));
-          const result = withScreenBrightness(before, level);
+          const result = withScreenBrightness(id, before, level);
           if ("refused" in result) {
             this.emit("brightness", `0x${hex(id)}: ${result.refused}`);
             continue;
@@ -141,7 +144,14 @@ export class Mk3Device extends EventEmitter<Mk3DeviceEvents> {
 
   private async connect(): Promise<void> {
     if (!this.running || this.hid) return;
-    const info = HID.devices(NI_VENDOR_ID, MK3_PRODUCT_ID)[0];
+    let info: HID.Device | undefined;
+    try {
+      info = HID.devices(NI_VENDOR_ID, MK3_PRODUCT_ID)[0];
+    } catch (err) {
+      // Nothing may end the polling: without a retry the MK3 would never be found again.
+      this.unavailable(`Could not list the USB devices: ${String(err)}`);
+      return;
+    }
     if (!info?.path) {
       this.unavailable("Maschine MK3 not found. Is it plugged in and powered?");
       return;

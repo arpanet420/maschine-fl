@@ -61,6 +61,42 @@ export class Screen {
   }
 }
 
+/**
+ * Runs `task` when asked, one run at a time: however many requests arrive during a run, one more run
+ * follows it. A run that fails goes to `failed` and doesn't stop later requests.
+ */
+export class RedrawQueue {
+  private job: Promise<void> | undefined;
+  private dirty = false;
+
+  constructor(
+    private readonly task: () => Promise<void>,
+    private readonly failed: (err: unknown) => void,
+  ) {}
+
+  request(): void {
+    this.dirty = true;
+    this.job ??= this.pump()
+      .catch(this.failed)
+      .finally(() => {
+        this.job = undefined;
+        if (this.dirty) this.request(); // asked during a run that failed
+      });
+  }
+
+  /** Resolves once no run is going. */
+  async settled(): Promise<void> {
+    await this.job;
+  }
+
+  private async pump(): Promise<void> {
+    while (this.dirty) {
+      this.dirty = false;
+      await this.task();
+    }
+  }
+}
+
 export class Screens {
   readonly screens: [Screen, Screen] = [new Screen(0), new Screen(1)];
 

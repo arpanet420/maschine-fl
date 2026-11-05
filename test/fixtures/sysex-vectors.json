@@ -38,6 +38,18 @@
     "hex": "f07d4d3303000c030000f7"
   },
   {
+    "name": "songPos at PPQ 960: a tick above 127, and the project's PPQ",
+    "direction": "fromFl",
+    "message": {
+      "type": "songPos",
+      "bar": 12,
+      "step": 3,
+      "tick": 200,
+      "ppq": 960
+    },
+    "hex": "f07d4d3303000c0301480740f7"
+  },
+  {
     "name": "goodbye",
     "direction": "fromFl",
     "message": {

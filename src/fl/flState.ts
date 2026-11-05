@@ -442,8 +442,10 @@ export class FlState extends EventEmitter<{ change: [section: FlSection] }> {
       }
       case "songPos": {
         const songPos = { bar: message.bar, step: message.step, tick: message.tick };
-        const changed = !same(d.songPos, songPos);
+        const ppq = message.ppq !== undefined && message.ppq > 0 ? message.ppq : d.ppq;
+        const changed = !same(d.songPos, songPos) || d.ppq !== ppq;
         d.songPos = songPos;
+        d.ppq = ppq;
         d.songPosAt = this.clock();
         this.changed("songPos", changed);
         break;

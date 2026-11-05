@@ -10,10 +10,8 @@ import {
   markerBar,
   markerBeats,
   markerName,
-  nextMarker,
-  positionBeats,
-  previousMarker,
 } from "../src/modes/markerPage.js";
+import { songBeats } from "../src/modes/repeatScheduler.js";
 import { demoFlState } from "../src/tools/demoState.js";
 import { stackHarness, type StackHarness } from "../src/tools/stackHarness.js";
 
@@ -81,9 +79,9 @@ describe("markers and the song position", () => {
   });
 
   it("works out beats from bar, step and tick, and a marker's bar from its tick", () => {
-    expect(positionBeats({ bar: 1, step: 1, tick: 0 }, 96)).toBe(0);
-    expect(positionBeats({ bar: 2, step: 5, tick: 12 }, 96)).toBe(4 + 1 + 0.125);
-    expect(positionBeats({ bar: 1, step: 1, tick: 120 }, 480)).toBe(0.25);
+    expect(songBeats({ bar: 1, step: 1, tick: 0 }, 96)).toBe(0);
+    expect(songBeats({ bar: 2, step: 5, tick: 12 }, 96)).toBe(4 + 1 + 0.125);
+    expect(songBeats({ bar: 1, step: 1, tick: 120 }, 480)).toBe(0.25);
     expect(markerBar(0)).toBe(1);
     expect(markerBar(4)).toBe(2);
     expect(markerBar(3.99)).toBe(1);
@@ -103,20 +101,6 @@ describe("markers and the song position", () => {
     expect(markerName(fl, 1)).toBe("Verse");
     fl.apply({ type: "songPos", bar: 9, step: 1, tick: 0 });
     expect(currentMarker(fl)).toBe(0); // the unknown time ends the search: nothing is invented
-    expect(nextMarker(fl)).toBeUndefined();
-  });
-
-  it("finds the marker before and after the song position, strictly", () => {
-    const fl = demoFlState({ markers: markersEvery4Bars(3) });
-    fl.apply({ type: "songPos", bar: 5, step: 1, tick: 0 });
-    expect(previousMarker(fl)).toBe(0); // marker 1 is here, not before
-    expect(nextMarker(fl)).toBe(2);
-    fl.apply({ type: "songPos", bar: 6, step: 1, tick: 0 });
-    expect(previousMarker(fl)).toBe(1);
-    fl.apply({ type: "songPos", bar: 20, step: 1, tick: 0 });
-    expect(nextMarker(fl)).toBeUndefined();
-    fl.apply({ type: "songPos", bar: 1, step: 1, tick: 0 });
-    expect(previousMarker(fl)).toBeUndefined();
   });
 });
 

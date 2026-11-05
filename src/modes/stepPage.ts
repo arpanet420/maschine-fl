@@ -19,6 +19,7 @@ import type { SKRSContext2D } from "@napi-rs/canvas";
 import type { FlSection, FlState } from "../fl/flState.js";
 import type { HwEvent } from "../hw/events.js";
 import type { ButtonId } from "../hw/ids.js";
+import { STEPS_PER_BAR } from "../fl/protocol.js";
 import { PAD_COUNT } from "../hw/ids.js";
 import type { Rect } from "../hw/display.js";
 import type { LedState } from "../hw/leds.js";
@@ -72,8 +73,6 @@ const clamp127 = (value: number): number => Math.min(127, Math.max(0, value));
 
 /** Steps on the pads. */
 export const STEPS_PER_PAGE = PAD_COUNT;
-/** FL's grid is 16 steps to the bar (the assumption behind the play position). */
-export const STEPS_PER_BAR = 16;
 
 /** Display 5, 7 and 8 (0-based 4, 6, 7): FOLLOW, `<<`, `>>`. */
 const FOLLOW_BUTTON = 4;
@@ -133,7 +132,7 @@ export class StepPage implements Mode {
     this.playPage = undefined;
     this.page = Math.min(this.page, this.lastPage(mc.fl));
     this.followPlayHead(mc, false);
-    this.shownHead = this.playHead(mc.fl);
+    this.shownHead = playHeadStep(mc.fl);
     this.sendView(mc);
   }
 
@@ -182,7 +181,7 @@ export class StepPage implements Mode {
       case "songPos": {
         this.followPlayHead(mc);
         // The pad LEDs only change when the play head moves a step: ask for a frame then.
-        const head = this.playHead(mc.fl);
+        const head = playHeadStep(mc.fl);
         if (head !== this.shownHead) {
           this.shownHead = head;
           mc.requestRender();
@@ -195,13 +194,10 @@ export class StepPage implements Mode {
   // ── Play head ──────────────────────────────────────────────────────────────
 
   /** The step the play head is on in the pattern (0-based), undefined while stopped. */
-  private playHead(fl: FlState): number | undefined {
-    return playHeadStep(fl);
-  }
 
   /** FOLLOW: turn to the play head's page when the head enters a page it was not on before. */
   private followPlayHead(mc: ModeContext, render = true): void {
-    const head = this.playHead(mc.fl);
+    const head = playHeadStep(mc.fl);
     if (head === undefined) {
       this.playPage = undefined;
       return;
@@ -425,8 +421,9 @@ export class StepPage implements Mode {
     ctx.fillText(label, 34, top + 70);
     ctx.fillStyle = theme.text;
     const labelWidth = ctx.measureText(`${label}   `).width;
+    // FL's default name says the same as the label.
     ctx.fillText(
-      fitText(ctx, pattern.name, FULL.width - 50 - labelWidth),
+      pattern.name === label ? "" : fitText(ctx, pattern.name, FULL.width - 50 - labelWidth),
       34 + labelWidth,
       top + 70,
     );
@@ -450,7 +447,7 @@ export class StepPage implements Mode {
     const width = Math.min(48, (FULL.width - 2 * left - (pages - 1) * gap) / pages);
     const y = 206;
     const height = 18;
-    const head = this.playHead(mc.fl);
+    const head = playHeadStep(mc.fl);
     const playing = head === undefined ? undefined : Math.floor(head / STEPS_PER_PAGE);
     for (let i = 0; i < pages; i++) {
       const x = Math.round(left + i * (width + gap));
@@ -479,7 +476,7 @@ export class StepPage implements Mode {
         active: this.follow ? [0] : [],
       },
     );
-    const head = this.playHead(fl);
+    const head = playHeadStep(fl);
     for (let pad = 0; pad < PAD_COUNT; pad++) {
       const step = this.page * STEPS_PER_PAGE + pad;
       const cell = padCellRect(GRID, pad);
@@ -527,7 +524,7 @@ export class StepPage implements Mode {
 
   leds(leds: LedState, mc: ModeContext): void {
     const { fl } = mc;
-    const head = this.playHead(fl);
+    const head = playHeadStep(fl);
     const channel = fl.selectedChannel;
     for (let pad = 0; pad < PAD_COUNT; pad++) {
       const step = this.page * STEPS_PER_PAGE + pad;

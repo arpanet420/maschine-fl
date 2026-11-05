@@ -17,6 +17,7 @@ import { ChordsPage } from "../modes/chordsPage.js";
 import { KeyboardPage } from "../modes/keyboardPage.js";
 import { LiveOverlay } from "../modes/liveOverlay.js";
 import { MixerMode } from "../modes/mixerMode.js";
+import { MuteOverlay } from "../modes/muteOverlay.js";
 import type { ModeContext, ViewCommand } from "../modes/mode.js";
 import { NavigateOverlay } from "../modes/navigateOverlay.js";
 import { NoteRepeatOverlay } from "../modes/noteRepeatOverlay.js";
@@ -24,10 +25,14 @@ import { PadModePage } from "../modes/padModePage.js";
 import { PadSettings } from "../modes/padSettings.js";
 import { PadState } from "../modes/padState.js";
 import { PageStack } from "../modes/pageStack.js";
+import { PluginMode } from "../modes/pluginMode.js";
+import { FlParamPages } from "../modes/pluginPages.js";
 import { LoopOverlay } from "../modes/loopOverlay.js";
 import { PatternOverlay } from "../modes/patternOverlay.js";
 import { SceneOverlay } from "../modes/sceneOverlay.js";
+import { SelectOverlay } from "../modes/selectOverlay.js";
 import { SettingsPage } from "../modes/settingsPage.js";
+import { SoloOverlay } from "../modes/soloOverlay.js";
 import { StepPage } from "../modes/stepPage.js";
 import { StripControl } from "../strip.js";
 import { FakeTime } from "./fakeTime.js";
@@ -54,14 +59,18 @@ export function stackHarness(
   );
   const pages = {
     channel: new ChannelMode(time.clock),
+    plugin: new PluginMode(time.clock, new FlParamPages()),
     mixer: new MixerMode(time.clock),
     arranger: new ArrangerPage(options.arranger),
     scene: new SceneOverlay({ timers: time.timers }),
     liveClips: new LiveOverlay({ timers: time.timers }),
     browser: new BrowserPage(time.clock),
-    pattern: new PatternOverlay({ clock: time.clock }),
+    pattern: new PatternOverlay({ clock: time.clock, timers: time.timers }),
     duplicate: new DuplicateOverlay(),
     padMode: new PadModePage(pads),
+    mute: new MuteOverlay(pads),
+    select: new SelectOverlay(pads),
+    solo: new SoloOverlay(pads),
     keyboard: new KeyboardPage(pads, { timers: time.timers }),
     chords: new ChordsPage(pads, { timers: time.timers }),
     step: new StepPage(pads, time.timers),

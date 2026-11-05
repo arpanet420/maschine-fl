@@ -7,15 +7,8 @@
 // settings are shared with KEYBOARD (PadState.harmony) and saved with the page state as
 // `pages.chords`. USER CHD, PADS ON and strumming are not built.
 import type { SKRSContext2D } from "@napi-rs/canvas";
-import { TAB_HEIGHT, fitText, font, theme } from "../render/widgets.js";
-import {
-  CHORD_MODE_NAMES,
-  CHORD_TYPES,
-  CHROMATIC,
-  SCALES,
-  chordSetScale,
-  pitchName,
-} from "./chords.js";
+import { fitText, font, theme } from "../render/widgets.js";
+import { CHORD_MODE_NAMES, CHORD_TYPES, SCALES, chordSetScale, pitchName } from "./chords.js";
 import { FULL } from "./draw.js";
 import { KeyboardPage, type KeyboardOptions } from "./keyboardPage.js";
 import type { ModeContext } from "./mode.js";
@@ -37,9 +30,7 @@ export class ChordsPage extends KeyboardPage {
     const { harmony } = this.pads;
     const root = pitchName(this.pads.baseNote);
     if (harmony.mode === "set") return `${root} ${chordSetScale(harmony.scale).name}`;
-    return harmony.scale === CHROMATIC
-      ? `${root} ${SCALES[CHROMATIC]?.name ?? ""}`
-      : `${root} ${SCALES[harmony.scale]?.name ?? ""}`;
+    return `${root} ${SCALES[harmony.scale]?.name ?? ""}`;
   }
 
   protected override cellName(pad: number): string {
@@ -51,26 +42,8 @@ export class ChordsPage extends KeyboardPage {
   }
 
   protected override renderLeft(ctx: SKRSContext2D, mc: ModeContext, color: string): void {
-    const selected = mc.fl.selectedChannel;
     const { harmony } = this.pads;
-    const top = TAB_HEIGHT + 8;
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    if (selected.index !== null) {
-      ctx.fillStyle = color;
-      ctx.fillRect(14, top, 6, 44);
-      ctx.fillStyle = theme.dimText;
-      ctx.font = font(13);
-      ctx.fillText(`Channel ${selected.index + 1}`, 34, top - 2);
-      ctx.fillStyle = theme.text;
-      ctx.font = font(22, "bold");
-      ctx.fillText(fitText(ctx, selected.name, FULL.width - 50), 34, top + 14);
-    } else {
-      ctx.fillStyle = theme.dimText;
-      ctx.font = font(20);
-      ctx.fillText("No channel", 34, top);
-    }
-    const y = top + 56;
+    const y = this.renderChannel(ctx, mc, color);
     ctx.fillStyle = theme.dimText;
     ctx.font = font(13);
     ctx.fillText("Scale", 34, y);

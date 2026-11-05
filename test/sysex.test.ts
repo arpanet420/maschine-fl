@@ -72,8 +72,8 @@ const fromFl = vectors.filter((v) => v.direction === "fromFl");
 const toFl = vectors.filter((v) => v.direction === "toFl");
 
 describe("shared SysEx vectors", () => {
-  it("has the 100 vectors of the spec", () => {
-    expect(vectors).toHaveLength(100);
+  it("has the 101 vectors of the spec", () => {
+    expect(vectors).toHaveLength(101);
   });
 
   describe.each(fromFl)("FL → mk3d: $name", ({ message, hex }) => {
@@ -595,6 +595,9 @@ describe("tolerant decoding", () => {
         const label = `${name} cut to ${end - payloadStart} payload bytes`;
         // A v1 TRANSPORT is flags only, so a cut after the flags is a valid message.
         if (name.startsWith("transport") && end > payloadStart)
+          expect(decoded, label).toBeDefined();
+        // A SONG_POS without its PPQ is what an older script sends.
+        else if (name.startsWith("songPos at PPQ") && end - payloadStart >= 5)
           expect(decoded, label).toBeDefined();
         else if (name === "requestState") expect(decoded, label).toBeDefined();
         else expect(decoded, label).toBeUndefined();

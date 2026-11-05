@@ -17,7 +17,7 @@ import { MixerMode } from "../src/modes/mixerMode.js";
 import type { ModeContext, ViewCommand } from "../src/modes/mode.js";
 import { MuteOverlay } from "../src/modes/muteOverlay.js";
 import { PadModePage } from "../src/modes/padModePage.js";
-import { PadState, isC, noteName } from "../src/modes/padState.js";
+import { PadState, noteName } from "../src/modes/padState.js";
 import { PageStack } from "../src/modes/pageStack.js";
 import { SelectOverlay } from "../src/modes/selectOverlay.js";
 import { SoloOverlay } from "../src/modes/soloOverlay.js";
@@ -224,6 +224,20 @@ describe("pad notes in keyboard mode", () => {
     expect(midi).toEqual([[0xa0, 41, 64], [0xa0, 41, 127], NOTE_OFF_1(41)]);
   });
 
+  it("keeps a note two pads share on until the last of them is let go", () => {
+    const { pads, pad, midi } = harness();
+    pad(1, "down", 1); // note 37
+    pads.shiftBase(1);
+    midi.length = 0;
+    pad(0, "down", 1); // note 37 again: it restarts, so FL has it on once
+    expect(midi).toEqual([NOTE_OFF_1(37), NOTE_ON_1(37, 127)]);
+    midi.length = 0;
+    pad(1, "up"); // pad 1 still sounds
+    expect(midi).toEqual([]);
+    pad(0, "up");
+    expect(midi).toEqual([NOTE_OFF_1(37)]);
+  });
+
   it("follows the base note, 0…112 so that pad 16 stays within 127", () => {
     const { pads, pad, midi } = harness();
     expect(pads.baseNote).toBe(36);
@@ -381,8 +395,6 @@ describe("note names the way FL shows them", () => {
     expect(`${noteName(36)}–${noteName(51)}`).toBe("C3–D#4");
     expect(noteName(0)).toBe("C0");
     expect(noteName(127)).toBe("G10");
-    expect(isC(48)).toBe(true);
-    expect(isC(49)).toBe(false);
   });
 });
 

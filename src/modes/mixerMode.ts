@@ -5,11 +5,11 @@
 // opens). Pads are not used here.
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import type { FlSection, FlState } from "../fl/flState.js";
-import type { MixerEntry, TrackProp } from "../fl/sysex.js";
+import type { MixerEntry } from "../fl/sysex.js";
 import type { Rect } from "../hw/display.js";
 import type { HwEvent } from "../hw/events.js";
 import type { ButtonId } from "../hw/ids.js";
-import type { ColorLedId, LedState, MonoLedId } from "../hw/leds.js";
+import type { LedState } from "../hw/leds.js";
 import { LED_OFF } from "../hw/palette.js";
 import {
   drawEmptyStrip,
@@ -22,31 +22,13 @@ import { SCREEN_COLUMNS, TAB_HEIGHT, clear, theme } from "../render/widgets.js";
 import { FULL } from "./draw.js";
 import { flColorToCss, isDefaultColor, flColorToPalette, panText, pct } from "./format.js";
 import { RenderSoon, clamp, isLive, knobStep } from "./knob.js";
-import type { Mode, ModeContext, ViewCommand } from "./mode.js";
+import { GROUP_BUTTONS } from "./channelBank.js";
 import { pageStart } from "./channelMode.js";
+import { DISPLAY_BUTTONS } from "./channelPadPage.js";
+import type { Mode, ModeContext, ViewCommand } from "./mode.js";
 
 /** Tracks per bank: one per knob and display button. */
 export const BANK = 8;
-const GROUPS: readonly ColorLedId[] = [
-  "groupA",
-  "groupB",
-  "groupC",
-  "groupD",
-  "groupE",
-  "groupF",
-  "groupG",
-  "groupH",
-];
-const DISPLAY_BUTTONS: readonly MonoLedId[] = [
-  "display1",
-  "display2",
-  "display3",
-  "display4",
-  "display5",
-  "display6",
-  "display7",
-  "display8",
-];
 /** What one detent of the 4D encoder moves a 0–1 value (Shift: a tenth of it). */
 const NAV_STEP = 0.01;
 /** A peak-hold tick stays this long, then falls this much of the meter's height per second. */
@@ -69,8 +51,6 @@ interface Hold {
   height: number;
   at: number;
 }
-
-const WHAT: Record<Prop, TrackProp> = { volume: "volume", pan: "pan", mute: "mute", solo: "solo" };
 
 /** First track of the bank that holds `track`. */
 export const bankStart = (track: number) => Math.floor(track / BANK) * BANK;
@@ -204,7 +184,7 @@ export class MixerMode implements Mode {
     // display buttons 1–8 and GROUP A–H are the same 8 strips
     const strip = Math.max(
       DISPLAY_BUTTONS.findIndex((button) => button === id),
-      GROUPS.findIndex((group) => group === id),
+      GROUP_BUTTONS.findIndex((group) => group === id),
     );
     if (strip >= 0) {
       if (pressed) this.pressStrip(strip, mc);
@@ -242,7 +222,7 @@ export class MixerMode implements Mode {
     const value = clamp(old + step, 0, 1);
     if (value === old) return;
     this.pending.set(key(track, prop), { value, at: this.now() });
-    mc.send({ type: "setTrack", index: track, what: WHAT[prop], value });
+    mc.send({ type: "setTrack", index: track, what: prop, value });
     this.redraw.request(mc);
   }
 
@@ -254,7 +234,7 @@ export class MixerMode implements Mode {
     const prop = this.prop();
     const value = prop === "volume" ? MIXER_DEFAULT_VOLUME : PAN_CENTER;
     this.pending.set(key(track, prop), { value, at: this.now() });
-    mc.send({ type: "setTrack", index: track, what: WHAT[prop], value });
+    mc.send({ type: "setTrack", index: track, what: prop, value });
     this.redraw.request(mc);
     return true;
   }
@@ -264,7 +244,7 @@ export class MixerMode implements Mode {
     if (old === undefined) return;
     const value = old > 0.5 ? 0 : 1;
     this.pending.set(key(track, prop), { value, at: this.now() });
-    mc.send({ type: "setTrack", index: track, what: WHAT[prop], value });
+    mc.send({ type: "setTrack", index: track, what: prop, value });
     this.redraw.request(mc);
   }
 
@@ -440,7 +420,7 @@ export class MixerMode implements Mode {
       // Holding MUTE or SOLO the buttons show that state (bright = on); else the selection.
       const bright = held ? this.flag(track, held, fl) : track === selected;
       const display = DISPLAY_BUTTONS[strip];
-      const group = GROUPS[strip];
+      const group = GROUP_BUTTONS[strip];
       if (display) leds.setLight(display, !exists ? "off" : bright ? "bright" : "dim");
       if (group) {
         const entry = exists ? fl.mixer.get(track) : undefined;

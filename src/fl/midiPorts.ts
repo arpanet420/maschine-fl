@@ -3,6 +3,7 @@
 // made beforehand, and we open them by name (docs/windows.md).
 import { EventEmitter } from "node:events";
 import midi from "@julusian/midi";
+import { clamp7 } from "./midiBytes.js";
 import {
   CC,
   CHANNEL_NOTE_CHANNEL,
@@ -22,8 +23,6 @@ import {
 export interface FlPortEvents {
   message: [message: FlMessage];
 }
-
-const clamp7 = (value: number) => Math.min(127, Math.max(0, Math.round(value)));
 
 /** MIDI bytes, separated from the ports so they can be tested without real ports. */
 export const midiBytes = {

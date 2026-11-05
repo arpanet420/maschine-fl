@@ -18,7 +18,7 @@
 // Our own values win over FL's for PENDING_MS after each change, so FL answering cannot make them jump.
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import type { FlSection, FlState } from "../fl/flState.js";
-import { MAX_LOOP_TICKS } from "../fl/protocol.js";
+import { MAX_LOOP_TICKS, STEPS_PER_BAR } from "../fl/protocol.js";
 import type { HwEvent } from "../hw/events.js";
 import type { LedState } from "../hw/leds.js";
 import type { LedVariant } from "../hw/palette.js";
@@ -34,7 +34,7 @@ import {
 } from "../render/widgets.js";
 import type { Rect } from "../hw/display.js";
 import { FULL } from "./draw.js";
-import { STEPS_PER_BAR, lengthText, positionStepsText } from "./format.js";
+import { lengthText, positionStepsText } from "./format.js";
 import { PENDING_MS, clamp } from "./knob.js";
 import {
   MarkerPadsPage,

@@ -70,6 +70,12 @@ export class PadProcessor {
     }
   }
 
+  /** Nothing is held any more (the device went away; whoever held a pad has been told). */
+  reset(): void {
+    this.held.fill(false);
+    this.lastPressure.fill(-1);
+  }
+
   private up(pad: number): PadEvent {
     this.held[pad] = false;
     this.lastPressure[pad] = -1;

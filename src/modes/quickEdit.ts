@@ -392,7 +392,12 @@ export function drawActionReadout(ctx: SKRSContext2D, action: ActionReadout): vo
   ctx.textAlign = "left";
   ctx.font = font(18, "bold");
   ctx.fillStyle = theme.dimText;
-  ctx.fillText(action.source ?? "SHIFT + PAD", left, y + 14);
+  const smallWidth = action.small ? ctx.measureText(action.small).width + 12 : 0;
+  ctx.fillText(
+    fitText(ctx, action.source ?? "SHIFT + PAD", right - left - smallWidth),
+    left,
+    y + 14,
+  );
   if (action.small) {
     ctx.textAlign = "right";
     ctx.fillStyle = theme.accent;
@@ -407,7 +412,7 @@ export function drawActionReadout(ctx: SKRSContext2D, action: ActionReadout): vo
     ctx.font = font(size, "bold");
   }
   ctx.fillStyle = theme.text;
-  ctx.fillText(action.title, left, y + 38);
+  ctx.fillText(fitText(ctx, action.title, right - left), left, y + 38);
   ctx.font = font(22);
   ctx.fillStyle = theme.dimText;
   ctx.fillText(fitText(ctx, action.detail, right - left), left, y + 98);

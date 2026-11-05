@@ -31,7 +31,6 @@
   "engines": {
     "node": ">=22"
   },
-  "private": "true",
   "dependencies": {
     "@julusian/midi": "^3.8.1",
     "@napi-rs/canvas": "^1.0.11",

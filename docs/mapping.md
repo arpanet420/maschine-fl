@@ -41,7 +41,7 @@ is not built yet logs `page "<name>" is not built yet` once per press and change
   top and show that page. Pressing the button of the page already shown does nothing on the
   control pages and goes back to the last control page on the others.
 - **Overlays** (SCENE, PATTERN, EVENTS, DUPLICATE, SELECT, SOLO, MUTE, NOTE REPEAT;
-  SHIFT + FOLLOW = GRID; SHIFT + RESTART = LOOP, a *hold* overlay that
+  SHIFT + SCENE = LIVE; SHIFT + FOLLOW = GRID; SHIFT + RESTART = LOOP, a *hold* overlay that
   opens only after 400 ms, a tap runs its own action): hold to peek, closed on release. Display
   button 1 is the pin tab, named after the page: pressing it pins the overlay so it stays after the
   release; pressing it again unpins (and closes it at once if its button isn't held). A pinned
@@ -51,7 +51,7 @@ is not built yet logs `page "<name>" is not built yet` once per press and change
   page). While FL is connected the stack then gives the press and the release to that page (the
   release even if the main page changed in between) and opens no overlay; the page-button LED of
   a claimed button is the page's own. The Mixer claims MUTE and SOLO.
-- **Tool pages** (STEP, PAD MODE, KEYBOARD, CHORDS, FILE, SETTINGS, MACRO): always latched, press to
+- **Tool pages** (STEP, PAD MODE, KEYBOARD, CHORDS, FILE, SETTINGS, MACRO, NAVIGATE): always latched, press to
   open, press again to close (on the release); another page button closes it first. PAD MODE,
   KEYBOARD and CHORDS also set the pad mode when they open ("Pad modes"); SHIFT + any of them sets
   the mode and opens no page. Their LEDs are a radio group (see below).
@@ -81,15 +81,14 @@ is not built yet logs `page "<name>" is not built yet` once per press and change
   CHORDS it does nothing; the STEP page clears the step itself; an overlay that uses the pads (MUTE, PATTERN, …)
   still gets them. The pad's move and release are swallowed, and a note started before ERASE was
   pressed still ends.
-- **SHIFT + DUPLICATE** ("Double"): clones the current pattern (CLONE_PATTERN) and opens no page;
-  FL can't double a pattern's length.
+- **SHIFT + DUPLICATE** ("Double"): clones the current pattern (CLONE_PATTERN) and opens no page.
+  Doubling a pattern is `DOUBLE` on the PATTERN overlay.
 - **SHIFT + FILE**: saves the project (UI action `save`, FPT_Save) and opens no page; the read-out card
   says `SAVED` (small line `SHIFT + FILE`).
 - **FIXED VEL**: toggles fixed velocity (see "SETTINGS and FIXED VEL"); bright while on, dim while
   off, **off while SHIFT is held** (SHIFT + FIXED VEL, 16 velocities, is not built: nothing happens).
 
-Built so far: CHANNEL, PLUG-IN, MIXER, ARRANGER, BROWSER, SCENE, PATTERN, DUPLICATE, MUTE, SELECT, SOLO, STEP, PAD MODE,
-KEYBOARD, FILE, SETTINGS, NAVIGATE (VARIATION), GRID (SHIFT + FOLLOW) and LIVE (SHIFT + SCENE). A SHIFT + button
+Every page button is built except SAMPLING, EVENTS and MACRO, which stay dark and do nothing. A SHIFT + button
 page lights its button only while it is open, except GRID: FOLLOW is dim while it is closed.
 
 ## Pad modes and channel banks
@@ -117,9 +116,10 @@ page lights its button only while it is open, except GRID: FOLLOW is dim while i
     (the sequencer, the playlist, another controller: ACTIVITY, `channels.getActivityLevel`) lights
     its pad pressed too, so the pads flash with the pattern like Maschine's. Colors come from the
     channel window FL reports (VIEW `channelOffset`); pages that show the pads patch it to the
-    current bank, and entries FL reported earlier stay cached. `keyboard` and `chords` pads do not
-    flash with playback: no script API says which note a channel plays (PLAN.md idea list). Nor do
-    the MUTE, SELECT, SOLO and PAD MODE pages' pads yet.
+    current bank, and entries FL reported earlier stay cached. A `keyboard` pad also lights pressed
+    when FL plays its note on the selected channel (PLAYED_NOTES, docs/sysex.md). `chords` pads do not
+    flash with playback, and neither do the MUTE, SELECT and SOLO pages' pads, which light their own
+    state. The PAD MODE page uses these LEDs, so its pads flash.
 - **Channel banks** (Maschine's groups A–H): 16 channels each, A = 1–16, B = 17–32, … The current
   bank is the one of the selected channel. **GROUP A–H** select the channel that was last selected
   in that bank (remembered per bank while mk3d runs), else the bank's first channel; a bank without
@@ -184,7 +184,8 @@ takes no pad: the pads play chords through `PadState`.
   here (one chord note at a time; see NOTE REPEAT, "ARP"). SHIFT + pad (transpose) and ERASE (nothing) are as on KEYBOARD.
 - Screens: left = the tab, the selected channel, the scale and root (`C Minor`; in chord set the
   scale it really uses), mode, type and position, and the four knobs with their values. Right = the
-  4×4 grid mirroring the pads with the chord name on each (`Cm`, `D°`, `Ebmaj7`; flats are written
+  4×4 grid mirroring the pads with the chord name on each (`Cm`, `D°`, `Ebmaj7`; a stack with no name
+  shows its notes, `F B C`; flats are written
   `b` because Barlow has no ♭ glyph), root chords in bold orange with an orange top line, and
   `root C3  MIDI 36`. Pad LEDs: the channel's color, root chords bright (harmonizer: the scale's
   roots, a C in Chromatic; chord set: the I chords, pads 1, 8, 9, 16), the rest dim, held pressed.
@@ -205,8 +206,8 @@ Code: `src/modes/stepPage.ts`. Latched: STEP opens it, STEP again leaves it. The
 bright while open; the PAD MODE / KEYBOARD radio pair stays lit as it is.
 
 - **Pads** 1–16 are steps 1–16 of the current step page of the selected channel in the current
-  pattern (VIEW `stepOffset` = page × 16, merged into the main page's VIEW). A press toggles the
-  step (SET_STEP; held-step editing, velocity and pitch of a held step, comes later). With ERASE
+  pattern (VIEW `stepOffset` = page × 16, merged into the main page's VIEW). A press or a release
+  toggles the step as "Held step" above says (SET_STEP). With ERASE
   held, a press clears the step (SET_STEP off). Steps past the pattern length have no LED and ignore
   presses. Pad moves and releases are taken, so no pad plays a note under the page.
 - **Pages**: display 7/8 (`<<` `>>`) and the arrow buttons step back and forward by 16 steps,
@@ -216,10 +217,10 @@ bright while open; the PAD MODE / KEYBOARD radio pair stays lit as it is.
   when on, default on): while playing, the page turns to the play head's page each time the head
   enters a page it was not on; paging by hand sticks until then. Turning it on while playing turns
   to the head at once. SHIFT + FOLLOW is GRID (below).
-- **Play head** (pad: white; screen: orange outline): from SONG_POS, **assuming 16 steps per
-  bar**: position in the pattern = `((bar − 1) × 16 + step − 1) mod pattern length`. Not verified
-  in FL (the same open question as `SONGPOS_STEP_BASE` in `docs/sysex.md`); it is a guess for song
-  mode, where the pattern may not start at a multiple of its own length.
+- **Play head** (pad: white; screen: orange outline): from SONG_POS, which always counts 16 steps to
+  the bar: position in the pattern = `((bar − 1) × 16 + step − 1) mod pattern length`. It is a guess
+  for song mode, where the pattern may not start at a multiple of its own length, and the bar numbers
+  are only right in 4/4.
 - **Pad LEDs**: on = the channel's color, bright; off = the channel's color dim in steps 1–4 and
   9–12 and fainter (the palette's true dim step) in 5–8 and 13–16, so the groups of 4 alternate as
   in FL's channel rack; the play head white; off past the pattern length.
@@ -261,13 +262,12 @@ bright while open; the PAD MODE / KEYBOARD radio pair stays lit as it is.
   when that bank exists, else off (and no label).
 - Display 3 `DOUBLE` (left screen, column 3; Maschine's order is PATTERN, CLIP, DOUBLE, DUPLICATE) doubles
   the current pattern (DOUBLE_PATTERN): twice the length (at most 512 steps; at 512, or for patterns from
-  128 up, the tab is faint, the LED off and the button does nothing) and the step sequencer's steps of every
-  channel, with their step parameters, copied into the new half. Notes drawn in the piano roll cannot be
-  read by a script, so they are not doubled; the left screen shows a read-out card for 4 s: `DOUBLE`,
-  `16 -> 32 steps` and `notes copied`. One undo point. The FL script uses FL's hidden
-  `patterns.duplicatePatternData(pattern)`, which copies every note including piano roll notes
-  (confirmed on the owner's try), then sets the length to exactly twice the old one (the function
-  alone leaves it at what the content spans); without that function it copies the steps.
+  128 up, the tab is faint, the LED off and the button does nothing) and every note copied into the new half.
+  The left screen shows a read-out card for 4 s: `DOUBLE`, `16 -> 32 steps` and `notes copied`. One undo
+  point. The FL script uses FL's hidden `patterns.duplicatePatternData(pattern)`, which copies every note
+  including piano roll notes (confirmed on the owner's try), then sets the length to exactly twice the old
+  one (the function alone leaves it at what the content spans); without that function it copies the step
+  sequencer's steps of every channel, with their step parameters.
 - Display 4 `DUPLICATE` (left screen, column 4) clones the current pattern (CLONE_PATTERN) and
   display 5 `CREATE` (right screen, column 1) makes a new empty one (NEW_PATTERN); FL selects the
   new pattern and the overlay turns to its bank. FL's API has no pattern delete, so there is no
@@ -344,7 +344,7 @@ pressed mid-touch ends the effect); SHIFT + button does nothing either.
   stopped; Maschine's `updateLEDsPlayPositionMode`). Touches do nothing. `src/playPosition.ts`: the
   position is within the **current pattern** (steps modulo its length) in pattern mode, and within the
   **song loop** (LOOP_STATE) in song mode when one is active, else within the current pattern. SONG_POS
-  comes about every 50 ms with 16 steps to the bar and 24 ticks to the step (PPQ 96), so the position is
+  comes about every 50 ms with 16 steps to the bar and PPQ / 4 ticks to the step, so the position is
   estimated between messages from the tempo and the time since the last one (as NOTE REPEAT does), held at
   the end of the range until the next message shows the wrap, and never steps back except at a wrap. A
   40 ms timer in `main.ts` redraws the LEDs only when the lit LED changes. (The old reading used the step
@@ -358,8 +358,8 @@ pressed mid-touch ends the effect); SHIFT + button does nothing either.
   under it while touched and for 1 s after the release.
 - FL side: pitch, mod (VST) and perform go to FL as the STRIP command (docs/sysex.md); `OnPitchBend`
   and `OnControlChange` still leave pitch bend and CC 1 on MIDI channel 1 unhandled for the raw CC 1
-  of plugins without CC parameters. **Not verified in FL** until the owner tries it: `setChannelPitch`
-  on VSTs, the CC parameter index 4097, the cutoff name match.
+  of plugins without CC parameters. Tried in FL (PLAN.md, 2026-10-18): `setChannelPitch` bends a VST and
+  the CC parameter index 4097 is its mod wheel. Not tried since it changed: the cutoff name match.
 
 ## Duplicate overlay (hold DUPLICATE)
 
@@ -414,8 +414,8 @@ overlay, so nothing repeats there. GROUP A–H still pick the bank.
   velocity (`round(pressure × 127)`, at least 1). No aftertouch is sent while repeating.
 - **Timing**: interval = 60 / BPM × 4 / denominator (× 2/3 for triplets, × 3/2 for dotted); BPM is
   `fl.tempo`, 120 while it is 0. All held pads share one grid.
-  - **While FL plays** the grid is FL's: bar 1 is the origin (16 steps per bar, `ppq` ticks per beat:
-    the step base is NOT VERIFIED, with the other SONG_POS bases); a SONG_POS older than 500 ms counts
+  - **While FL plays** the grid is FL's: bar 1 is the origin (16 steps per bar, `ppq` ticks per beat;
+    bug 1 in docs/bugs.md); a SONG_POS older than 500 ms counts
     as stopped. A dotted rate and 1/4T do not come back to the bar for several bars, so their grid
     starts at the press instead, rounded to the straight value under the dotted one (a beat for 1/4T).
   - **The position is a running estimate**, not the last SONG_POS. A SONG_POS can only be late (FL's
@@ -501,7 +501,7 @@ one of two knob pages. Software only: no FL script change, nothing new to the MK
   a pad whose note plays is pressed (flashes with each step; in CHORDS the pad of the chord the
   note belongs to), a pad HOLD keeps is bright between its flashes.
 
-- `Mode.leave()` is new: the stack calls it when a page on top is closed, replaced or the device
+- `Mode.leave()`: the stack calls it when a page on top is closed, replaced or the device
   goes away. `Mode.persisted` lets a page save settings with the stack's state.
 
 ## Layout rule
@@ -581,7 +581,8 @@ Notes:
 
 Drives the selected channel's own plug-in (u-he Diva, ...) through FL's parameter list, so the
 plug-in's GUI knobs move. The pages come from a `PageSource` (`src/modes/pluginPages.ts`);
-`FlParamPages` builds them from FL's parameter names, NKS pages can follow. Parameters with an
+`FlParamPages` builds them from FL's parameter names, and a plug-in with NKS data gets NKS pages
+instead (`src/nks/nksPages.ts`, docs/nks.md). Parameters with an
 empty name are skipped, page _n_ is the next 8 named parameters. A page is named after the prefix
 before `": "` that all its names share (VST3 names look like `Filter: Cutoff`), else _Page n_;
 knob labels drop that prefix. Without a prefix in common the knob shows its full name.
@@ -603,7 +604,7 @@ middle of its own screen. Without a valid plug-in on the selected channel both s
 _No plugin on <channel name>_ and the knobs do nothing.
 
 Display button LEDs: dim when the page exists, bright for the current page, off otherwise. Arrow
-LEDs: dim when there is a page in that direction. Mute is unused (off); the group buttons are the channel banks (lit by the page stack).
+LEDs: dim when there is a page in that direction. The group buttons are the channel banks (lit by the page stack).
 
 | Control          | Action                                                                    |
 | ---------------- | ------------------------------------------------------------------------- |
@@ -617,8 +618,7 @@ Knob behavior:
   is clamped to 0…1 and sent to FL as an absolute value.
 - For 300 ms after the last turn the value on screen and the base of the next turn are ours, not
   FL's (same as Channel mode). A turn is dropped until FL has reported the parameter once.
-- Whether `plugins.setParamValue` also moves the plug-in's own GUI knob is up to FL's VST host
-  (not yet seen on hardware).
+- `plugins.setParamValue` also moves the plug-in's own GUI knob (seen with Diva on the MK3, PLAN.md, 2026-10-18).
 
 Notes:
 
@@ -867,7 +867,8 @@ preset.
   stops at both ends of the bank. When the list moves beyond the names mk3d has, it asks FL for the
   next ones (PRESET_WINDOW; names already sent are remembered).
 - **4D push** and **display 8 `LOAD`** (dim while the cursor is on another preset than the loaded
-  one, off otherwise) load the cursor's preset (PRESET_LOAD: the script steps `nextPreset` / `prevPreset` the
+  one, off otherwise; no tab either while FL's current preset is unknown, since the script steps from
+  it) load the cursor's preset (PRESET_LOAD: the script steps `nextPreset` / `prevPreset` the
   short way round). A cursor on the loaded preset does nothing.
 - **Display 5 `PREV` and 6 `NEXT`** load the previous or next preset at once (PRESET_STEP, wrapping)
   and move the cursor with it; pressed quickly they build on the preset being loaded, not on what FL has
@@ -894,8 +895,9 @@ preset.
 - **Notices** (left screen, no tabs on the right): `No presets for <plugin>` (count 0, or a plugin
   without programs), `No presets for this channel` (no plugin), `No channel selected`, and
   `Reading presets…` until the first PRESETS arrives.
-- LEDs: display 5 and 6 dim while there are presets, 4D tilt up/down dim orange (left/right off), the
-  rest off.
+- LEDs: display 1 and 2 the source (the current one bright, the other dim), display 5 and 6 dim while there
+  are presets, display 8 as above, 4D tilt up/down dim orange (left/right off), the rest off. On `PLUG-INS`,
+  display 8 and all four tilts are dim while the picker is open.
 - NOT VERIFIED (docs/sysex.md): how `FPN_Patch` / `FPN_Preset` / `getPresetCount` behave for VST,
   VST3 and FL's own plugins (for Diva the channel's name, not `FPN_Patch`, is the preset's name, so
   the script matches that too), whether a step wraps around at the ends, and how well PRESET_LOAD
@@ -927,7 +929,7 @@ Code: `src/modes/settingsPage.ts`, `src/modes/padSettings.ts`. mk3d's own settin
 - Left screen: tab `SETTINGS`, a graph of the velocity curve of the current settings (hit value on x,
   velocity 1–127 on y; with FIXED VEL on the curve is dimmed and the fixed line is drawn in mint), and
   Full scale / Curve / Fixed vel under knobs 1–3. Right screen: tab `SCREEN`, how bright the screens are and
-  `Brightness` under knob 5 (5–100 %).
+  `Brightness` under knob 5 (5–100 %). The display buttons do nothing here and don't reach the page behind.
 - **FIXED VEL** (button): fixed velocity on or off, bright while on. While it is on, **every pad note**
   (KEYBOARD, PAD MODE and NOTE REPEAT, the first note and every repeat) goes out with the fixed value
   instead of the hit's or the pressure's: `PadState` applies it where it sends a note on. The press
@@ -938,12 +940,12 @@ Code: `src/modes/settingsPage.ts`, `src/modes/padSettings.ts`. mk3d's own settin
 
 ### ARRANGER: the pattern overview
 
-Code: `src/modes/arrangerPage.ts`. FL's script cannot see the playlist's clips or the piano roll's notes
+Code: `src/modes/arrangerPage.ts`. FL's script cannot see the playlist's clips outside performance mode
 (the 2026-10-18 playlist probe, docs/workflow.md), so ARRANGER shows what it can read, like Maschine's
 pattern view: **sounds × steps** of the current pattern. The grid comes from PATTERN_GRID (docs/sysex.md,
 "Pattern overview"). ARRANGER is a main page (LED bright when shown; a second press goes home, like MIXER).
-Opening it shows and focuses FL's playlist (SHOW_WINDOW 2, unless it has the focus already; see "FL's windows follow the page buttons"). FL's
-Performance mode, which would show the clips, has no script API; it is a later option.
+Opening it shows and focuses FL's playlist (SHOW_WINDOW 2, unless it has the focus already; see "FL's windows follow the page buttons"). The
+clips of FL's performance mode are on the LIVE overlay (below).
 
 - **VIEW**: `patternGrid` on (flag 4, no other page has it), `channelOffset` = the bank of the row
   cursor, `stepOffset` = step page × 16 (the script sends that page first), `patternOffset` = the pattern
@@ -996,8 +998,8 @@ past the last marker are off. The marker the song is in is the last one at or be
 into beats with the PPQ of MARKERS (16 steps per bar, as the STEP page assumes). Display 7 `<<` and
 8 `>>` (right screen) page between the banks, and show only when there is another bank. The right screen
 is a 4×4 grid of the marker names in FL's look, pad 1 bottom-left, the corner text `Bar n`, the current
-marker outlined in orange. Without markers the pads are off and the right screen says `No markers — ADD
-MKR sets one at the play position` (ADD_MARKER is no longer on any page; add markers in FL). The bank
+marker outlined in orange. Without markers the pads are off and the right screen says `No markers`
+(add them in FL; ADD_MARKER is no longer on any page). The bank
 starts at the current marker's, and follows a marker mk3d jumped to once FL reports the jump. ERASE + pad
 does nothing (FL's script cannot delete a marker).
 
@@ -1009,7 +1011,7 @@ toggles quantized and immediate (underlined = immediate); the choice is saved in
 outlines its cell in mint, and the left screen says `Queued: <name>`, until SONG_POS shows it happened
 (the song is in that marker again from an earlier position, or FL stopped). Left screen: the current
 marker big, the jump mode. Right screen: tabs `<<` `>>` and `1–16 of n` under the grid. SHIFT + SCENE
-(sections) stays unbuilt: nothing happens.
+is LIVE (below).
 
 NOT VERIFIED (docs/sysex.md): that `channels.isGridBitAssigned` tells piano roll channels from step
 channels (ARRANGER), the marker scan's assumptions (marker order, a marker at tick 0, pattern loop mode) and
@@ -1069,10 +1071,9 @@ single-clip launch (the Fire launches one clip without ColumnMode; LIVE only fir
 reading more than `LIVE_TRACK_SCAN` tracks for the grid (a project using more tracks than that for
 performance-mode clips will not see them lit, though ColumnMode still fires them; raising it costs
 more FL calls per pass, currently unchunked — see docs/sysex.md). A pad still held when the overlay
-closes never sends its release.
+closes sends its release when it is let go.
 
 ## Later modes
 
-The STEP page is built (above); what is left of it is knobs for the held step's velocity and pitch
-(held-step editing). Planned in PLAN.md phase 6 and `docs/workflow.md`: SHIFT + SCENE
-(sections), SHIFT + FIXED VEL (16 velocities), CHORDS' USER CHD / PADS ON / strumming. Their buttons are off until then (see "Pages").
+Planned in PLAN.md phase 6 and `docs/workflow.md`: SHIFT + FIXED VEL (16 velocities), CHORDS' USER CHD /
+PADS ON / strumming, and the pages SAMPLING, EVENTS and MACRO. Their buttons are off until then (see "Pages").

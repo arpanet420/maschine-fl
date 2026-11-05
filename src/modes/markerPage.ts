@@ -13,7 +13,7 @@
 // SONG_POS and the project's PPQ: the last marker whose tick is at or before the position.
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import type { FlState } from "../fl/flState.js";
-import type { SongPosition } from "../fl/sysex.js";
+import { BEATS_PER_BAR } from "../fl/protocol.js";
 import type { Rect } from "../hw/display.js";
 import type { HwEvent } from "../hw/events.js";
 import { PAD_COUNT } from "../hw/ids.js";
@@ -25,15 +25,13 @@ import { FULL, drawWrapped } from "./draw.js";
 import { flColorToCss, flColorToPalette } from "./format.js";
 import type { Mode, ModeContext, ModeName } from "./mode.js";
 import { drawPadGrid, type PadCell } from "./padGrid.js";
+import { songBeats } from "./repeatScheduler.js";
 
 /** Markers per bank: one per pad. */
 export const MARKER_BANK = PAD_COUNT;
 /** Display 7 and 8 (0-based 6 and 7): the previous and next bank. */
 const PREVIOUS_BANK = 6;
 const NEXT_BANK = 7;
-/** SONG_POS has 16 steps per bar of 4 beats (the STEP page's assumption). */
-const STEPS_PER_BAR = 16;
-const BEATS_PER_BAR = 4;
 /** A song position this close (in beats) to a marker counts as being at it. */
 const AT_MARKER = 1e-3;
 
@@ -42,17 +40,9 @@ export const MARKER_COLORS: readonly number[] = [
   0xe0707a, 0xfb9244, 0xeec54e, 0x4ae4a8, 0x5aa9e6, 0xa678de,
 ];
 
-export const NO_MARKERS_TEXT = "No markers — ADD MKR sets one at the play position";
+export const NO_MARKERS_TEXT = "No markers";
 
 // ── Markers and the song position ───────────────────────────────────────────────
-
-/** SONG_POS in beats from the start (bar 1, step 1), with FL's ticks per quarter note. */
-export function positionBeats(pos: SongPosition, ppq: number): number {
-  return (
-    ((pos.bar - 1) * STEPS_PER_BAR + (pos.step - 1)) / (STEPS_PER_BAR / BEATS_PER_BAR) +
-    pos.tick / ppq
-  );
-}
 
 /** The marker's position in beats, undefined while the script has not sent it or could not tell. */
 export function markerBeats(fl: FlState, index: number): number | undefined {
@@ -72,7 +62,7 @@ export const markerColor = (index: number): number =>
 
 /** The marker the song position is in: the last one at or before it; −1 before the first. */
 export function currentMarker(fl: FlState): number {
-  const beats = positionBeats(fl.songPos, fl.ppq);
+  const beats = songBeats(fl.songPos, fl.ppq);
   let found = -1;
   for (let i = 0; i < fl.markerTotal; i++) {
     const at = markerBeats(fl, i);
@@ -81,31 +71,6 @@ export function currentMarker(fl: FlState): number {
   }
   return found;
 }
-
-/** The last marker strictly before the song position, undefined if there is none. */
-export function previousMarker(fl: FlState): number | undefined {
-  const beats = positionBeats(fl.songPos, fl.ppq);
-  let found: number | undefined;
-  for (let i = 0; i < fl.markerTotal; i++) {
-    const at = markerBeats(fl, i);
-    if (at === undefined || at >= beats - AT_MARKER) break;
-    found = i;
-  }
-  return found;
-}
-
-/** The first marker strictly after the song position, undefined if there is none. */
-export function nextMarker(fl: FlState): number | undefined {
-  const beats = positionBeats(fl.songPos, fl.ppq);
-  for (let i = 0; i < fl.markerTotal; i++) {
-    const at = markerBeats(fl, i);
-    if (at !== undefined && at > beats + AT_MARKER) return i;
-  }
-  return undefined;
-}
-
-/** `12.3`: the bar and the 16th step in it. */
-export const positionText = (pos: SongPosition): string => `${pos.bar}.${pos.step}`;
 
 // ── Banks ────────────────────────────────────────────────────────────────────
 

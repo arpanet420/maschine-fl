@@ -2,14 +2,12 @@
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import { DISPLAY_HEIGHT, DISPLAY_WIDTH, type Rect } from "../hw/display.js";
 import type { FlState } from "../fl/flState.js";
-import { TAB_HEIGHT, drawTransport, fitText, font, theme } from "../render/widgets.js";
+import { drawTransport, fitText, font, theme } from "../render/widgets.js";
 import type { KnobProps } from "../render/widgets.js";
 
 export const FULL: Rect = { x: 0, y: 0, width: DISPLAY_WIDTH, height: DISPLAY_HEIGHT };
 export const HEADER_HEIGHT = 36;
 export const TRANSPORT_HEIGHT = 36;
-/** Header with the display-button tabs above it. */
-export const TABBED_HEADER_HEIGHT = HEADER_HEIGHT + TAB_HEIGHT;
 
 export const TRANSPORT_RECT: Rect = {
   x: 0,
@@ -47,11 +45,15 @@ export function drawBand(
   ctx.textBaseline = "top";
   ctx.fillStyle = theme.dimText;
   ctx.font = font(14);
-  ctx.fillText(knob.name, rect.x + rect.width / 2, rect.y + 5);
+  ctx.fillText(fitText(ctx, knob.name, rect.width - 12), rect.x + rect.width / 2, rect.y + 5);
   ctx.textBaseline = "bottom";
   ctx.fillStyle = theme.text;
   ctx.font = font(30, "bold");
-  ctx.fillText(knob.props.valueText, rect.x + rect.width / 2, rect.y + rect.height - 2);
+  ctx.fillText(
+    fitText(ctx, knob.props.valueText, rect.width - 12),
+    rect.x + rect.width / 2,
+    rect.y + rect.height - 2,
+  );
 }
 
 /** Draws `text` word-wrapped into at most `maxLines` lines (the last one is cut with an ellipsis). */

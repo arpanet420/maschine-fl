@@ -321,6 +321,8 @@ export class BrowserPage implements Mode {
         mc.requestRender();
         return true;
       }
+      // PREV, NEXT and LOAD belong to the PRESETS tab.
+      if (this.source === "plugins" && display >= 0) return true;
     }
     if (this.source === "plugins" && event.type === "nav") return this.pickerNav(event, mc);
     if (this.source === "plugins" && event.type === "encoder") return false;
@@ -606,7 +608,7 @@ export class BrowserPage implements Mode {
 
     const list = this.listing(mc);
     this.drawLeft(left, list, mc);
-    drawTabs(right, TABS, { tabs: ["PREV", "NEXT", "", "LOAD"] });
+    drawTabs(right, TABS, { tabs: ["PREV", "NEXT", "", list.loaded === null ? "" : "LOAD"] });
     this.drawList(right, list);
     for (const knob of SCROLL_KNOBS) this.drawKnob(right, list, (knob - 4) * KNOB_STRIP.width);
   }
@@ -737,11 +739,13 @@ export class BrowserPage implements Mode {
       const id = DISPLAY_BUTTONS[display];
       if (id) leds.setLight(id, usable ? "dim" : "off");
     }
-    // LOAD: usable while the cursor is on a preset other than the loaded one
+    // LOAD: usable while the cursor is on a preset other than the loaded one; FL's script steps from
+    // the loaded preset, so with none known it can't do anything
     const load = DISPLAY_BUTTONS[LOAD_BUTTON];
     const cursor = usable ? this.cursorIndex(mc) : null;
+    const loaded = this.loadedIndex(mc);
     if (load)
-      leds.setLight(load, cursor !== null && cursor !== this.loadedIndex(mc) ? "dim" : "off");
+      leds.setLight(load, cursor !== null && loaded !== null && cursor !== loaded ? "dim" : "off");
     // 4D: tilt up/down move the cursor like the turn; left/right are unused
     const lit = usable ? paletteColor(1, "dim") : 0;
     leds.setNav("up", lit);

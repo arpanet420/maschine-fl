@@ -64,11 +64,12 @@ Sizes from the report descriptor (816 bytes). Total size = payload + 1 report-ID
 | out       | `0x81`                                                | 42         | Touch-strip LEDs and pad LEDs                                            | descriptor + reference                                                        |
 | out       | `0xF3`                                                | 2          | LED brightness (see "Settings reports")                                  | NI agent, **not sent**                                                        |
 | out       | `0xF4`                                                | 33         | Device settings: pad sensitivity, pedal, "HPM " (see "Settings reports") | NI agent, **not sent**                                                        |
-| feature   | `0xD0`, `0xD8`–`0xDB`, `0xF0`, `0xF2`, `0xF8`, `0xF9` | 7–33       | Probably calibration/settings                                            | **unknown, do not send**                                                      |
+| feature   | `0xD0`, `0xD8`–`0xDB`, `0xF0`, `0xF2` | 7–33       | Probably calibration/settings                                            | **unknown, do not send**                                                      |
+| feature   | `0xF8`, `0xF9`                                        | see below  | Screen backlight (see "Screen backlight" below)                          | verified, **byte 8 only** |
 | feature   | `0xFE`, `0xFF`                                        | 210        | Large blocks, possibly firmware/flash related                            | **unknown, never send**                                                       |
 
-Only `0x80` and `0x81` may be written. Reading feature reports could still be harmless, but
-skip it unless a phase needs it.
+Only `0x80` and `0x81` may be written, and the one approved exception is the screen backlight
+(`0xF8`/`0xF9`, below).
 
 ### Input report `0x01`: controls
 

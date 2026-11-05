@@ -26,9 +26,16 @@ export function cacheDir(host: Host = thisHost()): string {
   return posix.join(host.home, "Library", "Caches", "mk3d");
 }
 
+/** FL Studio's versions are named after their year (2024 was the first): newest possible first. */
+const FIRST_FL_YEAR = 2024;
+const flYears = (now: Date): string[] => {
+  const newest = now.getFullYear() + 1;
+  return Array.from({ length: newest - FIRST_FL_YEAR + 1 }, (_, i) => String(newest - i));
+};
+
 /** Where an installed FL Studio keeps its fonts, newest first. */
-export function flFontDirs(host: Host = thisHost()): string[] {
-  const years = ["2026", "2025"];
+export function flFontDirs(host: Host = thisHost(), now = new Date()): string[] {
+  const years = flYears(now);
   if (host.platform === "win32") {
     const programs = host.env.ProgramFiles ?? "C:\\Program Files";
     return years.map((year) =>

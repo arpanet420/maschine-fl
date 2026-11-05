@@ -126,9 +126,9 @@ describe("intervals", () => {
   });
 
   it("reads SONG_POS as beats from bar 1 (16 steps per bar)", () => {
-    expect(songBeats({ bar: 1, step: 1, tick: 0 })).toBe(0);
-    expect(songBeats({ bar: 2, step: 1, tick: 0 })).toBe(4);
-    expect(songBeats({ bar: 2, step: 5, tick: 12 })).toBeCloseTo(5.125, 9);
+    expect(songBeats({ bar: 1, step: 1, tick: 0 }, 96)).toBe(0);
+    expect(songBeats({ bar: 2, step: 1, tick: 0 }, 96)).toBe(4);
+    expect(songBeats({ bar: 2, step: 5, tick: 12 }, 96)).toBeCloseTo(5.125, 9);
   });
 
   it("maps hits and pressure to MIDI velocities", () => {
@@ -380,7 +380,7 @@ describe("aligned to FL's song position", () => {
   it("estimates the position from the last SONG_POS and the time since", () => {
     const { time, timing, scheduler, ons } = setup();
     timing.playing = true;
-    timing.songPos = { beats: songBeats({ bar: 3, step: 1, tick: 0 }) + 0.1, at: 1000 }; // 8.1 beats
+    timing.songPos = { beats: songBeats({ bar: 3, step: 1, tick: 0 }, 96) + 0.1, at: 1000 }; // 8.1 beats
     time.advance(20);
     scheduler.start(0, 100, 0.5); // 8.14 beats: late in the slot, so it plays at 8.25, 55 ms away
     time.advance(200);

@@ -1,9 +1,9 @@
 // PATTERN overlay (hold PATTERN; display button 1 is its pin tab). Pads 1–16 are the patterns of
 // the current bank of 16, a pad press selects that pattern; display buttons 7 and 8 (the right
 // screen's columns 3 and 4) page between the banks. Display 3 `DOUBLE` doubles the current pattern
-// (twice the length, the grid steps copied into the new half; piano roll notes cannot be read by a
-// script, so they are not), display 4 `DUPLICATE` clones it and display 5 `CREATE` makes a new empty
-// one; FL selects the new pattern and the overlay turns to its bank. FL's API has no pattern delete,
+// (twice the length, with every note copied into the new half: FL's hidden duplicatePatternData, or
+// only the grid steps in an FL without it), display 4 `DUPLICATE` clones it and display 5 `CREATE`
+// makes a new empty one; FL selects the new pattern and the overlay turns to its bank. FL's API has no pattern delete,
 // so there is no DELETE. A pad with no pattern behind it (shown as `+`, dim white) creates that
 // pattern and selects it; ERASE + pad and DUPLICATE keep their meaning.
 //
@@ -19,7 +19,6 @@
 // pads and the screens; a subclass says what a pad press does and what the extra buttons are.
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import type { HwEvent } from "../hw/events.js";
-import type { ButtonId } from "../hw/ids.js";
 import { PAD_COUNT } from "../hw/ids.js";
 import type { LedState } from "../hw/leds.js";
 import { LED_OFF, paletteWhite } from "../hw/palette.js";
@@ -39,23 +38,15 @@ import {
   MAX_LENGTH_PATTERN,
   MAX_PATTERN_LENGTH_STEPS,
 } from "../fl/protocol.js";
+import { DISPLAY_BUTTONS } from "./channelPadPage.js";
 import { FULL } from "./draw.js";
 import { flColorToCss, flColorToPalette, lengthText } from "./format.js";
 import { isLive, type PendingValue } from "./knob.js";
 import type { Mode, ModeContext, ModeName, ViewCommand } from "./mode.js";
 import { GRID_RECT, drawFooter, drawPadGrid, windowText, type PadCell } from "./padGrid.js";
+import { realTimers, type RepeatTimers } from "./repeatScheduler.js";
 
 const BANK = PAD_COUNT;
-const DISPLAY_BUTTONS: readonly ButtonId[] = [
-  "display1",
-  "display2",
-  "display3",
-  "display4",
-  "display5",
-  "display6",
-  "display7",
-  "display8",
-];
 const PREVIOUS = 6;
 const NEXT = 7;
 /** Display 3, 4 and 5 (0-based 2, 3 and 4) in the PATTERN overlay. */
@@ -165,7 +156,7 @@ export abstract class PatternBankPage implements Mode {
         if (event.phase === "down") this.selectPad(event.pad, mc);
         return true;
       case "button": {
-        const display = DISPLAY_BUTTONS.indexOf(event.id);
+        const display = DISPLAY_BUTTONS.findIndex((id) => id === event.id);
         if (display < 0) return false;
         if (event.pressed && display === PREVIOUS) this.setBank(this.bank - 1, mc);
         if (event.pressed && display === NEXT) this.setBank(this.bank + 1, mc);
@@ -395,6 +386,8 @@ export abstract class PatternBankPage implements Mode {
 export interface PatternOverlayOptions {
   /** Milliseconds; `performance.now()` by default. */
   clock?: () => number;
+  /** Takes the DOUBLE card down. */
+  timers?: RepeatTimers;
 }
 
 export class PatternOverlay extends PatternBankPage {
@@ -406,10 +399,19 @@ export class PatternOverlay extends PatternBankPage {
   /** The last DOUBLE: the pattern, its length before and after, and when. */
   private doubled: { pattern: number; from: number; to: number; at: number } | undefined;
   private readonly clock: () => number;
+  private readonly timers: RepeatTimers;
+  private cardTimer: unknown;
 
   constructor(options: PatternOverlayOptions = {}) {
     super();
     this.clock = options.clock ?? (() => performance.now());
+    this.timers = options.timers ?? realTimers;
+  }
+
+  /** Closed, replaced or the device went away: no redraw is due for the DOUBLE card. */
+  leave(): void {
+    this.timers.clear(this.cardTimer);
+    this.cardTimer = undefined;
   }
 
   protected padPressed(number: number, mc: ModeContext): void {
@@ -458,6 +460,12 @@ export class PatternOverlay extends PatternBankPage {
     // and falls back to copying the steps where it is missing.
     mc.send({ type: "doublePattern", pattern });
     mc.requestRender();
+    // Nothing else redraws a stopped FL's screens, so the card has to take itself down.
+    this.timers.clear(this.cardTimer);
+    this.cardTimer = this.timers.set(() => {
+      this.cardTimer = undefined;
+      mc.requestRender();
+    }, READOUT_MS);
   }
 
   protected readout(mc: ModeContext): readonly string[] | undefined {

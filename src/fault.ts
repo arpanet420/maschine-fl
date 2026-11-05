@@ -31,6 +31,7 @@ export class FaultReporter {
     const text = err instanceof Error ? err.message : String(err);
     const message = `${where}: ${text}`;
     const now = this.now();
+    const appeared = this.shown !== message;
     if (message !== this.lastLogged || now - this.lastLoggedAt >= FAULT_SHOW_MS) {
       this.lastLogged = message;
       this.lastLoggedAt = now;
@@ -41,6 +42,8 @@ export class FaultReporter {
     clearTimeout(this.timer);
     this.timer = setTimeout(() => this.changed(), FAULT_SHOW_MS + 1);
     this.timer.unref();
+    // Only when it appears: a page that fails on every draw must not ask for a draw on every draw.
+    if (appeared) this.changed();
   }
 
   /** Runs `task`; a throw is reported and `fallback` comes back. */

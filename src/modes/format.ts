@@ -1,5 +1,6 @@
 // Text and color helpers shared by modes and the log.
 import { paletteColor, rgbToPalette, type LedVariant } from "../hw/palette.js";
+import { STEPS_PER_BAR } from "../fl/protocol.js";
 import { theme } from "../render/widgets.js";
 
 export const pct = (value: number) => `${Math.round(value * 100)}%`;
@@ -29,9 +30,6 @@ export function isDefaultColor(color: number): boolean {
 export function flColorToPalette(color: number, variant: LedVariant = "bright"): number {
   return rgbToPalette(...rgb(color), variant) || paletteColor(ORANGE, variant);
 }
-
-/** Steps (16th notes) in a bar of 4 beats. */
-export const STEPS_PER_BAR = 16;
 
 /** `2 bars`, `1 bar 4 steps`, `6 steps`: a length in steps. */
 export function lengthText(steps: number): string {

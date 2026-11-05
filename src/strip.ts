@@ -41,6 +41,7 @@ import type { ButtonId } from "./hw/ids.js";
 import { STRIP_LED_COUNT, type LedState, type MonoLedId } from "./hw/leds.js";
 import { LED_OFF, paletteWhite } from "./hw/palette.js";
 import { bankFirst, currentBank } from "./modes/channelBank.js";
+import { clamp } from "./modes/knob.js";
 import { SCALES } from "./modes/chords.js";
 import type { ModeContext } from "./modes/mode.js";
 import { noteName, type PadState } from "./modes/padState.js";
@@ -92,7 +93,6 @@ interface Zones {
   target(zone: number): NoteTarget | undefined;
 }
 
-const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const segmentOf = (position: number) => Math.round(clamp(position, 0, 1) * LAST_SEGMENT);
 
 export class StripControl {

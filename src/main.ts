@@ -40,18 +40,21 @@ import { DuplicateOverlay } from "./modes/duplicateOverlay.js";
 import { LiveOverlay } from "./modes/liveOverlay.js";
 import { LoopOverlay } from "./modes/loopOverlay.js";
 import { PatternOverlay } from "./modes/patternOverlay.js";
+import { hitVelocity } from "./modes/repeatScheduler.js";
 import { SelectOverlay } from "./modes/selectOverlay.js";
 import { SceneOverlay } from "./modes/sceneOverlay.js";
 import { SettingsPage } from "./modes/settingsPage.js";
 import { SoloOverlay } from "./modes/soloOverlay.js";
 import { StepPage } from "./modes/stepPage.js";
 import { FALLBACK_FAMILY, registerFonts } from "./render/fonts.js";
-import { Screens } from "./render/screens.js";
+import { RedrawQueue, Screens } from "./render/screens.js";
 import { clear, drawHeader, font, theme } from "./render/widgets.js";
 import { StripControl } from "./strip.js";
 
 const REQUEST_STATE_EVERY_MS = 1000;
 const FL_SILENT_AFTER_MS = 3500; // the script sends ALIVE every second
+/** A USB transfer that hangs must not keep the daemon, and with it the MK3 and the ports, alive. */
+const SHUTDOWN_LIMIT_MS = 3000;
 
 // Tuning (the SETTINGS page edits and saves these too; a flag wins over the saved value at start-up):
 //   --velocity-full <0–4095>      MK3 hit value that gives velocity 127
@@ -181,6 +184,9 @@ nksIndex.onUpdate(nksChanged);
 // ── LEDs ─────────────────────────────────────────────────────────────────────
 
 function updateLeds(): void {
+  // Every frame is drawn from nothing, so a light only the last page used does not stay on. The
+  // sender compares whole reports, so an LED that stays the same sends nothing.
+  leds.clear();
   const on = flState.connected;
   const transportState = flState.transport;
   leds.setLight("play", !on ? "off" : transportState.playing ? "bright" : "dim");
@@ -214,38 +220,35 @@ function drawWaiting(): void {
 
 const faults = new FaultReporter(log, undefined, () => updateScreens());
 
-// Coalesce redraws: song position alone arrives every 50 ms while playing.
-let screenJob: Promise<void> | undefined;
-let screenDirty = false;
+// Coalesced: song position alone arrives every 50 ms while playing.
 let lastScreenError: string | undefined;
+const redraw = new RedrawQueue(
+  async () => {
+    faults.guard(
+      "screen",
+      () => {
+        if (flState.connected) stack.render(screens.left.ctx, screens.right.ctx, modeContext);
+        else drawWaiting();
+      },
+      undefined,
+    );
+    faults.guard("fault bar", () => faults.draw(screens.left.ctx), undefined);
+    try {
+      // While the MK3 is away there is nothing to send to; `connected` redraws everything.
+      if (device.connected) await screens.flush();
+      if (PNG_DIR) await screens.writePngs(PNG_DIR);
+      lastScreenError = undefined;
+    } catch (err) {
+      // On Windows without access to the screens every frame fails the same way: say it once.
+      if (String(err) !== lastScreenError) log("screen update failed:", String(err));
+      lastScreenError = String(err);
+    }
+  },
+  (err) => faults.report("screen", err),
+);
 
 function updateScreens(): void {
-  if (stopping) return;
-  screenDirty = true;
-  screenJob ??= (async () => {
-    while (screenDirty) {
-      screenDirty = false;
-      faults.guard(
-        "screen",
-        () => {
-          if (flState.connected) stack.render(screens.left.ctx, screens.right.ctx, modeContext);
-          else drawWaiting();
-        },
-        undefined,
-      );
-      faults.draw(screens.left.ctx);
-      try {
-        await screens.flush();
-        if (PNG_DIR) await screens.writePngs(PNG_DIR);
-        lastScreenError = undefined;
-      } catch (err) {
-        // On Windows without access to the screens every frame fails the same way: say it once.
-        if (String(err) !== lastScreenError) log("screen update failed:", String(err));
-        lastScreenError = String(err);
-      }
-    }
-    screenJob = undefined;
-  })();
+  if (!stopping) redraw.request();
 }
 
 // ── Input from the MK3 ───────────────────────────────────────────────────────
@@ -257,7 +260,7 @@ function sendControl(cc: (typeof CC)[keyof typeof CC], name: string): void {
 
 function handlePad(event: Extract<HwEvent, { type: "pad" }>): void {
   if (LOG_PADS && event.phase === "down") {
-    const velocity = Math.round((event.velocity ?? 0) * 126) + 1;
+    const velocity = hitVelocity(event.velocity ?? 0);
     log(
       `pad ${event.pad + 1} velocity ${velocity} (hit value ${Math.round(event.pressure * 4095)})`,
     );
@@ -379,7 +382,8 @@ flState.on("change", (section) => {
     },
     undefined,
   );
-  updateScreens();
+  // ACTIVITY and PLAYED_NOTES only light pads, and they arrive up to 25 times a second.
+  if (section !== "activity") updateScreens();
   if (section === "songPos" || section === "meters") return;
   changedSections.add(section);
   logTimer ??= setTimeout(() => {
@@ -406,6 +410,7 @@ device.on("disconnected", (reason) => {
   log(`Maschine MK3 disconnected: ${reason}`);
   releaseHeldNotes();
   touchedKnobs.clear();
+  parser.deviceLost();
   void display.close();
 });
 device.on("unavailable", (reason) => log(`Waiting for the MK3: ${reason}`));
@@ -420,6 +425,10 @@ async function shutdown(): Promise<void> {
   if (stopping) return;
   stopping = true;
   log("Shutting down…");
+  setTimeout(() => {
+    log("Shutdown is stuck: leaving anyway");
+    process.exit(1);
+  }, SHUTDOWN_LIMIT_MS).unref();
   clearInterval(requestTimer);
   releaseHeldNotes();
   leds.clear();
@@ -427,15 +436,18 @@ async function shutdown(): Promise<void> {
   await ledSender.flush();
   const full = { x: 0, y: 0, width: DISPLAY_WIDTH, height: DISPLAY_HEIGHT };
   for (const screen of screens.screens) clear(screen.ctx, full, "#000");
-  await screenJob;
+  await redraw.settled();
   await screens.flush().catch(() => undefined);
   await display.close();
   await device.stop();
   fl.close();
   process.exit(0);
 }
-process.on("SIGINT", () => void shutdown());
-process.on("SIGTERM", () => void shutdown());
+// SIGHUP: the terminal mk3d runs in was closed (a screen transfer must not be cut off midway, only a
+// power cycle gets the screens back from that; docs/protocol.md).
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+  process.on(signal, () => void shutdown());
+}
 
 try {
   fl.open();

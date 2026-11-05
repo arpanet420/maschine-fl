@@ -794,3 +794,31 @@ describe("contrastPalette", () => {
     expect(contrastPalette(paletteWhite("bright"))).toBe(4 + 4 * 2 + 2); // light orange
   });
 });
+
+describe("STEP's header", () => {
+  const header = (name: string) => {
+    const h = stackHarness({ selected: 2 });
+    h.patternInfo({ number: 1, name });
+    h.tap("step");
+    const left = createCanvas(480, 272).getContext("2d");
+    const right = createCanvas(480, 272).getContext("2d");
+    const drawn: string[] = [];
+    const real = left.fillText.bind(left);
+    left.fillText = (text: string, x: number, y: number) => {
+      if (text) drawn.push(text);
+      real(text, x, y);
+    };
+    h.stack.render(left, right, h.mc);
+    return drawn;
+  };
+
+  it("says a named pattern's number and name", () => {
+    const drawn = header("Intro");
+    expect(drawn).toContain("Pattern 1");
+    expect(drawn).toContain("Intro");
+  });
+
+  it("says FL's default name once", () => {
+    expect(header("Pattern 1").filter((text) => text === "Pattern 1")).toHaveLength(1);
+  });
+});

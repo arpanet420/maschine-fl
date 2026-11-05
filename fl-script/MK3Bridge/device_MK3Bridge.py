@@ -32,7 +32,8 @@
 #     that parameter 4096 + 1 of a VST (FL's wrapper: 4096-4223 = MIDI CC 0-127) is the mod wheel;
 #     and the PERFORM cutoff name match (a name with "cutoff", or "freq" with "vcf"/"filter"/"flt",
 #     e.g. Diva's "VCF1: Frequency"; the choice is logged as a PROBE line).
-#   - FL colors are 0x--BBGGRR (stubs); the wire format is 0xRRGGBB, so colors are swapped.
+#   - FL colors are 0x--RRGGBB, which is what the wire carries, so nothing is swapped (`fl_color`; the
+#     stubs say 0x--BBGGRR, checkpoint 5 and FL's own utils.ColorToRGB say otherwise).
 #   - channels.selectedChannel(True) returns -1 when nothing is selected (documented).
 #   - muteChannel/muteTrack/soloTrack/armTrack are documented as toggles (the first three have
 #     an optional value argument whose behaviour is not described well), so "set to value" is
@@ -420,7 +421,7 @@ PATTERN_GRID_FLAG_STEP_SEQUENCER = 0x01
 PATTERN_GRID_STEPS = 16  # steps per PATTERN_GRID frame
 MAX_PATTERN_STEPS = 256  # steps of a pattern the overview reads (16 pages of 16)
 MAX_PATTERN_GRID_CHANNEL = 127  # PATTERN_GRID names the channel with a u7
-MAX_LIVE_BLOCKS = 16  # blocks per LIVE_GRID frame (the LIVE overlay's pad bank)
+MAX_LIVE_BLOCKS = 16  # blocks per LIVE_TRACK frame (the LIVE overlay's pad bank)
 # LB_Status_Default bits of playlist.getLiveBlockStatus (the stubs' table; FL's own Akai Fire
 # script reads the same bits): filled, scheduled (waiting for its trigger snap), playing.
 LIVE_FILLED = 1
@@ -711,7 +712,11 @@ def encode(message):
         return frame(CMD_TRANSPORT, payload)
     if kind == "songPos":
         return frame(
-            CMD_SONG_POS, enc_u14(message["bar"]) + enc_u7(message["step"]) + enc_u14(message["tick"])
+            CMD_SONG_POS,
+            enc_u14(message["bar"])
+            + enc_u7(message["step"])
+            + enc_u14(message["tick"])
+            + (enc_u14(message["ppq"]) if "ppq" in message else b""),
         )
     if kind == "channels":
         return frame(
@@ -1874,10 +1879,13 @@ class Bridge(object):
         # their bases were never verified (a step base one off puts 1/8 on the off-beat). 16 steps
         # to the bar, as mk3d counts them.
         ticks = max(0, int(_safe(0, transport.getSongPos, SONGLENGTH_ABSTICKS)))
-        per_step = max(1, _probe_ppq() // 4)
+        ppq = _probe_ppq()
+        per_step = max(1, ppq // 4)
         steps, tick = divmod(ticks, per_step)
         bar, step = divmod(steps, 16)
-        self.submit("SONG_POS", {"type": "songPos", "bar": bar + 1, "step": step + 1, "tick": tick})
+        self.submit(
+            "SONG_POS", {"type": "songPos", "bar": bar + 1, "step": step + 1, "tick": tick, "ppq": ppq}
+        )
 
     def channel_total(self):
         total = int(_safe(0, channels.channelCount))
@@ -3901,25 +3909,25 @@ def OnInit():
     try:
         device.setHasMeters()
     except Exception as error:
-        _log("setHasMeters failed:", error)
+        _log_once("setHasMeters", error)
     try:
         _bridge.submit("HELLO", {"type": "hello", "version": PROTOCOL_VERSION})
         _bridge.mark_all()
         _bridge.service()
         _log("ready, port", device.getPortNumber())
     except Exception as error:
-        _log("OnInit failed:", error)
+        _log_once("OnInit", error)
 
 
 def OnDeInit():
     try:
         _bridge.end_perform()
     except Exception as error:
-        _log("OnDeInit end_perform failed:", error)
+        _log_once("OnDeInit end_perform", error)
     try:
         device.midiOutSysex(encode({"type": "goodbye"}))
     except Exception as error:
-        _log("OnDeInit failed:", error)
+        _log_once("OnDeInit", error)
 
 
 def _play_channel(index, velocity):
@@ -3937,7 +3945,7 @@ def OnNoteOn(event):
         event.handled = True
         _play_channel(event.data1, event.data2)  # velocity 0 is a note off
     except Exception as error:
-        _log("OnNoteOn failed:", error)
+        _log_once("OnNoteOn", error)
 
 
 def OnNoteOff(event):
@@ -3948,7 +3956,7 @@ def OnNoteOff(event):
         event.handled = True
         _play_channel(event.data1, 0)
     except Exception as error:
-        _log("OnNoteOff failed:", error)
+        _log_once("OnNoteOff", error)
 
 
 def OnKeyPressure(event):
@@ -3957,14 +3965,14 @@ def OnKeyPressure(event):
         # channel 1 (keyboard mode) goes on to FL untouched.
         event.handled = event.midiChan == CHANNEL_NOTE_CHANNEL
     except Exception as error:
-        _log("OnKeyPressure failed:", error)
+        _log_once("OnKeyPressure", error)
 
 
 def OnPitchBend(event):
     try:
-        event.handled = False  # the touch strip's pitch bend goes straight to FL
+        event.handled = False  # mk3d sends none (the touch strip uses the channel's pitch): not ours
     except Exception as error:
-        _log("OnPitchBend failed:", error)
+        _log_once("OnPitchBend", error)
 
 
 def OnControlChange(event):
@@ -3981,7 +3989,7 @@ def OnControlChange(event):
             _bridge.mark("transport")
             _bridge.service()
     except Exception as error:
-        _log("OnControlChange failed:", error)
+        _log_once("OnControlChange", error)
 
 
 def OnSysEx(event):
@@ -3996,7 +4004,7 @@ def OnSysEx(event):
         _bridge.handle(message)
         _bridge.service()
     except Exception as error:
-        _log("OnSysEx failed:", error)
+        _log_once("OnSysEx", error)
 
 
 def OnRefresh(flags):
@@ -4004,21 +4012,21 @@ def OnRefresh(flags):
         _bridge.mark_refresh(flags)
         _bridge.service()
     except Exception as error:
-        _log("OnRefresh failed:", error)
+        _log_once("OnRefresh", error)
 
 
 def OnDirtyChannel(index):
     try:
         _bridge.mark(*CHANNEL_READERS)
     except Exception as error:
-        _log("OnDirtyChannel failed:", error)
+        _log_once("OnDirtyChannel", error)
 
 
 def OnDirtyMixerTrack(index):
     try:
         _bridge.mark(*MIXER_READERS)
     except Exception as error:
-        _log("OnDirtyMixerTrack failed:", error)
+        _log_once("OnDirtyMixerTrack", error)
 
 
 def OnProjectLoad(status):
@@ -4032,21 +4040,21 @@ def OnProjectLoad(status):
         if status != midi.PL_Start:
             _bridge.service()
     except Exception as error:
-        _log("OnProjectLoad failed:", error)
+        _log_once("OnProjectLoad", error)
 
 
 def OnIdle():
     try:
         _bridge.service()
     except Exception as error:
-        _log("OnIdle failed:", error)
+        _log_once("OnIdle", error)
 
 
 def OnUpdateBeatIndicator(value):
     try:
         _bridge.on_beat(value)
     except Exception as error:
-        _log("OnUpdateBeatIndicator failed:", error)
+        _log_once("OnUpdateBeatIndicator", error)
 
 
 def OnUpdateLiveMode(*args):
@@ -4055,11 +4063,11 @@ def OnUpdateLiveMode(*args):
     try:
         _bridge.mark("live_grid")
     except Exception as error:
-        _log("OnUpdateLiveMode failed:", error)
+        _log_once("OnUpdateLiveMode", error)
 
 
 def OnUpdateMeters():
     try:
         _bridge.meters_callback()
     except Exception as error:
-        _log("OnUpdateMeters failed:", error)
+        _log_once("OnUpdateMeters", error)

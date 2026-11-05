@@ -33,7 +33,7 @@ The buttons work as they do in Maschine, mapped to the nearest thing in FL Studi
 | **ARRANGER**                     | The current pattern as channels and steps, with the play head                                                                                                           |
 | **PATTERN** (hold)               | Pick, create, duplicate and double patterns, with the notes copied; length (16, 32, 64 …) and colour on the knobs                                                       |
 | **STEP**                         | Step sequencer for the selected channel, 16 steps per page. Hold a step to edit its velocity and pitch                                                                  |
-| **PAD MODE / KEYBOARD / CHORDS** | Play channels, a scale or chords (harmonizer and chord sets). KEYBOARD keeps its octave per channel. In PAD MODE a pad lights up while FL plays its channel              |
+| **PAD MODE / KEYBOARD / CHORDS** | Play channels, a scale or chords (harmonizer and chord sets). KEYBOARD keeps its octave per channel. A pad lights up while FL plays its channel (PAD MODE) or its note (KEYBOARD) |
 | **NOTE REPEAT**                  | Straight, dotted and triplet rates, LOCK, HOLD and GATE RESET. In KEYBOARD and CHORDS it can also arpeggiate (types, octaves, presets, rhythms, inversions, key range)  |
 | **NAVIGATE** (VARIATION)         | Press to open: show or hide FL's Playlist, Piano roll, Channel rack, Mixer, Browser and plug-in window from the display buttons                                         |
 | **GRID** (SHIFT + FOLLOW)        | FL's snap on the pads, and input quantize on display 2                                                                                                                  |
@@ -174,8 +174,8 @@ written down.
 - **The playlist is only readable in performance mode**, and only as filled, queued or playing blocks with a
   colour, without clip names. LIVE names a clip by the one pattern that has its colour, so give your patterns
   distinct colours. LIVE reads the first 8 tracks and launches whole scenes, not single clips.
-- **Piano roll notes can't be read or edited**, so ARRANGER shows step-sequencer patterns and there is no
-  Maschine-style EVENTS page.
+- **Piano roll notes can't be edited, and reading them stops at one note per step**, with its pitch and start but
+  no length. So ARRANGER shows steps and there is no Maschine-style EVENTS page.
 - **Plug-ins can't be loaded from a script**, only through FL's picker, where mk3d can't show the names. You pick by
   looking at FL's screen.
 - **NKS presets can't be loaded from the MK3.** The list a script can step is FL's, which for many plug-ins isn't

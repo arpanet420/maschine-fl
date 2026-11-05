@@ -1,12 +1,11 @@
-// Draws the pages that came with quick edit, SHIFT + pad, NAVIGATE, GRID, NOTE REPEAT, BROWSER, FILE, SETTINGS, ARRANGER (the pattern overview), SCENE, PATTERN (length and color), LOOP, LIVE, KEYBOARD scales and CHORDS to out/ as PNG files, from
-// a demo project (no FL, no MK3). The SHIFT + pad feedback cards are ui-shift-undo, -redo, -copy,
-// -paste, -clear, -quantize and -octave:
+// Draws every page to out/ as PNG files, from a demo project (no FL, no MK3). The SHIFT + pad
+// feedback cards are ui-shift-undo, -redo, -copy, -paste, -clear, -quantize and -octave:
 //
 //   npm run pagepng
 //
 // Each scene writes ui-<name>-0.png (left screen), ui-<name>-1.png (right screen) and
 // ui-<name>-both.png (side by side); `ui-shift-pads.png` shows the pad LEDs while SHIFT is held.
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
 import { DISPLAY_HEIGHT, DISPLAY_WIDTH } from "../hw/display.js";
@@ -128,9 +127,66 @@ const demoMarkers = (count: number) =>
 async function main(): Promise<void> {
   registerFonts();
   await mkdir(OUT_DIR, { recursive: true });
+  for (const file of await readdir(OUT_DIR)) {
+    if (/^ui-.*\.png$/.test(file)) await rm(join(OUT_DIR, file));
+  }
+
+  // The main pages, as they open.
+  let h = stackHarness({ selected: 2 });
+  await writeScene("channel", h);
+  h.touched.add(0);
+  await writeScene("channel-touched", h);
+  h.touched.delete(0);
+  h.fl.apply({ type: "plugin", channel: 2, valid: true, paramCount: 12, name: "Sytrus" });
+  const paramNames = [
+    "Cutoff",
+    "Resonance",
+    "Attack",
+    "Decay",
+    "Sustain",
+    "Release",
+    "Drive",
+    "Mix",
+  ];
+  h.fl.apply({ type: "paramNames", offset: 0, names: paramNames });
+  h.fl.apply({
+    type: "pluginParams",
+    params: paramNames.map((name, index) => ({
+      index,
+      value: (index + 1) / 9,
+      name,
+      valueText: `${Math.round(((index + 1) / 9) * 100)}%`,
+      known: true,
+    })),
+  });
+  h.tap("plugIn");
+  await writeScene("plugin", h);
+  h = stackHarness({ selected: 2 });
+  h.tap("mixer");
+  await writeScene("mixer", h);
+
+  // The pad pages and the overlays that take the pads.
+  h = stackHarness({ selected: 2, muted: [1], solo: [3] });
+  h.tap("padMode");
+  await writeScene("padmode", h);
+  h = stackHarness({ selected: 2, muted: [1], solo: [3] });
+  h.press("mute");
+  await writeScene("mute", h);
+  h = stackHarness({ selected: 2, muted: [1], solo: [3] });
+  h.press("select");
+  await writeScene("select", h);
+  h = stackHarness({ selected: 2, muted: [1], solo: [3] });
+  h.press("solo");
+  await writeScene("solo", h);
+  h = stackHarness({ selected: 2 });
+  h.press("duplicate");
+  await writeScene("duplicate", h);
+  h = stackHarness({ selected: 2 });
+  h.tap("step");
+  await writeScene("step", h);
 
   // Quick edit: TEMPO after one turn of the 4D encoder.
-  let h = stackHarness({ tempo: 120, selected: 2 });
+  h = stackHarness({ tempo: 120, selected: 2 });
   h.tap("tempo");
   h.turn(1);
   await writeScene("quickedit-tempo", h);

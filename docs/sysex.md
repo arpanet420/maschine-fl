@@ -84,7 +84,7 @@ group-local indexes (what the channel rack shows with the current filter group).
 | `02` | TRANSPORT        | `u7 flags`, `u21 tempo` (BPM × 100), `norm swing`, `norm mainVolume`                                                                                                                                       | Change. Flags: 1 playing, 2 recording, 4 metronome, 8 count-in, 16 song mode (`transport.getLoopMode() == 1`; 0 = pattern mode, also for an older script that does not know the bit). `swing` is the main swing (`REC_MainShuffle`); a message without it means swing 0. `mainVolume` is FL's main volume (`REC_MainVol`, not the Master mixer fader); a message without it (an older script, or a failed read) means unknown, mk3d shows no value until it arrives |
 | `04` | GOODBYE          | none                                                                                                                                                                                                       | `OnDeInit`: FL quits, or the script is reloaded or disabled. mk3d forgets FL's state                                                                                                                                                            |
 | `05` | ALIVE            | none                                                                                                                                                                                                       | Every second. mk3d forgets FL's state after 3.5 s without any message                                                                                                                                                                           |
-| `03` | SONG_POS         | `u14 bar`, `u7 step`, `u14 tick` (bar and step 1-based)                                                                                                                                                    | Change, at most every 50 ms                                                                                                                                                                                                                     |
+| `03` | SONG_POS         | `u14 bar`, `u7 step`, `u14 tick`, `u14 ppq` (bar and step 1-based; 16 steps to the bar, PPQ / 4 ticks to the step)                                                                                                                                                    | Change, at most every 50 ms                                                                                                                                                                                                                     |
 | `08` | CHANNELS         | `u14 total`, `u14 offset`, `u7 n`, n × (`u7 flags`, `color`, `str name`)                                                                                                                                   | Change in the channel window. Flags: 1 selected, 2 muted, 4 solo (`channels.isChannelSolo`)                                                                                                                                                                                    |
 | `09` | SELECTED_CHANNEL | `u14 index` (`none`), `color`, `norm volume`, `norm pan`, `str name`, `str plugin`                                                                                                                         | Change. `plugin` is the generator's plugin name, empty if none                                                                                                                                                                                  |
 | `0A` | CHANNEL_DETAIL   | `u14 index` (`none`), `norm pitch` (pan-style, −1…1 = the channel's pitch knob as a factor of its range), `u7 pitchRange` (semitones), `norm cutoff`, `norm resonance`, `u14 mixerTrack`, `u7 channelType` | Change, for the selected channel. Cutoff and resonance are the channel's filter knobs (REC events `REC_Chan_FCut`/`FRes`); `channelType` is `channels.getChannelType`                                                                           |
@@ -179,7 +179,8 @@ FL stops. mk3d keeps the list in `FlState.markers` with `ppq`, finds the marker 
 (the last marker at or before the position) and shows nothing but the notice when `total` is 0.
 
 **Pattern overview (PATTERN_GRID, VIEW flag 4).** ARRANGER shows the current pattern as sounds × steps,
-because the script API cannot see the playlist's clips or the piano roll's notes. While VIEW has the
+because the script API cannot see the playlist's clips outside performance mode. `getGridBit` also reports
+the steps recorded notes start on (measured 2026-11-04, PLAYED_NOTES), so such a channel shows those. While VIEW has the
 patternGrid flag the script reads `channels.getGridBit(channel, step)` for the 16 channels of the channel
 bank (`channelOffset`; channels from 128 up get no row, `channel` is a `u7` and the same index CHANNELS
 uses) and for the pattern's steps up to 256 (`patterns.getPatternLength`), in chunks of 16 steps, and sends a
@@ -215,9 +216,9 @@ the scene flag with its own per-track fan-out after a binary diff of function na
 "trigger scene" function — the flag was never looked for. With flags 0 the hardware log showed
 clips stacking up on one track (`2110` → `2210` → `2220`, several blocks of track 1 "active" at
 once, which `TLC_MuteOthers` prevents), and `LB_Status_Simplest` could not show whether any of them
-was playing or only scheduled. The whole window is read every service pass while watched (no
-`OnRefresh` flag covers performance-mode changes; FL's `OnUpdateLiveMode` callback is not used yet,
-and the read is not chunked across passes); `getLiveBlockColor` only returns a real color once a
+was playing or only scheduled. The whole window is read at most every `LIVE_SECONDS` (50 ms) while
+watched and at once on FL's `OnUpdateLiveMode` callback (no `OnRefresh` flag covers performance-mode
+changes; the read is not chunked across passes); `getLiveBlockColor` only returns a real color once a
 block has one set (an unset clip reads as FL's default gray). `playlist.trackCount()` gives no real
 upper bound on blocks (the playlist is an open timeline), so the overlay's block window has no last
 page, only a first one (block 0).

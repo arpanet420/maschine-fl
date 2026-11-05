@@ -99,12 +99,14 @@ docstrings; probably "Image-Line MCP", FL's AI/assistant hooks) and the piano ro
   (so `STEPS_PER_UNIT = 1`). FL 2026's release notes list the functions as official (26.1: "MIDI scripting:
   setPatternLength, incrementPatternLength and getPatternLength…"), so they are no longer "hidden". The
   script calls `getattr`, sets, reads `getPatternLength` back and sends a PROBE line.
-- **DOUBLE (`DOUBLE_PATTERN`)**: `general.saveUndo("MK3: double pattern", UF_PR)` once, `setPatternLength(p, 2L)`
-  (at most 512 steps), then for every channel `getGridBit` / `setGridBit` copy steps 0…L−1 to L…2L−1 and the
+- **DOUBLE (`DOUBLE_PATTERN`)**: `general.saveUndo("MK3: double pattern", UF_PR)` once, then FL's hidden
+  `patterns.duplicatePatternData(p)`, which copies every note including piano roll notes (owner's try,
+  2026-10-18), and `setPatternLength(p, 2L)`, since the function alone leaves the length at what the content
+  spans. Without that function: `setPatternLength(p, 2L)` (at most 512 steps), then for every channel `getGridBit` / `setGridBit` copy steps 0…L−1 to L…2L−1 and the
   step parameters (`channels.getCurrentStepParam` / `setStepParameterByIndex`, params 0–7: pitch, velocity,
   release, fine pitch, pan, mod X, mod Y, shift) of the steps that are on; what fails is skipped. A few channels
-  per service pass; the grid goes out once at the end; PROBE `doublePattern(1) 16 -> 32, channels 5`. Notes
-  drawn in the piano roll are not doubled (`setGridBit` does not write them; reading them step by step does
+  per service pass; the grid goes out once at the end; PROBE `doublePattern(1) 16 -> 32, channels 5`. That path
+  doesn't double notes drawn in the piano roll (`setGridBit` does not write them; reading them step by step does
   work, see PLAYED_NOTES in docs/sysex.md) (NOT VERIFIED live: the step
   parameter copy, the pacing).
 - **CREATE_PATTERN (an empty pad while PATTERN is held)**: `patterns.jumpToPattern(k)` creates a missing pattern

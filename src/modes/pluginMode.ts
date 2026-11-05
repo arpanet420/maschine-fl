@@ -26,20 +26,10 @@ import { FULL, drawBand, drawTransportBar } from "./draw.js";
 import { flColorToCss, pct } from "./format.js";
 import { RenderSoon, clamp, isLive, knobStep } from "./knob.js";
 import type { PendingValue } from "./knob.js";
+import { DISPLAY_BUTTONS } from "./channelPadPage.js";
 import type { Mode, ModeContext, ViewCommand } from "./mode.js";
 import { FlParamPages, PAGE_SIZE, paramLabel } from "./pluginPages.js";
 import type { PageSource, PluginPage } from "./pluginPages.js";
-
-const DISPLAY_BUTTONS = [
-  "display1",
-  "display2",
-  "display3",
-  "display4",
-  "display5",
-  "display6",
-  "display7",
-  "display8",
-] as const;
 
 const TABS_RECT: Rect = { ...FULL, height: TAB_HEIGHT };
 const KNOB_ROW: Rect = { ...FULL, y: FULL.height - 110, height: 110 };
@@ -395,9 +385,6 @@ export class PluginMode implements Mode {
     });
     leds.setLight("arrowLeft", this.page > 0 ? "dim" : "off");
     leds.setLight("arrowRight", this.page + 1 < pages ? "dim" : "off");
-    // Channel mode's Mute is unused here; the previous frame is not cleared. GROUP A–H are the
-    // channel banks (page stack).
-    leds.setLight("mute", "off");
   }
 }
 

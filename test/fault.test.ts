@@ -43,6 +43,21 @@ describe("FaultReporter", () => {
     expect(lines).toHaveLength(2);
   });
 
+  it("asks for a draw when a fault appears, not on every repeat of it", () => {
+    let draws = 0;
+    const faults = new FaultReporter(
+      () => undefined,
+      () => 0,
+      () => draws++,
+    );
+    faults.report("screen", new Error("boom"));
+    expect(draws).toBe(1);
+    faults.report("screen", new Error("boom"));
+    expect(draws).toBe(1);
+    faults.report("screen", new Error("other"));
+    expect(draws).toBe(2);
+  });
+
   it("is on the screen for a while", () => {
     const { faults, time } = setup();
     faults.report("screen", new Error("boom"));

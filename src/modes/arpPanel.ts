@@ -51,7 +51,7 @@ import {
   type ArpPreset,
   type ArpSettings,
 } from "./arpeggiator.js";
-import { knobStep } from "./knob.js";
+import { clamp, knobStep } from "./knob.js";
 import type { ModeContext } from "./mode.js";
 import { noteName, type PadState } from "./padState.js";
 import {
@@ -92,7 +92,6 @@ const CELL_GAP = 4;
 const MAX_ROWS = 3;
 const TYPE_VERSION = 2;
 
-const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const finite = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isFinite(value) ? value : undefined;
 

@@ -41,7 +41,7 @@ import { pct } from "./format.js";
 import { ArpPanel } from "./arpPanel.js";
 import type { Mode, ModeContext } from "./mode.js";
 import type { PadState } from "./padState.js";
-import { knobStep } from "./knob.js";
+import { clamp, knobStep } from "./knob.js";
 import {
   DEFAULT_SETTINGS,
   FALLBACK_BPM,
@@ -79,8 +79,6 @@ const HOLD_BUTTON = 2; // display 3
 const GATE_RESET_BUTTON = 3; // display 4
 const FIRST_VALUE_BUTTON = 4; // display 5
 const KNOB_ROW = { ...FULL, y: FULL.height - 110, height: 110 };
-
-const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 export interface NoteRepeatOptions {
   /** Milliseconds; `performance.now()` by default (and the clock of FlState's SONG_POS stamps). */

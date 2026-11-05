@@ -1491,17 +1491,17 @@ class StateTests(BridgeTestCase):
     def test_song_pos_comes_from_the_absolute_ticks(self):
         # FL's own B:S:T (the fake's 12:2:0) plays no part: bar 12, step 3, tick 0.
         ticks = (11 * 16 + 2) * 24
-        self.assertEqual(self.song_pos_frame(ticks), "f07d4d3303000c" + "03" + "0000" + "f7")
+        self.assertEqual(self.song_pos_frame(ticks), "f07d4d3303000c" + "03" + "0000" + "0060" + "f7")
 
     def test_song_pos_starts_at_bar_1_step_1(self):
-        self.assertEqual(self.song_pos_frame(0), "f07d4d33030001" + "01" + "0000" + "f7")
+        self.assertEqual(self.song_pos_frame(0), "f07d4d33030001" + "01" + "0000" + "0060" + "f7")
 
     def test_song_pos_keeps_the_ticks_inside_the_step(self):
-        self.assertEqual(self.song_pos_frame(24 * 4 + 7), "f07d4d33030001" + "05" + "0007" + "f7")
+        self.assertEqual(self.song_pos_frame(24 * 4 + 7), "f07d4d33030001" + "05" + "0007" + "0060" + "f7")
 
     def test_song_pos_follows_the_ppq(self):
-        self.fl.ppq = 192  # 48 ticks to the step
-        self.assertEqual(self.song_pos_frame(48 * 16 + 5), "f07d4d33030002" + "01" + "0005" + "f7")
+        self.fl.ppq = 192  # 48 ticks to the step, and mk3d is told
+        self.assertEqual(self.song_pos_frame(48 * 16 + 5), "f07d4d33030002" + "01" + "0005" + "0140" + "f7")
 
     def test_channels_in_chunks_of_four(self):
         frames = self.start()

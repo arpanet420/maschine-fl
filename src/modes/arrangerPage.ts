@@ -1,5 +1,5 @@
 // ARRANGER (a main page): Maschine's pattern view on the MK3 (docs/workflow.md, "Hard to map" 1).
-// FL's script cannot see the playlist's clips or the piano roll's notes, so the page shows what it can
+// FL's script cannot see the playlist's clips outside performance mode, so the page shows what it can
 // read: the current pattern as sounds × steps, like the channel rack. The right screen is the step
 // grid (up to 8 channel rows × 16 steps of the current page, FL's step colors, the play head's column
 // lit, the row cursor outlined), the left screen the rows' channels in the same lines (color bar,
@@ -56,7 +56,7 @@ import { STEPS_PER_PAGE, groupB, pageCount, playHeadStep } from "./stepPage.js";
 
 /** Knob counts that make one detent (a turn is 1000 counts). */
 const DETENT_COUNTS = 120;
-/** The playlist window in FL's UI_STATE (`ui.getFocused(2)`). */
+/** Display 2 (0-based 1): FL's song or pattern mode. */
 const SONG_BUTTON = 1;
 const PREV_PATTERN_BUTTON = 4;
 const NEXT_PATTERN_BUTTON = 5;

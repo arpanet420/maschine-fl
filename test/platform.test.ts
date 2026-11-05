@@ -13,7 +13,7 @@ describe("where files live", () => {
   it("on macOS", () => {
     expect(settingsDir(mac)).toBe("/Users/me/Library/Application Support/mk3d");
     expect(cacheDir(mac)).toBe("/Users/me/Library/Caches/mk3d");
-    expect(flFontDirs(mac)[0]).toBe(
+    expect(flFontDirs(mac)).toContain(
       "/Applications/FL Studio 2026.app/Contents/Resources/FL/Shared/Artwork/Fonts",
     );
     expect(fallbackFont("darwin")).toBe("Helvetica Neue");
@@ -22,7 +22,7 @@ describe("where files live", () => {
   it("on Windows", () => {
     expect(settingsDir(windows)).toBe("D:\\Roaming\\mk3d");
     expect(cacheDir(windows)).toBe("D:\\Local\\mk3d");
-    expect(flFontDirs(windows)[0]).toBe(
+    expect(flFontDirs(windows)).toContain(
       "E:\\Programs\\Image-Line\\FL Studio 2026\\Shared\\Artwork\\Fonts",
     );
     expect(fallbackFont("win32")).toBe("Segoe UI");
@@ -33,6 +33,15 @@ describe("where files live", () => {
     expect(settingsDir(bare)).toBe("C:\\Users\\me\\AppData\\Roaming\\mk3d");
     expect(cacheDir(bare)).toBe("C:\\Users\\me\\AppData\\Local\\mk3d");
     expect(flFontDirs(bare)[0]).toContain("C:\\Program Files\\Image-Line");
+  });
+});
+
+describe("FL Studio's fonts", () => {
+  it("finds a version newer than this code, newest first", () => {
+    const dirs = flFontDirs(mac, new Date("2028-06-01"));
+    expect(dirs[0]).toContain("FL Studio 2029.app");
+    expect(dirs[1]).toContain("FL Studio 2028.app");
+    expect(dirs.at(-1)).toContain("FL Studio 2024.app");
   });
 });
 

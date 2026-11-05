@@ -398,6 +398,19 @@ describe("NOTE REPEAT overlay", () => {
       expect(repeating()).toEqual([]);
     });
 
+    it("LOCK with the page closed: a repeating pad still flashes with each repeat", () => {
+      const h = repeatHarness();
+      h.press("noteRepeat");
+      h.tap("display2");
+      h.release("noteRepeat");
+      h.pad(0);
+      h.advance(10);
+      const before = h.state.renders;
+      h.advance(500);
+      expect(h.state.renders).toBeGreaterThan(before + 2);
+      h.pad(0, "up");
+    });
+
     it("LOCK (display 2): the pads keep repeating with the page closed, until unlocked", () => {
       const h = repeatHarness();
       h.press("noteRepeat");

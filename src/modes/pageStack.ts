@@ -38,7 +38,7 @@
 //   while on); SHIFT + FIXED VEL (16 velocities) is not built: the LED is off and nothing happens.
 // - ARRANGER (main) and SCENE (overlay) are the playlist's markers on the pads (markerPage.ts); SCENE
 //   keeps its NOW setting with the page state. SHIFT + SCENE is LIVE (liveOverlay.ts): FL's
-//   performance-mode clip grid, one playlist track's blocks on the pads.
+//   performance-mode clip grid, one pad per scene (a block of the playlist's live clips).
 // - A page that is left (closed, replaced, device gone) gets `leave`; pages with `persisted` settings
 //   have them saved with the pin states (NOTE REPEAT's rate, gate and swing, SCENE's NOW, the
 //   scale and chord settings of KEYBOARD and CHORDS).
@@ -254,6 +254,7 @@ export class PageStack {
       },
       touchedKnobs: mc.touchedKnobs,
       requestRender: () => mc.requestRender(),
+      requestLeds: () => (mc.requestLeds ? mc.requestLeds() : mc.requestRender()),
       reportAction: (flash, line) => {
         this.log(line);
         this.quickEdit.flash(flash, mc);
@@ -518,7 +519,7 @@ export class PageStack {
   }
 
   /**
-   * SHIFT + DUPLICATE: clone the current pattern ("Double"; FL can't double), no page. SHIFT + FILE:
+   * SHIFT + DUPLICATE: clone the current pattern, no page (doubling is PATTERN's DOUBLE). SHIFT + FILE:
    * save the project, no page. True = handled.
    */
   private shiftAction(button: ButtonId, mc: ModeContext): boolean {

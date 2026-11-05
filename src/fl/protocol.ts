@@ -143,6 +143,10 @@ export const TO_FL = {
   nudgeParam: 0x6d,
 } as const;
 
+/** SONG_POS counts 16 steps to the bar and 4 beats to the bar, whatever the project's time signature. */
+export const STEPS_PER_BAR = 16;
+export const BEATS_PER_BAR = 4;
+
 export const CMD = { ...FROM_FL, ...TO_FL } as const;
 
 export const PROTOCOL_VERSION = 2;
@@ -157,26 +161,14 @@ export const PEAK_MAX = 127;
 export const MAX_STRING = 32;
 /** Longest PROBE text in characters; longer ones are cut. */
 export const MAX_PROBE = 100;
-/** The FL script sends at most this many list entries per message. */
-export const MAX_LIST = 4;
-/** Longest list of plugin parameters in VIEW. */
-export const MAX_VIEW_PARAMS = 8;
-/** Parameter names per PARAM_NAMES message. */
-export const MAX_PARAM_NAMES = 8;
 /** Preset names per PRESETS message (the window around the current preset). */
 export const MAX_PRESET_NAMES = 8;
-/** Markers per MARKERS message. */
-export const MAX_MARKERS_PER_MESSAGE = 8;
-/** The most markers FL's script lists (`total` is a `u7`). */
-export const MAX_MARKERS = 127;
 /** MARKERS `ticks` value (the largest `u21`) for a marker whose time the script could not work out. */
 export const MARKER_TICKS_UNKNOWN = 0x1fffff;
 /** Steps per PATTERN_GRID message. */
 export const MAX_PATTERN_GRID_STEPS = 16;
 /** Steps of a pattern the script sends as PATTERN_GRID (16 pages of 16). */
 export const MAX_PATTERN_STEPS = 256;
-/** PATTERN_GRID names channels with a `u7`: channels from 128 up have no overview row. */
-export const MAX_PATTERN_GRID_CHANNEL = 127;
 
 export const TRANSPORT_FLAGS = {
   playing: 0x01,
@@ -216,8 +208,6 @@ export const UI_KEYS = ["up", "down", "left", "right", "enter", "escape", "close
 export const MAX_NODE_TEXT = 40;
 /** BROWSER_NODE `fileType` travels as `fileType + NODE_TYPE_BIAS` in a `u14`. */
 export const NODE_TYPE_BIAS = 8192;
-/** A node whose file type is this or lower is a folder (docs/sysex.md, BROWSER_NODE). */
-export const NODE_FOLDER_TYPE = -100;
 /** BROWSER_NODE flags. */
 export const NODE_FLAGS = { popup: 0x01, browserFocused: 0x02, otherFormFocused: 0x04 } as const;
 /** PICKER `mode` meaning "leave the second argument out". */
@@ -283,14 +273,10 @@ export const PLAYLIST_VIEWS = ["zoom", "scroll"] as const;
 
 /** STRIP `kind`: wire value = index. */
 export const STRIP_KINDS = ["pitch", "mod", "perform"] as const;
-/** STRIP `value` of the kinds `pitch` (centre 8192) and `perform` is 0–16383; `mod` is 0–127. */
-export const STRIP_VALUE_MAX = 0x3fff;
-export const STRIP_MOD_MAX = 127;
 /**
  * FL's VST wrapper: parameters 4096–4223 are MIDI CC 0–127 (so CC 1, the mod wheel, is 4097); a
  * plugin that reports at least VST_CC_PARAM_COUNT parameters has them.
  */
-export const VST_CC_PARAM_BASE = 4096;
 export const VST_CC_PARAM_COUNT = 4224;
 
 /** FL windows UI_STATE and SHOW_WINDOW know: wire value = index (`ui.getVisible(i)`). */

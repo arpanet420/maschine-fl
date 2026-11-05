@@ -75,6 +75,38 @@ describe("InputParser: controls report", () => {
     ]);
   });
 
+  it("takes the counters as a new baseline after a replug: no jump, but later turns count", () => {
+    const parser = new InputParser();
+    parser.parse(controlsReport({ knobs: [100], wheel: 3, strip: 500 }));
+    parser.parse(controlsReport({ knobs: [101], wheel: 3, strip: 500 }));
+    parser.deviceLost();
+    // The MK3 restarted its counters: nothing here is a turn.
+    expect(parser.parse(controlsReport({ knobs: [600], wheel: 9 }))).toEqual([]);
+    expect(parser.parse(controlsReport({ knobs: [605], wheel: 10 }))).toEqual([
+      { type: "nav", action: "turn", delta: 1 },
+      { type: "encoder", index: 0, delta: 5 },
+    ]);
+  });
+
+  it("forgets a knob's last direction after a replug", () => {
+    const parser = new InputParser();
+    parser.parse(controlsReport({ knobs: [100] }));
+    parser.parse(controlsReport({ knobs: [110] })); // going up
+    parser.deviceLost();
+    parser.parse(controlsReport({ knobs: [500] }));
+    // One count back would be taken for flicker if the old direction still stood.
+    expect(parser.parse(controlsReport({ knobs: [499] }))).toEqual([
+      { type: "encoder", index: 0, delta: -1 },
+    ]);
+  });
+
+  it("still gives the release of a button held when the MK3 went away", () => {
+    const parser = new InputParser();
+    parser.parse(controlsReport({ bits: [[6, 0x40]] }));
+    parser.deviceLost();
+    expect(parser.parse(controlsReport())).toEqual([{ type: "button", id: "rec", pressed: false }]);
+  });
+
   it("turns knob values into wrapped deltas, only after a baseline", () => {
     const parser = new InputParser();
     expect(parser.parse(controlsReport({ knobs: [100, 0, 0, 0, 0, 0, 0, 992] }))).toEqual([]);
@@ -122,6 +154,18 @@ describe("panelPad", () => {
 });
 
 describe("InputParser: pads report", () => {
+  it("has no pad held after the MK3 went away: a new hit is just a down", () => {
+    const parser = new InputParser();
+    parser.parse(padsReport([{ pad: 3, kind: "on", value: 2000 }]));
+    parser.deviceLost();
+    const events = parser.parse(padsReport([{ pad: 3, kind: "on", value: 2000 }]));
+    expect(events.map((e) => (e.type === "pad" ? e.phase : e.type))).toEqual(["down"]);
+    expect(parser.parse(padsReport([{ pad: 3, kind: "pressure", value: 900 }]))).toHaveLength(1);
+    parser.deviceLost();
+    expect(parser.parse(padsReport([{ pad: 3, kind: "pressure", value: 800 }]))).toEqual([]);
+    expect(parser.parse(padsReport([{ pad: 3, kind: "off", value: 0 }]))).toEqual([]);
+  });
+
   it("reads the event type from the high nibble of each entry", () => {
     const parser = new InputParser();
     expect(parser.parse(padsReport([{ pad: 3, kind: "on", value: 2000 }]))).toEqual([

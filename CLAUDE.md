@@ -24,7 +24,7 @@ npm run enumerate -- --open   # also read HID input for 5 s
 npm run inputlog              # live input events (--raw, --moves, --record <file>, --reset)
 npm run ledtest -- <mode>     # LEDs: walk | levels | ladder | rainbow | palette | run | off
 npm run displaytest -- <mode> # screens: bars | grid | text | partial | anim | widgets (--png: write out/*.png)
-npm run pagepng               # quick edit, NAVIGATE, GRID, NOTE REPEAT and ARP, BROWSER, FILE, SETTINGS, ARRANGER (pattern overview), SCENE, PATTERN (length and color on one page, double), touch strip read-outs, LOOP, LIVE, KEYBOARD scales, CHORDS, SHIFT-pad LEDs and read-outs as out/ui-*.png (demo project)
+npm run pagepng               # every page and its read-out cards as out/ui-*.png, from a demo project
 scripts/ni-agents.sh status   # NI agents: status | stop | start
 scripts/winsync.sh 'npm test' # copy the working tree to the Windows PC and run a command there (docs/windows.md)
 ```

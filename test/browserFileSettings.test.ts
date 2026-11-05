@@ -1,8 +1,10 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createCanvas } from "@napi-rs/canvas";
 import { afterEach, describe, expect, it } from "vitest";
 import { CHANNEL_NOTE_CHANNEL, NOTE_CHANNEL } from "../src/fl/protocol.js";
+import type { ButtonId } from "../src/hw/ids.js";
 import { DEFAULT_PAD_CONFIG, PadProcessor } from "../src/hw/pads.js";
 import { BrowserPage, UNKNOWN_TEXT } from "../src/modes/browserPage.js";
 import { PadSettings } from "../src/modes/padSettings.js";
@@ -25,7 +27,34 @@ const ons = (h: StackHarness) =>
 const names = (from: number, to: number) =>
   Array.from({ length: to - from }, (_, i) => `Preset ${from + i + 1}`);
 
+/** What is written on the right screen now. */
+const tabsOnTheRight = (h: StackHarness) => {
+  const left = createCanvas(480, 272).getContext("2d");
+  const right = createCanvas(480, 272).getContext("2d");
+  const written: string[] = [];
+  const original = right.fillText.bind(right);
+  right.fillText = (text: string, x: number, y: number, maxWidth?: number) => {
+    written.push(text);
+    original(text, x, y, maxWidth);
+  };
+  h.stack.render(left, right, h.mc);
+  return written;
+};
+
 describe("BROWSER", () => {
+  it("on PLUG-INS, the PRESETS tab's PREV, NEXT and LOAD do nothing", () => {
+    const h = stackHarness({ selected: 2 });
+    h.tap("browser");
+    h.presets(128, 5, ["A", "B", "C"]);
+    h.tap("display2"); // PLUG-INS
+    h.sent.length = 0;
+    h.tap("display5");
+    h.tap("display6");
+    h.tap("display8");
+    expect(h.sentOf("presetStep")).toEqual([]);
+    expect(h.sentOf("presetLoad")).toEqual([]);
+  });
+
   it("is a main page: its button opens it, the same button goes home", () => {
     const h = stackHarness();
     h.tap("browser");
@@ -338,6 +367,19 @@ describe("BROWSER", () => {
     expect(h.pages.browser.listing(h.mc)).toMatchObject({ cursor: 5, loaded: 5 });
   });
 
+  it("offers no LOAD while the current preset is unknown: the script has nothing to step from", () => {
+    const h = stackHarness();
+    h.tap("browser");
+    h.presets(300, null, names(0, 8), 0);
+    h.turn(2);
+    expect(h.light("display8")).toBe("off");
+    expect(tabsOnTheRight(h)).not.toContain("LOAD");
+    h.presets(300, 5, names(0, 8), 0);
+    h.turn(1);
+    expect(h.light("display8")).toBe("dim");
+    expect(tabsOnTheRight(h)).toContain("LOAD");
+  });
+
   it("sends a push anyway while the current preset is unknown, without a read-out", () => {
     const h = stackHarness();
     h.tap("browser");
@@ -567,6 +609,15 @@ describe("FILE", () => {
 });
 
 describe("SETTINGS", () => {
+  it("no display button reaches the page behind", () => {
+    const h = stackHarness({ selected: 2 });
+    h.tap("mixer");
+    h.tap("settings");
+    h.sent.length = 0;
+    for (let i = 1; i <= 8; i++) h.tap(`display${i}` as ButtonId);
+    expect(h.sent).toEqual([]);
+  });
+
   it("is a latched tool page", () => {
     const h = stackHarness();
     h.tap("settings");

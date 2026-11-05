@@ -38,7 +38,7 @@ mk3d creates two virtual MIDI ports. FL only lists them while mk3d is running:
 
 | Port              | Direction | Carries                                                            |
 | ----------------- | --------- | ------------------------------------------------------------------ |
-| **MK3 Bridge**    | mk3d → FL | Pad notes (channel 1), transport commands (CC 102–107, channel 16) |
+| **MK3 Bridge**    | mk3d → FL | Pad notes (channels 1 and 2), transport commands (CC 102–108, channel 16), SysEx |
 | **MK3 Bridge FB** | FL → mk3d | FL's state as SysEx                                                |
 
 ## 3. FL Studio MIDI Settings
@@ -64,13 +64,16 @@ Pads play the selected channel. To record:
 2. Press **Rec** on the MK3 (it lights), then **Play**. Optionally **Shift + Rec** for count-in.
 3. Play the pads; the notes land in the selected pattern's piano roll.
 
-## Controls (phase 4)
+## Basic controls
+
+Every other control is in [mapping.md](mapping.md).
 
 | MK3         | FL                                                                                |
 | ----------- | --------------------------------------------------------------------------------- |
 | Pads 1–16   | Notes 36–51 (FL calls 36 "C3"), velocity from the hit, poly aftertouch while held |
 | Play        | Play / pause                                                                      |
 | Stop        | Stop                                                                              |
+| Restart     | Stop, then play from the start                                                    |
 | Rec         | Arm/disarm recording                                                              |
 | Shift + Rec | Count-in on/off                                                                   |
 | Tap         | Tap tempo                                                                         |

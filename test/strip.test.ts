@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { cc, pitchBend } from "../src/fl/midiBytes.js";
+import { cc } from "../src/fl/midiBytes.js";
 import { midiBytes } from "../src/fl/midiPorts.js";
 import { MONO_LEDS } from "../src/hw/leds.js";
 import { flColorToPalette } from "../src/modes/format.js";
@@ -30,14 +30,6 @@ const colorOf = (h: StackHarness) => flColorToPalette(h.fl.selectedChannel.color
 const dimOf = (h: StackHarness) => flColorToPalette(h.fl.selectedChannel.color, "dim");
 
 describe("midiBytes", () => {
-  it("encodes 14-bit pitch bend LSB first on channel 1", () => {
-    expect(pitchBend(8192)).toEqual([0xe0, 0x00, 0x40]);
-    expect(pitchBend(0)).toEqual([0xe0, 0, 0]);
-    expect(pitchBend(16383)).toEqual([0xe0, 0x7f, 0x7f]);
-    expect(pitchBend(99999)).toEqual([0xe0, 0x7f, 0x7f]);
-    expect(pitchBend(0x1234)).toEqual([0xe0, 0x34, 0x24]);
-  });
-
   it("encodes a control change on channel 1", () => {
     expect(cc(1, 64)).toEqual([0xb0, 1, 64]);
     expect(cc(1, 500)).toEqual([0xb0, 1, 127]);

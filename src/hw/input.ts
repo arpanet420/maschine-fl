@@ -59,13 +59,28 @@ export function wrappedDelta(from: number, to: number, range: number): number {
 const u16le = (data: Uint8Array, offset: number) =>
   (data[offset] ?? 0) | ((data[offset + 1] ?? 0) << 8);
 
+const newKnobFilters = () => Array.from({ length: KNOB_COUNT }, () => new KnobFlickerFilter());
+
 export class InputParser {
-  private readonly knobs = Array.from({ length: KNOB_COUNT }, () => new KnobFlickerFilter());
+  private knobs = newKnobFilters();
   private previous: Uint8Array | undefined;
+  /** The counters in `previous` are from before a replug: they say nothing about a turn. */
+  private countersStale = false;
   readonly pads: PadProcessor;
 
   constructor(padConfig?: PadConfig) {
     this.pads = new PadProcessor(padConfig);
+  }
+
+  /**
+   * The MK3 went away. Its knob, wheel and strip counters restart when it comes back, so the next
+   * report is their new baseline, not a turn. Buttons still diff against what they were: a button
+   * held when the cable came out gets its release, so SHIFT and ERASE don't stay on.
+   */
+  deviceLost(): void {
+    this.countersStale = true;
+    this.knobs = newKnobFilters();
+    this.pads.reset();
   }
 
   parse(report: Uint8Array): HwEvent[] {
@@ -112,7 +127,10 @@ export class InputParser {
     }
 
     // Counters and positions only become relative once there is a baseline.
-    if (prev === undefined) return events;
+    if (prev === undefined || this.countersStale) {
+      this.countersStale = false;
+      return events;
+    }
 
     const wheelDelta = wrappedDelta(
       (prev[NAV_WHEEL_BYTE] ?? 0) & 0x0f,

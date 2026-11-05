@@ -6,7 +6,7 @@
 //
 // A queued jump shows its pad flashing (pressed variant against dim, and the grid cell outlined in
 // mint) until SONG_POS shows the jump happened: the song is in that marker again from an earlier
-// position, or FL stopped (the script then jumps at once). SHIFT + SCENE (sections) is not built.
+// position, or FL stopped (the script then jumps at once). SHIFT + SCENE is LIVE (liveOverlay.ts).
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import type { FlSection } from "../fl/flState.js";
 import type { LedState } from "../hw/leds.js";
@@ -22,11 +22,10 @@ import {
   markerColor,
   markerName,
   markerWindowText,
-  positionBeats,
 } from "./markerPage.js";
 import type { ModeContext } from "./mode.js";
 import { GRID_RECT, drawFooter } from "./padGrid.js";
-import { realTimers, type RepeatTimers } from "./repeatScheduler.js";
+import { realTimers, songBeats, type RepeatTimers } from "./repeatScheduler.js";
 
 const NOW_BUTTON = 1;
 /** A queued pad flashes at this rate. */
@@ -96,7 +95,7 @@ export class SceneOverlay extends MarkerPadsPage {
       this.queuedJump = {
         index,
         fromMarker: currentMarker(fl),
-        fromBeats: positionBeats(fl.songPos, fl.ppq),
+        fromBeats: songBeats(fl.songPos, fl.ppq),
       };
       this.startFlash(mc);
     } else {
@@ -121,8 +120,7 @@ export class SceneOverlay extends MarkerPadsPage {
     const arrived =
       !fl.transport.playing ||
       (currentMarker(fl) === queued.index &&
-        (queued.fromMarker !== queued.index ||
-          positionBeats(fl.songPos, fl.ppq) < queued.fromBeats));
+        (queued.fromMarker !== queued.index || songBeats(fl.songPos, fl.ppq) < queued.fromBeats));
     if (!arrived) return;
     this.queuedJump = undefined;
     this.stopFlash();

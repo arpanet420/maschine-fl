@@ -11,7 +11,8 @@
 //   index on MIDI channel 2, which the FL script turns into a note on that channel
 //   (docs/sysex.md, "Pad notes for channels"). A hit also selects the channel.
 // - A pad's up and aftertouch go where its down went (a chord: its exact notes), whatever the mode,
-//   base, scale, chord settings or bank is by then.
+//   base, scale, chord settings or bank is by then. Two pads can have the same note on (chords share
+//   notes): it restarts for the second, and only the last one let go ends it.
 // - NOTE REPEAT (noteRepeatOverlay.ts) plays held pads through `startRepeat`, `soundRepeat` and
 //   `silenceRepeat`: the same targets and MIDI as a single hit, one note per repeat.
 // - The arpeggiator (arpeggiator.ts, NOTE REPEAT in KEYBOARD and CHORDS) asks `arpNotes` what a pad
@@ -30,6 +31,7 @@ import { flColorToPalette } from "./format.js";
 import { HarmonySettings, chordAt, isRootDegree, keyboardNote, type Chord } from "./chords.js";
 import type { ModeContext } from "./mode.js";
 import { PadSettings } from "./padSettings.js";
+import { hitVelocity } from "./repeatScheduler.js";
 
 export type PadMode = "keyboard" | "channels" | "chords";
 export const PAD_MODES: readonly PadMode[] = ["keyboard", "channels", "chords"];
@@ -62,7 +64,6 @@ interface Held {
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"] as const;
 export const noteName = (note: number): string =>
   `${NOTE_NAMES[((note % 12) + 12) % 12]}${Math.floor(note / 12)}`;
-export const isC = (note: number): boolean => ((note % 12) + 12) % 12 === 0;
 
 /** The notes a keyboard or chord target plays, the ones its note ons sent and its offs will end. */
 const notesOf = (target: Exclude<Target, { kind: "channel" }>): readonly number[] =>
@@ -77,6 +78,8 @@ export class PadState {
   private readonly held = new Map<number, Held>();
   /** The notes the arpeggiator has on now. */
   private readonly arpSounding = new Set<number>();
+  /** How many held pads and arpeggiator steps have each note on (two chords can share a note). */
+  private readonly noteUsers = new Map<number, number>();
   /** Scale, chord mode, chord type and position (KEYBOARD and CHORDS; saved by the CHORDS page). */
   readonly harmony = new HarmonySettings();
 
@@ -192,7 +195,7 @@ export class PadState {
       this.release(pad); // a new hit on a pad that is still held: end the old one first
       const target = this.targetOf(pad, mc.fl);
       if (!target) return;
-      const velocity = Math.round((event.velocity ?? 0) * 126) + 1;
+      const velocity = hitVelocity(event.velocity ?? 0);
       this.held.set(pad, { target, pressure: -1, sounding: false, repeating: false });
       this.noteOn(pad, velocity);
       this.selectTarget(target, mc);
@@ -223,7 +226,7 @@ export class PadState {
     const { target } = held;
     const sent = this.settings.apply(velocity); // FIXED VEL: the same velocity for every note
     if (target.kind === "channel") this.midi(midiBytes.channelNoteOn(target.index, sent));
-    else for (const note of notesOf(target)) this.midi(midiBytes.noteOn(note, sent));
+    else for (const note of notesOf(target)) this.startNote(note, sent);
     held.sounding = true;
   }
 
@@ -233,7 +236,29 @@ export class PadState {
     held.sounding = false;
     const { target } = held;
     if (target.kind === "channel") this.midi(midiBytes.channelNoteOff(target.index));
-    else for (const note of notesOf(target)) this.midi(midiBytes.noteOff(note));
+    else for (const note of notesOf(target)) this.endNote(note);
+  }
+
+  /**
+   * A note on for a pad or the arpeggiator. A note someone else has on starts over (off, then on),
+   * so FL only ever has it on once, and one off ends it: no note can hang.
+   */
+  private startNote(note: number, velocity: number): void {
+    const users = this.noteUsers.get(note) ?? 0;
+    if (users > 0) this.midi(midiBytes.noteOff(note));
+    this.noteUsers.set(note, users + 1);
+    this.midi(midiBytes.noteOn(note, velocity));
+  }
+
+  /** The note off, unless someone else still has the note on (its pad must keep sounding). */
+  private endNote(note: number): void {
+    const users = (this.noteUsers.get(note) ?? 1) - 1;
+    if (users > 0) {
+      this.noteUsers.set(note, users);
+      return;
+    }
+    this.noteUsers.delete(note);
+    this.midi(midiBytes.noteOff(note));
   }
 
   /**
@@ -281,14 +306,14 @@ export class PadState {
   /** The arpeggiator: a note on (a note still on ends first). Velocity 1–127; FIXED VEL replaces it. */
   arpOn(note: number, velocity: number): void {
     this.arpOff(note);
-    this.midi(midiBytes.noteOn(note, this.settings.apply(velocity)));
+    this.startNote(note, this.settings.apply(velocity));
     this.arpSounding.add(note);
   }
 
   /** The arpeggiator: the end of a note. */
   arpOff(note: number): void {
     if (!this.arpSounding.delete(note)) return;
-    this.midi(midiBytes.noteOff(note));
+    this.endNote(note);
   }
 
   /**

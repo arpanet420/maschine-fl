@@ -94,7 +94,7 @@ maschine-fl/
 │   ├── hw/                  ← device.ts, input.ts, leds.ts, display.ts, ids.ts
 │   ├── render/              ← canvas → RGB565, widgets (list, fader, knob label)
 │   ├── fl/                  ← midiPorts.ts, sysex.ts, flState.ts
-│   ├── modes/               ← channel.ts, step.ts, mixer.ts, plugin.ts, pattern.ts
+│   ├── modes/               ← pageStack.ts and one file per page (channelMode.ts, stepPage.ts, mixerMode.ts, …)
 │   ├── nks/                 ← index of NKS data: knob pages, logos, colors
 │   ├── tools/               ← enumerate.ts, inputlog.ts, ledtest.ts, displaytest.ts
 │   └── main.ts
@@ -389,10 +389,11 @@ Random observations and ideas, with a first assessment of what FL's API allows:
       STEP/PATTERN → the channel rack, etc. (SHOW_WINDOW already exists.)
 - [x] **Arpeggio in NOTE REPEAT** (in Maschine, NOTE REPEAT opens `ARP` in keyboard mode). Built entirely in
       mk3d (KEYBOARD and CHORDS; PAD MODE remains Note Repeat): Type, Rate, Octaves, Gate, Swing,
-      HOLD, four presets; not built: Dynamic, LOCK, GATE RESET, page 2. Not tried on the MK3.
+      HOLD, four presets; Dynamic, LOCK, GATE RESET and page 2 came later (docs/mapping.md, "ARP").
+      Tried on the MK3: "arpeggio is fine" (2026-10-18).
 - [ ] **Hidden functions in the documented modules work** (probe 2026-10-18,
       docs/fl-ilmcp.md): ~~pattern length~~ (`patterns.setPatternLength`: built as the PATTERN overlay,
-      knob 4 `LENGTH`, knob 1 on page 2 = the pattern's color; not tried in FL, the log shows `← FL probe:`),
+      knob 4 `LENGTH`, knob 1 = the pattern's color; tried in FL),
       clear pattern (`clearPattern`, ERASE), ~~loop range in the song~~ (`arrangement.selectionSet`: built,
       SHIFT + RESTART tap = loop off/on, hold = the LOOP overlay; the tap verified on the MK3
       2026-10-21, the overlay not tried), the channel's swing (`channels.setSwing`), the FX slots' mix and bypass on the Mixer page, time signature.
@@ -504,6 +505,8 @@ feedback on the feel before the next mode is started.
 
 ### Phase 7 – Polish and operation
 
+- [ ] **Project review 2026-11-05** (`docs/review-2026-11-05.md`): what was fixed in it, what is left, and the
+      questions for the owner.
 - [ ] **Project review 2026-10-21** (`docs/review-2026-10-21.md`): prioritized findings and lessons;
       section A (LIVE/ACTIVITY polling cost, the setup.md reload instruction, committing) comes
       before the next hardware test.
@@ -570,7 +573,7 @@ feedback on the feel before the next mode is started.
          for the pads' window so FL shows what the Maschine covers.
       5. **Knobs for per-track settings**: trigger mode, loop mode and snap per track via
          `incLive*`, which FL otherwise hides in a track menu.
-      1 and 2 are what fix "almost empty" and "needs the computer". Nothing built, no mockups yet.
+      1 and 2 are what fix "almost empty" and "needs the computer", and they are built (above). 3–5 are not.
 - [x] Scales and chords on pads (the Keyboard and Chords buttons; see docs/mapping.md, the CHORDS page).
 - [x] The Fixed Velocity button (the SETTINGS page has the value and the velocity curve).
 - [x] `launchd` agent (`~/Library/LaunchAgents/io.github.arpanet420.mk3d.plist`) so that the daemon starts at
@@ -578,7 +581,8 @@ feedback on the feel before the next mode is started.
       and `Formula/maschine-fl.rb`. Verified: the CLI and the plist against a temp home with `MK3D_NO_LAUNCHCTL`
       (`test/cli.test.ts`), `npm run build`. NOT verified: the Homebrew formula (only `ruby -c`), the service
       against real launchd and the MK3, possible Input Monitoring permission for `node` — the owner will try.
-- [ ] Start screen and clear status on the screen: "Waiting for FL Studio…" when no HELLO has arrived.
+- [x] Start screen and clear status on the screen: "Waiting for FL Studio…" when no HELLO has arrived
+      (`drawWaiting` in `src/main.ts`).
 - [ ] Robustness: FL is restarted, the device is unplugged, macOS sleeps and wakes.
 - [x] README with installation from scratch (Homebrew first, then from a clone; `docs/install.md`).
       The formula is untested, see above.

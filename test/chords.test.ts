@@ -156,6 +156,9 @@ describe("harmonizer", () => {
     expect(nameOf({ scale: CHROMATIC, type: typeIndex("Ninth") }, 0)).toBe("Cmaj9");
     expect(chordName([60, 64, 68])).toBe("C+");
     expect(chordName([60, 63, 66, 69])).toBe("C°7");
+    // no name for the stack: its notes
+    expect(chordName([65, 71, 72])).toBe("F B C");
+    expect(chordName([60, 69])).toBe("C A");
   });
 
   it("root pads are the roots of the scale (the C notes in Chromatic)", () => {

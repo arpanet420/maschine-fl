@@ -14,7 +14,12 @@ cd "$(dirname "$0")/.."
 archive="$(mktemp -t mk3d-winsync)"
 trap 'rm -f "$archive"' EXIT
 
-git ls-files -co --exclude-standard -z | COPYFILE_DISABLE=1 tar --null -T - -czf "$archive"
+# A tracked file that was deleted here is still listed, and tar would stop on it.
+git ls-files -co --exclude-standard -z |
+  while IFS= read -r -d '' file; do
+    if [ -e "$file" ]; then printf '%s\0' "$file"; fi
+  done |
+  COPYFILE_DISABLE=1 tar --null -T - -czf "$archive"
 scp -q "$archive" "$HOST:mk3d-winsync.tgz"
 # Everything but node_modules goes first, so files removed here don't stay there.
 ssh "$HOST" "\$ErrorActionPreference='Stop'; New-Item -ItemType Directory -Force '$REMOTE_DIR' | Out-Null; Get-ChildItem '$REMOTE_DIR' -Force | Where-Object { \$_.Name -ne 'node_modules' } | Remove-Item -Recurse -Force; tar -xzf \"\$HOME\\mk3d-winsync.tgz\" -C '$REMOTE_DIR'; Remove-Item \"\$HOME\\mk3d-winsync.tgz\""

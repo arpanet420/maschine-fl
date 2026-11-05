@@ -556,6 +556,28 @@ describe("PATTERN: DOUBLE", () => {
     expect(drawnText(h).left).not.toContain("notes copied");
   });
 
+  it("the DOUBLE card takes itself down with nothing else redrawing the screens", () => {
+    const h = stackHarness({ patternLength: 16, selected: 0 });
+    h.patternInfo({ number: 2 });
+    open(h);
+    h.tap("display3");
+    const renders = h.state.renders;
+    h.advance(3999);
+    expect(h.state.renders).toBe(renders);
+    h.advance(1);
+    expect(h.state.renders).toBe(renders + 1);
+    expect(drawnText(h).left).not.toContain("notes copied");
+  });
+
+  it("no redraw for the DOUBLE card once the overlay has closed", () => {
+    const h = stackHarness({ patternLength: 16, selected: 0 });
+    h.patternInfo({ number: 2 });
+    open(h);
+    h.tap("display3");
+    h.pages.pattern.leave();
+    expect(h.time.timerCount).toBe(0);
+  });
+
   it("DOUBLE_PATTERN has an optional trailing mode byte (1 = only FL's duplicatePatternData)", () => {
     expect(encodeCommand({ type: "doublePattern", pattern: 3, native: true })).toEqual([
       0xf0, 0x7d, 0x4d, 0x33, 0x63, 3, 1, 0xf7,

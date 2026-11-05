@@ -143,12 +143,17 @@ export function chordQuality(intervals: readonly number[]): string {
   return `${name}${i4 === 13 ? `${flat}9` : "#9"}`;
 }
 
-/** A chord's name from its notes in root position: `Cm`, `D°`, `Ebmaj7`. */
+/**
+ * A chord's name from its notes in root position: `Cm`, `D°`, `Ebmaj7`. A stack with no name (a Sus4
+ * on the fourth degree of Major, most stacks in a pentatonic scale) shows its notes: `F B C`.
+ */
 export function chordName(rootPosition: readonly number[]): string {
   const root = rootPosition[0];
   if (root === undefined) return "";
-  const intervals = rootPosition.map((note) => note - root);
-  return `${pitchName(root)}${chordQuality(intervals)}`;
+  const quality = chordQuality(rootPosition.map((note) => note - root));
+  return quality === "?"
+    ? rootPosition.map((note) => pitchName(note)).join(" ")
+    : `${pitchName(root)}${quality}`;
 }
 
 // ── Pad -> notes ─────────────────────────────────────────────────────────────

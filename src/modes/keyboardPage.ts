@@ -90,8 +90,8 @@ export class KeyboardPage implements Mode {
     return `MIDI ${this.pads.keyNote(0)}–${last}`;
   }
 
-  /** The left screen over the knob row: the channel and what the pads play. */
-  protected renderLeft(ctx: SKRSContext2D, mc: ModeContext, color: string): void {
+  /** The selected channel at the top of the left screen; below it `y` is free for the page. */
+  protected renderChannel(ctx: SKRSContext2D, mc: ModeContext, color: string): number {
     const selected = mc.fl.selectedChannel;
     const top = TAB_HEIGHT + 8;
     ctx.textAlign = "left";
@@ -110,9 +110,14 @@ export class KeyboardPage implements Mode {
       ctx.font = font(20);
       ctx.fillText("No channel", 34, top);
     }
+    return top + 56;
+  }
+
+  /** The left screen over the knob row: the channel and what the pads play. */
+  protected renderLeft(ctx: SKRSContext2D, mc: ModeContext, color: string): void {
+    const y = this.renderChannel(ctx, mc, color);
     const first = this.pads.keyNote(0);
     const last = this.pads.keyNote(PAD_COUNT - 1);
-    const y = top + 56;
     ctx.fillStyle = theme.dimText;
     ctx.font = font(13);
     ctx.fillText("Range", 34, y);

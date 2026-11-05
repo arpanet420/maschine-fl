@@ -256,7 +256,7 @@ export type FlMessage =
    * `mainVolume` is FL's main volume (`REC_MainVol`) as 0–1, absent from older senders (unknown).
    */
   | { type: "transport"; state: TransportState; tempo: number; swing: number; mainVolume?: number }
-  | ({ type: "songPos" } & SongPosition)
+  | ({ type: "songPos"; ppq?: number } & SongPosition)
   | { type: "channels"; total: number; offset: number; entries: ChannelEntry[] }
   | ({ type: "selectedChannel" } & SelectedChannelInfo)
   | ({ type: "channelDetail" } & ChannelDetailInfo)
@@ -660,7 +660,13 @@ function readFlMessage(command: number, payload: number[], r: Reader): FlMessage
       };
     }
     case FROM_FL.songPos:
-      return { type: "songPos", bar: r.u14(), step: r.u7(), tick: r.u14() };
+      return {
+        type: "songPos",
+        bar: r.u14(),
+        step: r.u7(),
+        tick: r.u14(),
+        ...(r.remaining >= 2 ? { ppq: r.u14() } : {}),
+      };
     case FROM_FL.channels:
       return {
         type: "channels",
@@ -941,6 +947,7 @@ export function encodeFlMessage(message: FlMessage): number[] {
     }
     case "songPos":
       w.u14(message.bar).u7(message.step).u14(message.tick);
+      if (message.ppq !== undefined) w.u14(message.ppq);
       break;
     case "channels":
       w.u14(message.total)

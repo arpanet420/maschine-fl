@@ -23,6 +23,7 @@
 //   reading far off counts only when the next one agrees (a loop restart or a jump, not a stall).
 // - One timer is always set to the next due thing (a slot or an off) from absolute target times; a
 //   slot that is late by more than half an interval is skipped, never played in a burst.
+import { STEPS_PER_BAR } from "../fl/protocol.js";
 import type { SongPosition } from "../fl/sysex.js";
 
 export type RateFeel = "straight" | "dotted" | "triplet";
@@ -77,9 +78,6 @@ export const DEFAULT_SETTINGS: RepeatSettings = { rate: DEFAULT_RATE, gate: 0.5,
 
 /** The tempo used while FL's is unknown (0). */
 export const FALLBACK_BPM = 120;
-/** SONG_POS has 16 steps per bar (as the STEP page assumes) and 96 PPQ, so 24 ticks per step. */
-export const STEPS_PER_BAR = 16;
-export const TICKS_PER_STEP = 24;
 /** A SONG_POS older than this no longer says where FL is (it arrives every 50 ms while playing). */
 export const SONG_POS_STALE_MS = 500;
 /** A new pad's first repeat is at least this far (of an interval) after its hit. */
@@ -153,7 +151,7 @@ export function intervalMs(bpm: number, rate: number): number {
 }
 
 /** SONG_POS in beats from bar 1 (a bar is 4 beats); `ppq` is the project's ticks per beat. */
-export function songBeats(pos: SongPosition, ppq = TICKS_PER_STEP * 4): number {
+export function songBeats(pos: SongPosition, ppq: number): number {
   const steps = (pos.bar - 1) * STEPS_PER_BAR + (pos.step - 1);
   return steps / (STEPS_PER_BAR / 4) + pos.tick / ppq;
 }

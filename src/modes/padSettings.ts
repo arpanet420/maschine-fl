@@ -9,6 +9,7 @@
 //   (16 velocities) is not built.
 import { DEFAULT_PAD_CONFIG, type PadConfig } from "../hw/pads.js";
 import { PAD_PRESSURE_MAX } from "../hw/ids.js";
+import { clamp } from "./knob.js";
 
 /** The range of the full-scale hit value (the MK3's hit values go to 4095). */
 export const FULL_SCALE_MIN = 300;
@@ -24,7 +25,6 @@ export const SCREEN_BRIGHTNESS_MIN = 5;
 export const SCREEN_BRIGHTNESS_MAX = 100;
 export const DEFAULT_SCREEN_BRIGHTNESS = 100;
 
-const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const finite = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isFinite(value) ? value : undefined;
 

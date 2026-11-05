@@ -89,6 +89,8 @@ export class SettingsPage implements Mode {
   }
 
   onEvent(event: HwEvent, mc: ModeContext): boolean {
+    // No display button does anything here, and none may reach the page behind this one.
+    if (event.type === "button" && DISPLAY_BUTTONS.some((id) => id === event.id)) return true;
     this.mc = mc;
     if (event.type !== "encoder" || (event.index > 2 && event.index !== SCREEN_KNOB)) return false;
     const step = knobStep(event.delta, mc.shift);
