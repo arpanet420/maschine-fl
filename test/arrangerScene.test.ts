@@ -166,7 +166,7 @@ describe("SCENE", () => {
     const saved = JSON.parse(readFileSync(pinsPath, "utf8")) as {
       pages?: { scene?: { immediate?: boolean } };
     };
-    expect(saved.pages?.scene).toEqual({ immediate: true, loop: true });
+    expect(saved.pages?.scene).toEqual({ immediate: true, loop: true, follow: false });
     h.release("scene");
 
     const again = stackHarness({ markers: markersEvery4Bars(8), pinsPath });

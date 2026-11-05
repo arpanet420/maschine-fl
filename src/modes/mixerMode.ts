@@ -401,7 +401,8 @@ export class MixerMode implements Mode {
       const labels = Array.from({ length: SCREEN_COLUMNS }, (_, i) => {
         const track = this.offset + base + i;
         if (track >= mc.fl.mixerTotal) return undefined;
-        return track === 0 ? "M" : String(track);
+        const number = mc.fl.flTrackNumber(track); // FL's own, also in a song's mixer view (FOLLOW)
+        return number === 0 ? "M" : String(number);
       });
       drawMixerTabs(ctx, { ...FULL, height: TAB_HEIGHT }, labels, selected - this.offset - base);
       const cells = stripCells(
@@ -433,7 +434,9 @@ export class MixerMode implements Mode {
     const color = this.colorOf(track, fl);
     const coloring = knob === this.colorStrip ? colorKnob(color, false) : undefined;
     drawMixerStrip(ctx, cell, {
-      name: entry?.name || (track === 0 ? "Master" : `Insert ${track}`),
+      name:
+        entry?.name ||
+        (fl.flTrackNumber(track) === 0 ? "Master" : `Insert ${fl.flTrackNumber(track)}`),
       color: flColorToCss(color),
       uncolored: isDefaultColor(color),
       selected: track === selected,

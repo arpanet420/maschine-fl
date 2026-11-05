@@ -44,6 +44,7 @@ import { PatternOverlay } from "./modes/patternOverlay.js";
 import { hitVelocity } from "./modes/repeatScheduler.js";
 import { SelectOverlay } from "./modes/selectOverlay.js";
 import { SceneOverlay } from "./modes/sceneOverlay.js";
+import { SongFollow } from "./modes/songFollow.js";
 import { SettingsPage } from "./modes/settingsPage.js";
 import { SoloOverlay } from "./modes/soloOverlay.js";
 import { StepPage } from "./modes/stepPage.js";
@@ -120,13 +121,26 @@ const pluginMode = new PluginMode(
   new NksPageSource(nksIndex, undefined, (line) => log(line)),
   new AuRanges(auParamHelper(), (line) => log(line)),
 );
+// SCENE's FOLLOW: one song's channels at a time. It hears every FL change, whatever page is up.
+const songFollow = new SongFollow({
+  fl: flState,
+  send: (command) => {
+    if (LOG_FL) log(describeCommand(command));
+    fl.sendCommand(command);
+  },
+  log: (line) => log(line),
+  changed: () => {
+    updateLeds();
+    updateScreens();
+  },
+});
 const stack = new PageStack({
   pages: {
     channel: channelMode,
     plugin: pluginMode,
     mixer: new MixerMode(),
     arranger: new ArrangerPage(),
-    scene: new SceneOverlay(),
+    scene: new SceneOverlay({ follow: songFollow }),
     liveClips: new LiveOverlay(),
     browser: new BrowserPage(),
     pattern: new PatternOverlay(),
@@ -360,6 +374,7 @@ flState.on("change", (section) => {
   faults.guard(
     `FL ${section}`,
     () => {
+      songFollow.onFlChange(section);
       if (section === "connection" && !flState.connected) stack.releasePads();
       if (section === "connection" && flState.connected) stack.enter(modeContext);
       else if (flState.connected) stack.onFlChange(section, modeContext);

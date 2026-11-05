@@ -71,6 +71,10 @@ export const FROM_FL = {
   liveTrack: 0x25,
   /** The notes of the selected channel starting now, from its steps and the song position. */
   playedNotes: 0x27,
+  /** FL's window title (mk3d finds the project file by it) and whether the channel rack filter is on a group. */
+  project: 0x28,
+  /** FL's mixer track numbers of a mixer view's positions (SCENE's FOLLOW); none = no view. */
+  mixerView: 0x29,
 } as const;
 
 /** Daemon → FL commands (40–7F). */
@@ -142,6 +146,8 @@ export const TO_FL = {
   setStepParam: 0x6c,
   /** Move a parameter whose 0–1 value isn't known by `step`, from where it really is (docs/sysex.md). */
   nudgeParam: 0x6d,
+  /** Show only these FL channels (global indexes, in this order); none = every channel (docs/sysex.md). */
+  setChannelView: 0x73,
 } as const;
 
 /** A step is a 16th note in every time signature. */
@@ -172,6 +178,10 @@ export const PEAK_MAX = 127;
 export const MAX_STRING = 32;
 /** Longest PROBE text in characters; longer ones are cut. */
 export const MAX_PROBE = 100;
+/** Longest PROJECT title in characters; longer ones are cut. */
+export const MAX_TITLE = 100;
+/** Most channels a SET_CHANNEL_VIEW lists (FL's channel rack holds 999). */
+export const MAX_VIEW_CHANNELS = 1000;
 /** Preset names per PRESETS message (the window around the current preset). */
 export const MAX_PRESET_NAMES = 8;
 /** MARKERS `ticks` value (the largest `u21`) for a marker whose time the script could not work out. */

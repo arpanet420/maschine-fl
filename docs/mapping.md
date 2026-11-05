@@ -1033,7 +1033,17 @@ toggles quantized and immediate (underlined = immediate); the choice is saved in
 (`pages.scene.immediate`). Display 3 `LOOP` (on by default, `pages.scene.loop`) makes a press loop the
 marker's section too: the song loop (time selection) becomes the marker up to the next one, the last one
 to the song's end, set by the FL script in the same pass as the jump, so in a live set FL stays in a song
-until the next scene is picked. A queued jump flashes its pad (pressed variant against dim, 250 ms) and
+until the next scene is picked. Display 4 `FOLLOW` (off by default, `pages.scene.follow`) makes the MK3 show
+only the channels of the song that is playing: when the song position is in another marker's section, every
+channel page, the pads and PAD MODE count only the channels of the channel rack filter group named like the
+marker (`2 swesyntmaster` goes with marker `swesyntmaster`, a leading number left out, case ignored), and FL's
+channel rack outlines them. mk3d reads the groups from the project file FL saved: the newest under FL's Projects folder with FL's
+markers (FL tells scripts no path, and its window title is just "FL Studio 2026") (`src/modes/songFollow.ts`, docs/sysex.md "Channel view"); it reads the file again
+after a project load and when FL saved it since. MIXER follows too: Master, the mixer tracks the song's channels go to and the tracks those send to (its buses),
+with FL's own track numbers on the strips. A marker without such a group shows every channel and track. It works
+whatever page is up, and needs FL's channel rack filter on "All". While it is on, the left screen says
+`Channels: <group>` (or `Channels: all`), or why it can't: `No project file`, `FL's channel filter isn't "All"`.
+A queued jump flashes its pad (pressed variant against dim, 250 ms) and
 outlines its cell in mint, and the left screen says `Queued: <name>`, until SONG_POS shows it happened
 (the song is in that marker again from an earlier position, or FL stopped). Left screen: the current
 marker big. Right screen: tabs `<<` `>>` and `1–16 of n` under the grid. SHIFT + SCENE
@@ -1041,7 +1051,9 @@ is LIVE (below).
 
 NOT VERIFIED (docs/sysex.md): that `channels.isGridBitAssigned` tells piano roll channels from step
 channels (ARRANGER), the marker scan's assumptions (marker order, a marker at tick 0, pattern loop mode) and
-the timing of quantized jumps from the song position (SCENE, docs/bugs.md #15).
+the timing of quantized jumps from the song position (SCENE, docs/bugs.md #15). FOLLOW was seen working in FL
+2026 on 2026-11-05, the channels and the mixer; FL's rack outline and its filter check (`ui.crDisplayRect`,
+`channelCount(True)`) were not looked at.
 
 ### LIVE (hold SHIFT + SCENE)
 

@@ -211,14 +211,8 @@
       "type": "meters",
       "offset": 8,
       "peaks": [
-        [
-          1,
-          0.5
-        ],
-        [
-          0,
-          0.25
-        ]
+        [1, 0.5],
+        [0, 0.25]
       ]
     },
     "hex": "f07d4d33120008027f400020f7"
@@ -323,13 +317,7 @@
       "type": "patternGrid",
       "channel": 0,
       "start": 0,
-      "steps": [
-        true,
-        true,
-        false,
-        false,
-        true
-      ],
+      "steps": [true, true, false, false, true],
       "stepSequencer": false
     },
     "hex": "f07d4d331b000000051300f7"
@@ -388,12 +376,7 @@
     "message": {
       "type": "paramNames",
       "offset": 300,
-      "names": [
-        "main: Output",
-        "VCC: Voices",
-        "",
-        "Filter: Cutoff"
-      ]
+      "names": ["main: Output", "VCC: Voices", "", "Filter: Cutoff"]
     },
     "hex": "f07d4d3322022c046d61696e3a204f7574707574005643433a20566f69636573000046696c7465723a204375746f666600f7"
   },
@@ -438,12 +421,7 @@
     "message": {
       "type": "activity",
       "first": 16,
-      "active": [
-        true,
-        false,
-        false,
-        true
-      ]
+      "active": [true, false, false, true]
     },
     "hex": "f07d4d332400100401000001f7"
   },
@@ -453,10 +431,7 @@
     "message": {
       "type": "playedNotes",
       "channel": 1,
-      "notes": [
-        36,
-        38
-      ]
+      "notes": [36, 38]
     },
     "hex": "f07d4d33270001022426f7"
   },
@@ -480,16 +455,7 @@
       "meters": true,
       "presets": false,
       "patternGrid": false,
-      "params": [
-        0,
-        1,
-        2,
-        3,
-        4,
-        5,
-        6,
-        7
-      ],
+      "params": [0, 1, 2, 3, 4, 5, 6, 7],
       "liveScenes": false,
       "liveOffset": 0
     },
@@ -646,13 +612,7 @@
     "message": {
       "type": "uiState",
       "snap": 8,
-      "visible": [
-        true,
-        true,
-        false,
-        true,
-        false
-      ],
+      "visible": [true, true, false, true, false],
       "focused": 3
     },
     "hex": "f07d4d3313080b03f7"
@@ -748,16 +708,7 @@
       "count": 300,
       "current": 17,
       "offset": 14,
-      "names": [
-        "Init",
-        "Pad A",
-        "Bass 1",
-        "Lead \u2013 wide",
-        "Pluck",
-        "Keys",
-        "Strings",
-        "Brass"
-      ]
+      "names": ["Init", "Pad A", "Bass 1", "Lead \u2013 wide", "Pluck", "Keys", "Strings", "Brass"]
     },
     "hex": "f07d4d3315022c001108000e496e697400506164204100426173732031004c656164207f627f007f13207769646500506c75636b004b65797300537472696e677300427261737300f7"
   },
@@ -1265,5 +1216,52 @@
       "value": 90
     },
     "hex": "f07d4d336c00010011015af7"
+  },
+  {
+    "name": "project",
+    "direction": "fromFl",
+    "message": {
+      "type": "project",
+      "title": "a - FL",
+      "filtered": true,
+      "load": 3
+    },
+    "hex": "f07d4d3328010361202d20464c00f7"
+  },
+  {
+    "name": "setChannelView",
+    "direction": "toFl",
+    "message": {
+      "type": "setChannelView",
+      "channels": [5, 10]
+    },
+    "hex": "f07d4d337300020005000af7"
+  },
+  {
+    "name": "setChannelViewAll",
+    "direction": "toFl",
+    "message": {
+      "type": "setChannelView",
+      "channels": []
+    },
+    "hex": "f07d4d33730000f7"
+  },
+  {
+    "name": "mixerView",
+    "direction": "fromFl",
+    "message": {
+      "type": "mixerView",
+      "tracks": [0, 3, 4, 9]
+    },
+    "hex": "f07d4d33290400030409f7"
+  },
+  {
+    "name": "mixerViewNone",
+    "direction": "fromFl",
+    "message": {
+      "type": "mixerView",
+      "tracks": []
+    },
+    "hex": "f07d4d332900f7"
   }
 ]

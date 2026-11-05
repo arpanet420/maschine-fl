@@ -598,3 +598,29 @@ describe("MixerMode in the page stack", () => {
     expect(leds.buttonLeds[MONO_LEDS.mute]).toBe(63);
   });
 });
+
+describe("MIXER under SCENE's FOLLOW", () => {
+  it("labels a song's strips with FL's own track numbers", () => {
+    const { fl, mode, mc } = setup({
+      total: 4,
+      patch: (track) => ({ name: track === 2 ? "" : `Bus ${track}` }),
+    });
+    fl.apply({ type: "mixerView", tracks: [0, 10, 11, 20] });
+    const left = createCanvas(DISPLAY_WIDTH, DISPLAY_HEIGHT).getContext("2d");
+    const right = createCanvas(DISPLAY_WIDTH, DISPLAY_HEIGHT).getContext("2d");
+    const drawn: string[] = [];
+    for (const ctx of [left, right]) {
+      const original = ctx.fillText.bind(ctx);
+      ctx.fillText = (text: string, x: number, y: number, maxWidth?: number) => {
+        drawn.push(text);
+        original(text, x, y, maxWidth);
+      };
+    }
+    mode.render(left, right, mc);
+    expect(drawn).toEqual(expect.arrayContaining(["M", "10", "11", "20"]));
+    expect(drawn.some((text) => text.includes("Insert 11"))).toBe(true); // unnamed: FL's number
+    expect(fl.flTrackNumber(1)).toBe(10);
+    fl.apply({ type: "mixerView", tracks: [] });
+    expect(fl.flTrackNumber(1)).toBe(1);
+  });
+});

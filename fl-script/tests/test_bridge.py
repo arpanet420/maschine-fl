@@ -173,6 +173,9 @@ class FakeFL(object):
         self.focused_form_id = -1  # channel rack index for a generator window
         self.open_editors = set()  # channels whose plugin window is open
         self.group_base = 0  # global index of group-local channel 0 (getChannelIndex adds it)
+        self.routes = set()  # (source, target) mixer sends: mixer.getRouteSendActive
+        self.rack_filter_count = None  # channels FL counts with its rack filter on a group; None: on "All"
+        self.title = "splicetest - FL Studio 2026"  # ui.getProgTitle
         self.notes = []  # (global channel index, note, velocity) passed to channels.midiNoteOn
         self.clone_selects = True  # does patterns.clonePattern select the clone, like FL's UI?
         self.swing = 0.0  # main swing, 0...1 (REC_MainShuffle on the 0..FromMIDI_Max scale)
@@ -391,6 +394,8 @@ class FakeFL(object):
                 fl.focused_widget in (5, 6, 7) if widget == 5 else fl.focused_widget == widget
             ),
             getFocusedFormID=lambda: fl.focused_form_id,
+            getProgTitle=lambda: fl.title,
+            crDisplayRect=lambda left, top, width, height, duration, flags=0: None,
             getVisible=lambda widget: widget in fl.visible,
             showWindow=lambda widget: fl.visible.add(widget),
             hideWindow=lambda widget: fl.visible.discard(widget),
@@ -468,7 +473,9 @@ class FakeFL(object):
 
         module(
             "channels",
-            channelCount=lambda globalCount=False: len(fl.channels),
+            channelCount=lambda globalCount=False: (
+                len(fl.channels) if globalCount or fl.rack_filter_count is None else fl.rack_filter_count
+            ),
             selectedChannel=selected_channel,
             isChannelSelected=lambda i, g=False: fl.channel(i)["selected"],
             isChannelMuted=lambda i, g=False: fl.channel(i)["muted"],
@@ -521,6 +528,7 @@ class FakeFL(object):
             armTrack=toggle("track", "armed"),
             setTrackVolume=lambda i, v, p=0: fl.track(i).__setitem__("volume", v),
             setTrackPan=lambda i, v, p=0: fl.track(i).__setitem__("pan", v),
+            getRouteSendActive=lambda source, target: (source, target) in fl.routes,
         )
         def clone_pattern(index=None):
             fl.pattern_count += 1
@@ -5802,6 +5810,285 @@ class PerformScoreTests(BridgeTestCase):
         self.assertGreater(bridge.perform_score("Cutoff"), 0)
         self.assertGreater(bridge.perform_score("Filter Cutoff"), bridge.perform_score("Filter 2 Cutoff"))
         self.assertEqual(bridge.perform_score("Volume"), 0)
+
+
+class ChannelViewTests(BridgeTestCase):
+    """SET_CHANNEL_VIEW (0x73): mk3d's channel numbers become positions in a list of FL channels."""
+
+    MAX_INT = 2147483647
+    HIGHLIGHT = 1 | 2  # CR_HighlightChannels | CR_ScrollToView
+
+    def view(self, *indexes):
+        payload = [len(indexes) >> 7, len(indexes) & 0x7F]
+        for index in indexes:
+            payload += [index >> 7, index & 0x7F]
+        self.send(bytes([0xF0, 0x7D, 0x4D, 0x33, 0x73] + payload + [0xF7]))
+        return self.settle()
+
+    def names(self, frames):
+        """(total, {position: name}) from the CHANNELS frames."""
+        total, names = None, {}
+        for chunk in self.frames_with(frames, 0x08):
+            total = (chunk[5] << 7) | chunk[6]
+            offset = (chunk[7] << 7) | chunk[8]
+            pos = 10
+            for i in range(chunk[9]):
+                pos += 1 + 4
+                end = chunk.index(0, pos)
+                names[offset + i] = bytes(chunk[pos:end]).decode("utf-8")
+                pos = end + 1
+        return total, names
+
+    def probes(self, frames):
+        return [bytes(f[5:-2]).decode("ascii") for f in self.frames_with(frames, 0x17)]
+
+    def test_vectors(self):
+        self.assertEqual(
+            self.script.decode(bytes.fromhex("f07d4d337300020005000af7")), {"type": "setChannelView", "channels": [5, 10]}
+        )
+        self.assertEqual(self.script.decode(bytes.fromhex("f07d4d33730000f7")), {"type": "setChannelView", "channels": []})
+        self.assertEqual(
+            self.script.encode({"type": "project", "title": "a - FL", "filtered": True, "load": 3}).hex(),
+            "f07d4d3328010361202d20464c00f7",
+        )
+
+    def test_the_view_shows_only_its_channels_in_its_order(self):
+        self.start()
+        total, names = self.names(self.view(7, 5, 6))
+        self.assertEqual(total, 3)
+        self.assertEqual(names, {0: "Ch 7", 1: "Ch 5", 2: "Ch 6"})
+
+    def test_an_empty_view_shows_every_channel_again(self):
+        self.start()
+        self.view(5, 6)
+        total, names = self.names(self.view())
+        self.assertEqual(total, 24)
+        self.assertEqual(names[0], "Ch 0")
+        self.assertIsNone(self.script._channel_view[0])
+
+    def test_commands_reach_the_channel_at_the_views_position(self):
+        self.start()
+        self.view(5, 6, 7)
+        self.send(bytes([0xF0, 0x7D, 0x4D, 0x33, 0x43, 0, 2, 0xF7]))  # SELECT_CHANNEL 2
+        self.assertTrue(self.fl.channels[7]["selected"])
+        self.send(bytes([0xF0, 0x7D, 0x4D, 0x33, 0x44, 0, 1, 2, 0x7F, 0x7F, 0xF7]))  # SET_CHANNEL 1 mute on
+        self.assertTrue(self.fl.channels[6]["muted"])
+        self.script.OnNoteOn(Event(midiChan=1, data1=0, data2=90))
+        self.assertEqual(self.fl.notes, [(5, 60, 90)])
+        self.script.OnNoteOn(Event(midiChan=1, data1=3, data2=90))  # past the view's end
+        self.assertEqual(len(self.fl.notes), 1)
+
+    def test_the_selected_channel_is_reported_by_its_position(self):
+        self.start()
+        self.fl.channels[0]["selected"] = False
+        self.fl.channels[6]["selected"] = True
+        self.view(5, 6)
+        self.assertEqual(self.bridge.selected_channel_index(), 1)
+        self.assertEqual(self.fl.called("channels.selectOneChannel"), [])
+
+    def test_a_selected_channel_outside_the_view_gives_way_to_the_views_first(self):
+        self.start()
+        self.view(5, 6)
+        self.assertTrue(self.fl.channels[5]["selected"])
+        self.assertFalse(self.fl.channels[0]["selected"])
+
+    def test_plugin_calls_reach_the_channels_plugin_and_leave_mixer_slots_alone(self):
+        self.start()
+        self.view(9, 4)
+        plugins = sys.modules["plugins"]
+        self.assertEqual(self.script.plugins.getPluginName(1), "Plug4")
+        self.assertEqual(self.script.plugins.getParamName(2, 0), "P2")
+        self.script.plugins.setParamValue(0.5, 3, 1)
+        self.assertEqual(self.fl.channels[4]["plugin"]["params"][3]["value"], 0.5)
+        del self.fl.calls[:]
+        self.script.plugins.getParamName(2, 0, 3)  # a mixer track's slot 3
+        self.assertEqual(self.fl.called("plugins.getParamName"), [(2, 0, 3)])
+        self.assertIs(self.script.plugins.getParamName.__name__, plugins.getParamName.__name__)
+
+    def test_the_channel_rack_shows_the_view(self):
+        self.start()
+        del self.fl.calls[:]
+        self.view(6, 5, 8)
+        self.assertEqual(self.fl.called("ui.crDisplayRect"), [(0, 5, 1, 4, self.MAX_INT, self.HIGHLIGHT)])
+        self.view()
+        self.assertEqual(self.fl.called("ui.crDisplayRect")[-1], (0, 0, 0, 0, 0, self.HIGHLIGHT))
+
+    def test_channels_fl_does_not_have_drop_out_and_none_left_is_no_view(self):
+        self.start()
+        total, _ = self.names(self.view(3, 3, 99))
+        self.assertEqual(total, 1)
+        self.assertEqual(self.script._channel_view[0], [3])
+        total, _ = self.names(self.view(99))
+        self.assertEqual(total, 24)
+        self.assertIsNone(self.script._channel_view[0])
+
+    def test_a_rack_filter_on_a_group_keeps_the_view_off_until_it_is_on_all(self):
+        self.start()
+        self.fl.rack_filter_count = 10
+        frames = self.view(5, 6)
+        self.assertIsNone(self.script._channel_view[0])
+        self.assertTrue(any("filter is on a group" in p for p in self.probes(frames)))
+        self.assertEqual(self.frames_with(frames, 0x28)[-1][5], 1)  # PROJECT: filtered
+        self.fl.rack_filter_count = None
+        self.script.OnRefresh(self.fl.script_midi.HW_Dirty_ChannelRackGroup)
+        frames = self.settle()
+        self.assertEqual(self.script._channel_view[0], [5, 6])
+        self.assertEqual(self.frames_with(frames, 0x28)[-1][5], 0)
+        self.fl.rack_filter_count = 3
+        self.script.OnRefresh(self.fl.script_midi.HW_Dirty_ChannelRackGroup)
+        self.settle()
+        self.assertIsNone(self.script._channel_view[0])
+
+    def test_project_says_fls_title(self):
+        frames = self.start()
+        project = self.frames_with(frames, 0x28)
+        self.assertEqual(len(project), 1)
+        self.assertEqual(bytes(project[0][7:-2]).decode("utf-8"), "splicetest - FL Studio 2026")
+        self.assertEqual(project[0][6], 0)  # no project loaded yet
+        self.fl.title = "other - FL Studio 2026"
+        self.script.OnProjectLoad(100)
+        project = self.frames_with(self.settle(), 0x28)
+        self.assertEqual(bytes(project[-1][7:-2]).decode("utf-8"), "other - FL Studio 2026")
+        self.assertEqual(project[-1][6], 1)
+        self.fl.title = "other - FL Studio 2026"
+        self.script.OnProjectLoad(100)  # the same project again
+        self.assertEqual(self.frames_with(self.settle(), 0x28)[-1][6], 2)
+
+    def test_a_new_mk3d_or_project_takes_the_view_away(self):
+        self.start()
+        self.view(5, 6)
+        self.send("f07d4d3341f7")  # REQUEST_STATE
+        self.assertIsNone(self.script._channel_view[0])
+        self.view(5, 6)
+        self.script.OnProjectLoad(100)
+        self.assertIsNone(self.script._channel_view[0])
+        self.assertEqual(self.fl.called("ui.crDisplayRect")[-1][4], 0)
+
+    def test_the_highlight_goes_when_the_script_stops(self):
+        self.start()
+        self.view(5, 6)
+        self.script.OnDeInit()
+        self.assertEqual(self.fl.called("ui.crDisplayRect")[-1][4], 0)
+
+    def test_a_focused_plugin_window_outside_the_view_is_none(self):
+        self.start()
+        self.view(5, 6)
+        self.fl.focused_widget = self.fl.script_midi.widPluginGenerator
+        self.fl.focused_form_id = 6
+        self.assertEqual(self.bridge.focused_generator(), 1)
+        self.fl.focused_form_id = 2
+        self.assertIsNone(self.bridge.focused_generator())
+
+    def test_every_channel_function_the_script_calls_has_a_translation(self):
+        with open(SCRIPT_PATH) as source:
+            text = source.read()
+        import re
+
+        used = set(re.findall(r"\bchannels\.([a-zA-Z]+)\(", text))
+        used |= set(re.findall(r"\bchannels, \"([a-zA-Z]+)\"", text))
+        special = {"channelCount", "selectedChannel", "channelNumber", "getChannelIndex"}
+        known = self.script.CHANNEL_INDEX_FIRST | self.script.CHANNEL_INDEX_NONE | special
+        self.assertEqual(used - known, set())
+        used = set(re.findall(r"\bplugins\.([a-zA-Z]+)\b", text))
+        self.assertEqual(used - set(self.script.PLUGIN_INDEX_AT), set())
+
+    def test_without_a_view_the_modules_functions_are_fls_own(self):
+        self.assertIs(self.script.channels.getChannelName, sys.modules["channels"].getChannelName)
+        self.assertIs(self.script.plugins.isValid, sys.modules["plugins"].isValid)
+
+
+class MixerViewTests(BridgeTestCase):
+    """The mixer's part of the channel view: Master, the tracks the view's channels go to, and their buses."""
+
+    def view(self, *indexes):
+        payload = [len(indexes) >> 7, len(indexes) & 0x7F]
+        for index in indexes:
+            payload += [index >> 7, index & 0x7F]
+        self.send(bytes([0xF0, 0x7D, 0x4D, 0x33, 0x73] + payload + [0xF7]))
+        return self.settle()
+
+    def route(self):
+        self.fl.channels[5]["mixer_track"] = 4
+        self.fl.channels[6]["mixer_track"] = 3
+        self.fl.channels[7]["mixer_track"] = 4
+        self.fl.channels[2]["mixer_track"] = 20  # not in the view
+        self.fl.routes |= {(4, 9), (9, 30), (2, 50)}
+
+    def mixer_totals(self, frames):
+        return [(f[5] << 7) | f[6] for f in self.frames_with(frames, 0x10)]
+
+    def test_the_view_has_master_its_tracks_and_their_buses(self):
+        self.route()
+        self.start()
+        frames = self.view(5, 6, 7)
+        self.assertEqual(self.script._mixer_view[0], [0, 3, 4, 9, 30])
+        self.assertEqual(set(self.mixer_totals(frames)), {5})
+        self.assertEqual(self.script.mixer.getTrackName(2), "Track 4")
+
+    def test_track_commands_reach_the_track_at_the_views_position(self):
+        self.route()
+        self.start()
+        self.view(5, 6, 7)
+        self.send(bytes([0xF0, 0x7D, 0x4D, 0x33, 0x47, 0, 3, 2, 0x7F, 0x7F, 0xF7]))  # SET_TRACK 3 mute
+        self.assertTrue(self.fl.tracks[9]["muted"])
+        self.send(bytes([0xF0, 0x7D, 0x4D, 0x33, 0x46, 0, 4, 0xF7]))  # SELECT_TRACK 4
+        self.assertEqual(self.fl.selected_track, 30)
+        self.send(bytes([0xF0, 0x7D, 0x4D, 0x33, 0x46, 0, 5, 0xF7]))  # past the view's end
+        self.assertEqual(self.fl.selected_track, 30)
+
+    def test_a_channels_mixer_track_is_its_position_too(self):
+        self.route()
+        self.start()
+        self.view(5, 6, 7)
+        self.assertEqual(self.script.channels.getTargetFxTrack(1), 1)  # channel 6 -> track 3
+        self.send(bytes([0xF0, 0x7D, 0x4D, 0x33, 0x4B, 0, 0, 0, 3, 0xF7]))  # SET_CHANNEL_TRACK 0 -> 3
+        self.assertEqual(self.fl.channels[5]["mixer_track"], 9)
+
+    def test_the_selected_channels_track_is_selected_when_the_selected_track_is_outside(self):
+        self.route()
+        self.fl.selected_track = 60
+        self.start()
+        self.view(6, 5)
+        self.assertEqual(self.fl.selected_track, 3)  # channel 6, the view's first, goes to track 3
+        self.view()
+        self.assertIsNone(self.script._mixer_view[0])
+        self.assertIs(self.script.mixer.getTrackName, sys.modules["mixer"].getTrackName)
+
+    def test_meters_are_the_views_tracks(self):
+        self.route()
+        self.fl.tracks[9]["peaks"] = (0.5, 0.25)
+        self.start()
+        self.view(5, 6, 7)
+        self.assertEqual(self.script.mixer.getTrackPeaks(3, 0), 0.5)
+
+    def test_without_routing_the_view_is_master_alone_and_a_scan_has_a_limit(self):
+        self.start()
+        self.view(5, 6)
+        self.assertEqual(self.script._mixer_view[0], [0])
+        self.fl.channels[5]["mixer_track"] = 1
+        self.fl.routes |= {(i, i + 1) for i in range(1, 125)}
+        del self.fl.calls[:]
+        self.view(5)
+        calls = len(self.fl.called("mixer.getRouteSendActive"))
+        self.assertLessEqual(calls, self.script.MIXER_ROUTE_SCAN_LIMIT)
+
+    def test_mixer_view_tells_mk3d_fls_track_numbers(self):
+        self.route()
+        self.start()
+        frames = self.frames_with(self.view(5, 6, 7), 0x29)
+        self.assertEqual(frames[-1].hex(), "f07d4d332905000304091ef7")
+        self.assertEqual(self.frames_with(self.view(), 0x29)[-1].hex(), "f07d4d332900f7")
+        self.send("f07d4d3341f7")  # REQUEST_STATE: sent again after HELLO
+        self.assertEqual(len(self.frames_with(self.settle(), 0x29)), 1)
+
+    def test_every_mixer_function_the_script_calls_has_a_translation(self):
+        import re
+
+        with open(SCRIPT_PATH) as source:
+            text = source.read()
+        used = set(re.findall(r"\bmixer\.([a-zA-Z]+)\b", text))
+        known = self.script.MIXER_INDEX_FIRST | self.script.MIXER_INDEX_NONE | {"trackCount", "trackNumber"}
+        self.assertEqual(used - known, set())
 
 
 if __name__ == "__main__":

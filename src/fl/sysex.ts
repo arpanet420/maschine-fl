@@ -9,6 +9,8 @@ import {
   MAX_LIVE_BLOCKS,
   MAX_PATTERN_GRID_STEPS,
   MAX_PROBE,
+  MAX_TITLE,
+  MAX_VIEW_CHANNELS,
   MARKER_TICKS_UNKNOWN,
   MAX_STRING,
   STRIP_KINDS,
@@ -284,6 +286,11 @@ export type FlMessage =
   | { type: "paramNames"; offset: number; names: string[] }
   /** One line of the playlist probe (a diagnostic): mk3d logs it and does nothing else. */
   | { type: "probe"; text: string }
+  /** FL's window title, and whether FL's channel rack filter is on a group (a channel view is off then). */
+  /** `load` counts the projects FL loaded since the script started (mod 128): the same one again is news too. */
+  | { type: "project"; title: string; filtered: boolean; load: number }
+  /** With a channel view, mixer track numbers are positions in `tracks` (FL's own numbers); [] = no view. */
+  | { type: "mixerView"; tracks: number[] }
   | { type: "unknown"; command: number; payload: number[] };
 
 export type ChannelProp = (typeof CHANNEL_PROPS)[number];
@@ -364,6 +371,8 @@ export type FlCommand =
   | { type: "setLoop"; start: number; end: number }
   /** Send LOOP_STATE. */
   | { type: "requestLoop" }
+  /** Show only these FL channels (global indexes) on the MK3, in this order; [] = every channel. */
+  | { type: "setChannelView"; channels: number[] }
   /** Send STEP_PARAMS for this step. */
   | { type: "requestStepParams"; channel: number; step: number }
   /** A step's pitch (`param` 0) or velocity (`param` 1), 0–127, in the current pattern. */
@@ -749,6 +758,13 @@ function readFlMessage(command: number, payload: number[], r: Reader): FlMessage
     }
     case FROM_FL.probe:
       return { type: "probe", text: r.str() };
+    case FROM_FL.mixerView:
+      return { type: "mixerView", tracks: r.list(() => r.u7()) };
+    case FROM_FL.project: {
+      const filtered = r.flag();
+      const load = r.u7();
+      return { type: "project", title: r.str(), filtered, load };
+    }
     case FROM_FL.meters:
       return {
         type: "meters",
@@ -999,6 +1015,14 @@ export function encodeFlMessage(message: FlMessage): number[] {
     case "probe":
       w.str(message.text, MAX_PROBE);
       break;
+    case "mixerView":
+      w.list(message.tracks.slice(0, 127), (track) => w.u7(track));
+      break;
+    case "project":
+      w.flag(message.filtered)
+        .u7(message.load & 0x7f)
+        .str(message.title, MAX_TITLE);
+      break;
     case "meters":
       w.u14(message.offset).list(message.peaks, ([left, right]) => w.peak(left).peak(right));
       break;
@@ -1172,6 +1196,12 @@ export function encodeCommand(command: FlCommand): number[] {
       break;
     case "requestLoop":
       break;
+    case "setChannelView": {
+      const channels = command.channels.slice(0, MAX_VIEW_CHANNELS);
+      w.u14(channels.length);
+      channels.forEach((index) => w.u14(index));
+      break;
+    }
     case "requestStepParams":
       w.u14(command.channel).u14(command.step);
       break;
@@ -1313,6 +1343,10 @@ function readCommand(command: number, r: Reader): FlCommand | undefined {
       return { type: "setLoop", start: r.u21(), end: r.u21() };
     case TO_FL.requestLoop:
       return { type: "requestLoop" };
+    case TO_FL.setChannelView: {
+      const count = r.u14();
+      return { type: "setChannelView", channels: Array.from({ length: count }, () => r.u14()) };
+    }
     case TO_FL.requestStepParams:
       return { type: "requestStepParams", channel: r.u14(), step: r.u14() };
     case TO_FL.setStepParam:

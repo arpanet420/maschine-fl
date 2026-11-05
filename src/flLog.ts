@@ -123,6 +123,10 @@ export function describeSection(fl: FlState, section: FlSection): string | undef
         .map(([i, m]) => `${i + 1} ${m.name} @${m.ticks ?? "?"}`);
       return `markers (${fl.markerTotal}, ppq ${fl.ppq}): ${list.join(", ")}`;
     }
+    case "mixerView":
+      return fl.mixerView.length > 0
+        ? `mixer view (FOLLOW): tracks ${fl.mixerView.map((t) => (t === 0 ? "Master" : t)).join(", ")}`
+        : "mixer view: every track";
     case "loop": {
       const l = fl.loop;
       return l.active ? `song loop: ${l.start}…${l.end} ticks` : "song loop: off";

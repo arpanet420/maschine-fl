@@ -39,7 +39,7 @@ FL: mk3d's log says once per script load, about a minute after it (`script took 
 
 ## Channels
 
-All channel indexes are group-local (`useGlobalIndex` stays False), except where `channels.getChannelIndex` converts one.
+All channel indexes are group-local (`useGlobalIndex` stays False), except where `channels.getChannelIndex` converts one. With a channel view (SCENE's FOLLOW) the script maps mk3d's numbers onto global indexes and needs FL's filter on "All" ("Channel groups" below).
 
 | Call                                                                                      | What we assume                                                                                                                                                                                                                                                     | Status                                 |
 | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------- |
@@ -166,6 +166,8 @@ FL has no scenes; a marker stands for one. The API has no marker count and no ma
   jumped to. One case is told apart: a scan one short whose first jump stayed at 0. Then one `jumpToMarker(-1)`
   from the first marker found decides: only if it lands on 0 is a marker at tick 0 counted (bug 14).
 - MARKERS goes out in chunks of at most 8, one per service pass.
+- `getMarkerName` gives the name with the marker's action after it: "swesyntmaster - marker loop" for a Marker loop
+  marker the .flp calls "swesyntmaster" (seen in FL 2026, 2026-11-05). FOLLOW matches the two that way.
 
 | Call                                                    | What we assume                                                                                                                                                                                                                                                                  | Status                                                           |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
@@ -177,6 +179,25 @@ FL has no scenes; a marker stands for one. The API has no marker count and no ma
 | `setSongPos(ticks, SONGLENGTH_ABSTICKS)`                | Moves the position, also while playing, in the absolute ticks the markers use                                                                                                                                                                                                   | Used                                                             |
 | `OnUpdateBeatIndicator(1)`                              | Not used. Quantized jumps were run from it, and in FL they didn't happen while playing (bug 15); why was never seen. They are now timed from `getSongPos` on FL's own thread                                                                                                    | Not used                                                         |
 | `transport.setLoopMode()`, `getLoopMode()`              | A toggle, so it's only called when `getLoopMode()` differs. 0 pattern, 1 song                                                                                                                                                                                                   | Used                                                             |
+
+## Channel groups (SCENE's FOLLOW)
+
+FL's scripting API has no channel rack filter groups: nothing reads a channel's group, a group's name or which
+group the filter shows, and nothing switches the filter (the `channels` module's 54 functions in FL 2026, read
+from the binary). The functions take group-local indexes by default (`useGlobalIndex`, release note 16154), and
+those are the global ones while the filter is on "All". So FOLLOW reads the groups from the saved .flp (event 231
+= a group's name, 145 = a channel's group, an index into the names sorted FL's way, 64 = a new channel, in global
+order: checked on a Skarv splice against FL's own channel list in mk3d's log, 2026-11-05) and has the script map
+mk3d's channel numbers onto a list of global indexes (docs/sysex.md "Channel view").
+
+| Call                                                          | What we assume                                                                                                                                                                                                                                                                                     | Status          |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| `ui.getProgTitle()`                                           | Just "FL Studio 2026", no project name, in FL 2026 (mk3d's log, 2026-11-05). There is no call for the project's path (none in the binary's strings either), and `general.getProjectTitle()` is Project info's title. So mk3d takes the newest project under FL's Projects folder with FL's markers | Seen 2026-11-05 |
+| `channels.channelCount(True)`                                 | The global count, so a smaller `channelCount()` means the filter is on a group                                                                                                                                                                                                                     | Open            |
+| `ui.crDisplayRect(left, top, width, height, duration, flags)` | With `CR_HighlightChannels \| CR_ScrollToView` it outlines channels `top … top + height − 1`; `midi.MaxInt` keeps it up, 0 takes it away (the stubs, release note 11977)                                                                                                                           | Open            |
+| `ui.getFocusedFormID()` for a generator                       | The channel's global index (the view maps it)                                                                                                                                                                                                                                                      | Open            |
+| `mixer.getRouteSendActive(source, target)`                    | Whether `source` sends to `target`: the mixer view's buses are the tracks the song's tracks send to                                                                                                                                                                                                | Open            |
+| `channels.midiNoteOn(index, …)`                               | A global index (`getChannelIndex` turns a group-local one into it)                                                                                                                                                                                                                                 | Used            |
 
 ## The song loop
 

@@ -30,6 +30,7 @@ import { FlParamPages } from "../modes/pluginPages.js";
 import { LoopOverlay } from "../modes/loopOverlay.js";
 import { PatternOverlay } from "../modes/patternOverlay.js";
 import { SceneOverlay } from "../modes/sceneOverlay.js";
+import { SongFollow, type SongFollowOptions } from "../modes/songFollow.js";
 import { SelectOverlay } from "../modes/selectOverlay.js";
 import { SettingsPage } from "../modes/settingsPage.js";
 import { SoloOverlay } from "../modes/soloOverlay.js";
@@ -45,6 +46,8 @@ export function stackHarness(
     pinsPath?: string;
     /** The arpeggiator's Random. */
     random?: () => number;
+    /** Gives SCENE its FOLLOW, finding the project file with this. */
+    findProject?: SongFollowOptions["find"];
   } = {},
 ) {
   const time = new FakeTime(1_000_000);
@@ -57,12 +60,20 @@ export function stackHarness(
     () => fl.selectedChannel.index,
     time.clock,
   );
+  const follow = options.findProject
+    ? new SongFollow({
+        fl,
+        send: (command) => sent.push(command),
+        find: options.findProject,
+        saved: async () => false,
+      })
+    : undefined;
   const pages = {
     channel: new ChannelMode(time.clock),
     plugin: new PluginMode(time.clock, new FlParamPages()),
     mixer: new MixerMode(time.clock),
     arranger: new ArrangerPage(),
-    scene: new SceneOverlay({ timers: time.timers }),
+    scene: new SceneOverlay({ timers: time.timers, follow }),
     liveClips: new LiveOverlay({ timers: time.timers }),
     browser: new BrowserPage(time.clock),
     pattern: new PatternOverlay({ clock: time.clock, timers: time.timers }),
@@ -310,6 +321,7 @@ export function stackHarness(
   return {
     fl,
     pads,
+    follow,
     pages,
     stack,
     mc,

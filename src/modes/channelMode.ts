@@ -101,7 +101,8 @@ const PARAMS: readonly ParamKnob[] = [
 ];
 
 export function trackText(fl: FlState, track: number): string {
-  return track === 0 ? "Master" : (fl.mixer.get(track)?.name ?? `Insert ${track}`);
+  const number = fl.flTrackNumber(track); // FL's own, also in a song's mixer view (FOLLOW)
+  return number === 0 ? "Master" : (fl.mixer.get(track)?.name ?? `Insert ${number}`);
 }
 
 /** First channel of the page that holds `index`. */

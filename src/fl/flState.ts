@@ -57,7 +57,9 @@ export type FlSection =
   | "pluginParams"
   | "paramNames"
   | "liveGrid"
-  | "activity";
+  | "activity"
+  | "project"
+  | "mixerView";
 
 const SECTIONS: readonly FlSection[] = [
   "connection",
@@ -86,6 +88,8 @@ const SECTIONS: readonly FlSection[] = [
   "paramNames",
   "liveGrid",
   "activity",
+  "project",
+  "mixerView",
 ];
 
 /** FL's usual timebase (ticks per quarter note), used until MARKERS reports the project's. */
@@ -147,6 +151,10 @@ interface Data {
   stepParams?: { channel: number; step: number; pitch: number; velocity: number };
   /** Hidden FL functions this FL version lacks (FEATURES); all present until it says otherwise. */
   missing: MissingFeatures;
+  /** PROJECT: FL's window title ("" until it arrives) and whether the channel rack filter is on a group. */
+  project: { title: string; filtered: boolean; load: number };
+  /** MIXER_VIEW: FL's track numbers of the mixer view's positions; [] = no view (mixer numbers are FL's own). */
+  mixerView: number[];
   /** The last BROWSER_NODE (plug-in loader trial); undefined until one arrived. */
   pattern: PatternInfo;
   patterns: Map<number, PatternEntry>;
@@ -219,6 +227,8 @@ function emptyData(): Data {
     ppq: DEFAULT_PPQ,
     loop: { active: false, start: 0, end: 0 },
     missing: { patternLength: false, loop: false },
+    project: { title: "", filtered: false, load: 0 },
+    mixerView: [],
     pattern: { number: 0, count: 0, length: 0, color: 0, name: "" },
     patterns: new Map(),
     patternCount: 0,
@@ -339,6 +349,18 @@ export class FlState extends EventEmitter<{ change: [section: FlSection] }> {
   /** Hidden FL functions this FL version lacks. */
   get missing(): Readonly<MissingFeatures> {
     return this.data.missing;
+  }
+  /** MIXER_VIEW's tracks: FL's numbers of the mixer positions while FOLLOW shows a song; [] = no view. */
+  get mixerView(): readonly number[] {
+    return this.data.mixerView;
+  }
+  /** FL's own number of mixer track `track` (a position in the mixer view while FOLLOW shows one). */
+  flTrackNumber(track: number): number {
+    return this.data.mixerView[track] ?? track;
+  }
+  /** FL's window title and whether its channel rack filter is on a group, not "All" (PROJECT). */
+  get project(): Readonly<{ title: string; filtered: boolean; load: number }> {
+    return this.data.project;
   }
   /** Where the song is, on SONG_POS's grid of 16 steps to the bar: for working out positions. */
   get songPos(): Readonly<SongPosition> {
@@ -597,6 +619,19 @@ export class FlState extends EventEmitter<{ change: [section: FlSection] }> {
         const changed = !same(d.loop, loop);
         d.loop = loop;
         this.changed("loop", changed);
+        break;
+      }
+      case "mixerView": {
+        const changed = !same(d.mixerView, message.tracks);
+        d.mixerView = [...message.tracks];
+        this.changed("mixerView", changed);
+        break;
+      }
+      case "project": {
+        const project = { title: message.title, filtered: message.filtered, load: message.load };
+        const changed = !same(d.project, project);
+        d.project = project;
+        this.changed("project", changed);
         break;
       }
       case "features": {

@@ -78,6 +78,9 @@ Tried by the author on one MK3 with FL Studio 26.1.5 (macOS 27, Apple Silicon), 
   window behind another coming up on the first press.
 - **Performance:** launching scenes in LIVE, STOP, paging through 16 columns at a time, and screens that show
   which track plays which pattern.
+- **Live sets:** SCENE's FOLLOW (display 4) shows only the playing song's channels and mixer tracks, for a set
+  spliced with [Skarv](https://github.com/arpanet420/skarv): a channel rack filter group per song, named like
+  its marker. FL's channel rack filter stays on "All", and the project has to be saved.
 
 In short, you can make patterns and play a set from the MK3. Placing the clips of that set in the playlist
 still takes the computer (see [Limits](#limits)).

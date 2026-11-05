@@ -72,8 +72,8 @@ const fromFl = vectors.filter((v) => v.direction === "fromFl");
 const toFl = vectors.filter((v) => v.direction === "toFl");
 
 describe("shared SysEx vectors", () => {
-  it("has the 101 vectors of the spec", () => {
-    expect(vectors).toHaveLength(101);
+  it("has the 106 vectors of the spec", () => {
+    expect(vectors).toHaveLength(106);
   });
 
   describe.each(fromFl)("FL → mk3d: $name", ({ message, hex }) => {

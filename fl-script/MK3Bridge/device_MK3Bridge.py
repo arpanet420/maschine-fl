@@ -78,6 +78,8 @@ CMD_LIVE_GRID = 0x23
 CMD_ACTIVITY = 0x24
 CMD_LIVE_TRACK = 0x25
 CMD_PLAYED_NOTES = 0x27
+CMD_PROJECT = 0x28
+CMD_MIXER_VIEW = 0x29
 
 # mk3d -> FL
 CMD_REQUEST_STATE = 0x41
@@ -125,6 +127,7 @@ CMD_SET_TRACK_COLOR = 0x6F
 CMD_CLOSE_ALL_WINDOWS = 0x70
 CMD_RAISE_WINDOW = 0x71
 CMD_CLOSE_WINDOW = 0x72
+CMD_SET_CHANNEL_VIEW = 0x73
 
 CONTROL_CHANNEL = 15  # MIDI channel 16, zero-based
 CHANNEL_NOTE_CHANNEL = 1  # MIDI channel 2, zero-based: PAD MODE hits, note = group-local channel index
@@ -273,6 +276,230 @@ BROWSER_WINDOW = 4  # ui.showWindow(4): docked by default, and it comes up witho
 FOCUS_NONE = 127  # UI_STATE focused: none of them
 TEMPO_MIN = 10  # BPM
 TEMPO_MAX = 522
+MAX_TITLE_TEXT = 100  # PROJECT: characters of FL's window title
+MAX_VIEW_CHANNELS = 1000  # SET_CHANNEL_VIEW: FL's channel rack holds 999
+
+# The channel view (SET_CHANNEL_VIEW, docs/sysex.md): mk3d shows one song's channels only. With a view
+# set, every channel number the script trades with mk3d is a position in the view's list of FL channel
+# indexes, and `channels` and `plugins` below translate it on each call, so the rest of the script needs
+# no change. FL's channel rack filter has to be on "All": the indexes FL's functions take are then the
+# global ones the view lists (Bridge.apply_channel_view). None: no view, every call goes straight to FL.
+_channel_view = [None]
+# The mixer's part of the view: Master, the mixer tracks the view's channels go to and the tracks those send to (a
+# song's buses), in track order. With it, mixer track numbers are positions in this list, the channels' mixer track
+# (getTargetFxTrack, setTargetFxTrack) too. None: every track.
+_mixer_view = [None]
+
+# channels functions whose first argument is a group-local channel index.
+CHANNEL_INDEX_FIRST = frozenset(
+    (
+        "focusEditor",
+        "getActivityLevel",
+        "getChannelColor",
+        "getChannelName",
+        "getChannelPan",
+        "getChannelPitch",
+        "getChannelType",
+        "getChannelVolume",
+        "getCurrentStepParam",
+        "getGridBit",
+        "getRecEventId",
+        "getTargetFxTrack",
+        "isChannelMuted",
+        "isChannelSelected",
+        "isChannelSolo",
+        "isGridBitAssigned",
+        "muteChannel",
+        "quickQuantize",
+        "selectOneChannel",
+        "setChannelColor",
+        "setChannelPan",
+        "setChannelPitch",
+        "setChannelVolume",
+        "setGridBit",
+        "setStepParameterByIndex",
+        "setTargetFxTrack",
+        "showEditor",
+        "soloChannel",
+    )
+)
+# channels functions that take no channel index or a global one (midiNoteOn): no translation.
+CHANNEL_INDEX_NONE = frozenset(("midiNoteOn", "selectAll", "deselectAll"))
+# mixer functions whose first argument is a mixer track index.
+MIXER_INDEX_FIRST = frozenset(
+    (
+        "armTrack",
+        "getTrackColor",
+        "getTrackName",
+        "getTrackPan",
+        "getTrackPeaks",
+        "getTrackVolume",
+        "isTrackArmed",
+        "isTrackMuted",
+        "isTrackSolo",
+        "muteTrack",
+        "setTrackColor",
+        "setTrackNumber",
+        "setTrackPan",
+        "setTrackVolume",
+        "soloTrack",
+    )
+)
+MIXER_INDEX_NONE = frozenset(("getCurrentTempo",))
+MIXER_ROUTE_SCAN_LIMIT = 4000  # getRouteSendActive calls for a view's buses, at most
+# plugins functions: where the channel index is. The slot index follows it; only -1 (or none) means
+# a channel's plug-in, anything else is a mixer track's.
+PLUGIN_INDEX_AT = {
+    "getName": 0,
+    "getParamCount": 0,
+    "getPluginName": 0,
+    "getPresetCount": 0,
+    "isValid": 0,
+    "nextPreset": 0,
+    "prevPreset": 0,
+    "getParamName": 1,
+    "getParamValue": 1,
+    "getParamValueString": 1,
+    "setParamValue": 2,
+}
+
+
+def _view_index(index):
+    """The FL channel index of the view's position `index`."""
+    view = _channel_view[0]
+    if view is None or index < 0:
+        return index
+    if index >= len(view):
+        raise IndexError("channel %d is outside the channel view of %d" % (index, len(view)))
+    return view[index]
+
+
+def _view_position(index):
+    """The view's position of FL channel `index`, -1 when the view does not show it."""
+    view = _channel_view[0]
+    if view is None or index is None or index < 0:
+        return index
+    return view.index(index) if index in view else -1
+
+
+def _track_index(index):
+    """The FL mixer track of the mixer view's position `index`."""
+    view = _mixer_view[0]
+    if view is None or index < 0:
+        return index
+    if index >= len(view):
+        raise IndexError("mixer track %d is outside the mixer view of %d" % (index, len(view)))
+    return view[index]
+
+
+def _track_position(index):
+    """The mixer view's position of FL mixer track `index`, -1 when the view does not show it."""
+    view = _mixer_view[0]
+    if view is None or index is None or index < 0:
+        return index
+    return view.index(index) if index in view else -1
+
+
+def _named(function, name):
+    function.__name__ = name
+    return function
+
+
+class _ChannelsView(object):
+    """FL's channels module, through the channel view. Attributes are looked up at each call, so a
+    function patched into the module later (the tests do) is the one called."""
+
+    def __init__(self, module):
+        object.__setattr__(self, "_module", module)
+
+    def __setattr__(self, name, value):
+        setattr(self._module, name, value)
+
+    def __delattr__(self, name):
+        delattr(self._module, name)
+
+    def __getattr__(self, name):
+        real = getattr(self._module, name)
+        view = _channel_view[0]
+        if view is None or not callable(real) or name in CHANNEL_INDEX_NONE:
+            return real
+        qualified = getattr(real, "__name__", name)
+        if name == "getTargetFxTrack":
+            return _named(lambda index, *rest: _track_position(real(_view_index(index), *rest)), qualified)
+        if name == "setTargetFxTrack":
+            return _named(lambda index, track, *rest: real(_view_index(index), _track_index(track), *rest), qualified)
+        if name in CHANNEL_INDEX_FIRST:
+            return _named(lambda index, *rest: real(_view_index(index), *rest), qualified)
+        if name == "channelCount":
+            # channelCount(globalCount): the view's size, or FL's whole count when asked for it.
+            return _named(lambda *args: real(*args) if args and args[0] else len(_channel_view[0]), qualified)
+        if name in ("selectedChannel", "channelNumber"):
+            # (canBeNone, offset, indexGlobal): a channel the view does not show is none (-1).
+            return _named(lambda *args: real(*args) if args[2:3] and args[2] else _view_position(real(*args)), qualified)
+        if name == "getChannelIndex":
+            return _named(lambda index: _view_index(index), qualified)
+        raise AttributeError("channels.%s has no channel view translation" % name)
+
+
+class _PluginsView(object):
+    """FL's plugins module, through the channel view (see _ChannelsView)."""
+
+    def __init__(self, module):
+        object.__setattr__(self, "_module", module)
+
+    def __setattr__(self, name, value):
+        setattr(self._module, name, value)
+
+    def __delattr__(self, name):
+        delattr(self._module, name)
+
+    def __getattr__(self, name):
+        real = getattr(self._module, name)
+        at = PLUGIN_INDEX_AT.get(name)
+        if _channel_view[0] is None or not callable(real) or at is None:
+            return real
+
+        def call(*args):
+            if len(args) > at and (len(args) <= at + 1 or args[at + 1] == -1):
+                args = args[:at] + (_view_index(args[at]),) + args[at + 1 :]
+            return real(*args)
+
+        return _named(call, getattr(real, "__name__", name))
+
+
+class _MixerView(object):
+    """FL's mixer module, through the mixer view (see _ChannelsView)."""
+
+    def __init__(self, module):
+        object.__setattr__(self, "_module", module)
+
+    def __setattr__(self, name, value):
+        setattr(self._module, name, value)
+
+    def __delattr__(self, name):
+        delattr(self._module, name)
+
+    def __getattr__(self, name):
+        real = getattr(self._module, name)
+        view = _mixer_view[0]
+        if view is None or not callable(real) or name in MIXER_INDEX_NONE:
+            return real
+        qualified = getattr(real, "__name__", name)
+        if name in MIXER_INDEX_FIRST:
+            return _named(lambda index, *rest: real(_track_index(index), *rest), qualified)
+        if name == "trackCount":
+            # FL's count has its hidden "current" track last; Bridge.mixer_total leaves it out.
+            return _named(lambda: len(_mixer_view[0]) + 1, qualified)
+        if name == "trackNumber":
+            return _named(lambda: _track_position(real()), qualified)
+        raise AttributeError("mixer.%s has no mixer view translation" % name)
+
+
+_channels_module = channels
+_mixer_module = mixer
+channels = _ChannelsView(channels)
+plugins = _PluginsView(plugins)
+mixer = _MixerView(mixer)
 
 def _undo_flags():
     """The flags of the undo points the script saves: pattern changes (midi.UF_PR, = UF_SS)."""
@@ -600,6 +827,13 @@ def encode(message):
         return frame(CMD_FEATURES, enc_u7(missing))
     if kind == "probe":
         return frame(CMD_PROBE, enc_str(message["text"], MAX_PROBE_TEXT))
+    if kind == "mixerView":
+        return frame(CMD_MIXER_VIEW, enc_list(message["tracks"], enc_u7))
+    if kind == "project":
+        return frame(
+            CMD_PROJECT,
+            enc_flag(message["filtered"]) + enc_u7(message["load"] & 0x7F) + enc_str(message["title"], MAX_TITLE_TEXT),
+        )
     if kind == "meters":
         return frame(
             CMD_METERS,
@@ -811,6 +1045,9 @@ def decode(data):
             index, quantized = r.u7(), r.u7() != 0
             loop = r.u7() != 0 if r.pos < len(r.payload) else False  # an older mk3d sends no loop
             return {"type": "jumpMarker", "index": index, "quantized": quantized, "loop": loop}
+        if command == CMD_SET_CHANNEL_VIEW:
+            count = r.u14()
+            return {"type": "setChannelView", "channels": [r.u14() for _ in range(min(count, MAX_VIEW_CHANNELS))]}
         if command == CMD_SET_LOOP_MODE:
             return {"type": "setLoopMode", "song": r.u7() != 0}
         if command == CMD_REQUEST_MARKERS:
@@ -1050,6 +1287,8 @@ ALL_READERS = (
     "features",
     "live_grid",
     "activity",
+    "project",
+    "mixer_view",
 )
 CHANNEL_READERS = ("selected_channel", "channel_detail", "channels", "plugin", "presets", "params", "grid")
 MIXER_READERS = ("mixer", "selected_track")
@@ -1106,6 +1345,11 @@ class Bridge(object):
         self.last_generator = None
         self.focus_settles_at = 0.0
         self.known_channel_count = None
+        # SET_CHANNEL_VIEW: the FL channel indexes mk3d asked for ([] = every channel), and whether FL's channel
+        # rack filter was on another group than "All" when last looked at (the view is off then).
+        self.view_request = []
+        self.rack_filtered = False
+        self.project_loads = 0  # PROJECT `load`: projects FL loaded since the script started (mod 128)
         # Step edits (clear, paste, cut) run as one batch: service() waits until it is over.
         self.batching = 0
         # A DOUBLE_PATTERN being copied, a few channels per service pass (see double_pattern), or None.
@@ -1231,6 +1475,7 @@ class Bridge(object):
             index = ui.getFocusedFormID()
             if isinstance(index, bool) or not isinstance(index, int):
                 return None
+            index = _view_position(index)  # FL's channel index; a channel outside the view is none
             return index if index >= 0 else None
         except Exception as error:
             _log_once("focused window", error)
@@ -1380,6 +1625,8 @@ class Bridge(object):
             self.mark(*MIXER_READERS)
         if flags & channel_flags:
             self.mark(*CHANNEL_READERS)
+        if flags & midi.HW_Dirty_ChannelRackGroup:
+            self.mark("project")  # the rack filter changed: the view may have to go off, or come back
         if flags & midi.HW_Dirty_Patterns:
             self.mark(*PATTERN_READERS)
 
@@ -2282,6 +2529,101 @@ class Bridge(object):
             },
         )
 
+    def rack_filter_on(self):
+        """FL's channel rack filter is on a group, not "All": FL counts fewer channels than it has."""
+        local = int(_safe(0, _channels_module.channelCount))
+        every = int(_safe(local, _channels_module.channelCount, True))
+        return local != every
+
+    def read_project(self):
+        """PROJECT: FL's window title (mk3d finds the project file by it), whether the rack filter is on a group, and
+        how many projects FL loaded (the same project loaded again is news too: mk3d reads its file again)."""
+        filtered = self.rack_filter_on()
+        if filtered != self.rack_filtered:
+            self.rack_filtered = filtered
+            self.apply_channel_view()
+        title = _optional("", ui, "getProgTitle")
+        self.submit(
+            "PROJECT", {"type": "project", "title": str(title or ""), "filtered": filtered, "load": self.project_loads}
+        )
+
+    def read_mixer_view(self):
+        """MIXER_VIEW: FL's track numbers of the mixer view's positions, none without a view (mk3d labels strips by them)."""
+        self.submit("MIXER_VIEW", {"type": "mixerView", "tracks": list(_mixer_view[0] or [])})
+
+    def set_channel_view(self, wanted):
+        """SET_CHANNEL_VIEW: show only these FL channels (by global index), or every channel for []."""
+        self.view_request = list(wanted)
+        self.rack_filtered = self.rack_filter_on()
+        self.apply_channel_view()
+
+    def apply_channel_view(self):
+        """Put the view mk3d asked for in place, or take it away: FL's filter has to be on "All" (the indexes are
+        global ones, and with a group shown FL's functions take the group's own), and a channel FL no longer has
+        drops out. When the view leaves the selected channel out, its first channel is selected."""
+        view = None
+        if self.view_request and not self.rack_filtered:
+            every = int(_safe(0, _channels_module.channelCount))
+            view = []
+            for index in self.view_request:
+                if 0 <= index < every and index not in view:
+                    view.append(index)
+            view = view or None
+        elif self.view_request:
+            self.queue_probe('channel view off: FL\'s channel rack filter is on a group, not "All"')
+        if view == _channel_view[0]:
+            return
+        _channel_view[0] = None
+        _mixer_view[0] = None
+        tracks = self.mixer_view_for(view) if view is not None else None
+        _channel_view[0] = view
+        _mixer_view[0] = tracks
+        self.known_channel_count = None  # the count changes, and with it every index
+        self.reset_follow()
+        self.mark_all()
+        if view is not None and _safe(-1, channels.selectedChannel, True) < 0:
+            self.moving_focus()
+            _safe(None, channels.selectOneChannel, 0)
+        if tracks is not None and _safe(-1, mixer.trackNumber) < 0:
+            # the selected channel's track, else Master
+            selected = _safe(-1, channels.selectedChannel, True)
+            track = _safe(-1, channels.getTargetFxTrack, selected) if selected >= 0 else -1
+            _safe(None, mixer.setTrackNumber, track if track is not None and track >= 0 else 0)
+        self.highlight_view(view)
+
+    def mixer_view_for(self, view):
+        """Master, the mixer tracks the channels go to and the tracks those send to (a song's buses, any number of
+        hops), in track order. FL's hidden "current" track (the last) is never one."""
+        last = int(_safe(0, _mixer_module.trackCount)) - 1
+        tracks = []
+        for index in view:
+            track = _safe(-1, _channels_module.getTargetFxTrack, index)
+            if isinstance(track, int) and 0 < track < last and track not in tracks:
+                tracks.append(track)
+        route = getattr(_mixer_module, "getRouteSendActive", None)
+        todo, calls = list(tracks), 0
+        while callable(route) and todo and calls < MIXER_ROUTE_SCAN_LIMIT:
+            source = todo.pop(0)
+            for target in range(1, last):
+                if target == source or target in tracks:
+                    continue
+                if calls >= MIXER_ROUTE_SCAN_LIMIT:
+                    break
+                calls += 1
+                if bool(_safe(False, route, source, target)):
+                    tracks.append(target)
+                    todo.append(target)
+        return [0] + sorted(tracks)
+
+    def highlight_view(self, view):
+        """Outline the view's channels in FL's channel rack (from the first to the last), or take the outline away."""
+        flags = getattr(midi, "CR_HighlightChannels", 1) | getattr(midi, "CR_ScrollToView", 2)
+        if view is None:
+            _optional(None, ui, "crDisplayRect", 0, 0, 0, 0, 0, flags)
+            return
+        first, last = min(view), max(view)
+        _optional(None, ui, "crDisplayRect", 0, first, 1, last - first + 1, getattr(midi, "MaxInt", 2147483647), flags)
+
     def queue_probe(self, text):
         """One PROBE frame per piece of `text`: something mk3d's log should say."""
         for piece in split_probe_text(text):
@@ -2823,6 +3165,8 @@ class Bridge(object):
             self.marker_outbox = []
             self.marker_scan = True  # scanned when FL is stopped, else the cache is sent
             self.used_patterns_seen = None
+            self.view_request = []  # a new mk3d sends its view again
+            self.apply_channel_view()
             self.submit("HELLO", {"type": "hello", "version": PROTOCOL_VERSION})
             self.note_versions()
             self.last_meter = None
@@ -2831,6 +3175,8 @@ class Bridge(object):
             self.last_full = None
         elif kind == "view":
             self.apply_view(message)
+        elif kind == "setChannelView":
+            self.set_channel_view(message["channels"])
         elif kind == "selectChannel":
             index = message["index"]
             if 0 <= index < self.channel_total():
@@ -3659,6 +4005,10 @@ def OnDeInit():
     except Exception as error:
         _log_once("OnDeInit end_perform", error)
     try:
+        _bridge.highlight_view(None)
+    except Exception as error:
+        _log_once("OnDeInit highlight_view", error)
+    try:
         device.midiOutSysex(encode({"type": "goodbye"}))
     except Exception as error:
         _log_once("OnDeInit", error)
@@ -3787,6 +4137,9 @@ def OnProjectLoad(status):
         if status not in (midi.PL_Start, getattr(midi, "PL_LoadError", -1)):
             _bridge.marker_stale = True  # a new project: scan its markers as soon as FL is stopped
             _bridge.marker_key = None
+            _bridge.project_loads += 1
+            _bridge.view_request = []  # its channels are others: mk3d reads the new file and sends a view again
+            _bridge.apply_channel_view()
         if status != midi.PL_Start:
             _bridge.service()
     except Exception as error:

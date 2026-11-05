@@ -4,7 +4,9 @@
 // bar line). Display 2 `NOW` toggles quantized and immediate (bright = immediate), display 3 `LOOP` makes a
 // press also loop the marker's section (bright = on, the default): the FL script sets the song loop to the
 // marker up to the next one (the last: to the song's end) at the moment it jumps, so a live set stays in a
-// song until the next scene is picked. Both are saved with the page stack's state.
+// song until the next scene is picked. Display 4 `FOLLOW` makes the MK3 show only the channels of the song
+// that is playing: the filter group named like its marker (songFollow.ts; bright = on, off by default). All
+// three are saved with the page stack's state.
 //
 // A queued jump shows its pad flashing (pressed variant against dim, and the grid cell outlined in
 // mint) until SONG_POS shows the jump happened: the song is in that marker again from an earlier
@@ -27,14 +29,18 @@ import {
 import type { ModeContext } from "./mode.js";
 import { GRID_RECT, drawFooter } from "./padGrid.js";
 import { realTimers, songBeats, type RepeatTimers } from "./repeatScheduler.js";
+import type { SongFollow } from "./songFollow.js";
 
 const NOW_BUTTON = 1;
 const LOOP_BUTTON = 2;
+const FOLLOW_BUTTON = 3;
 /** A queued pad flashes at this rate. */
 const FLASH_MS = 250;
 
 export interface SceneOptions {
   timers?: RepeatTimers;
+  /** FOLLOW's state lives here (it runs whatever page is up); without one the tab does nothing. */
+  follow?: SongFollow;
 }
 
 /** A jump that waits for the next bar: the marker, and where the song was when it was queued. */
@@ -55,18 +61,25 @@ export class SceneOverlay extends MarkerPadsPage {
   private flashTimer: unknown;
   private mc: ModeContext | undefined;
   private readonly timers: RepeatTimers;
+  private readonly follow: SongFollow | undefined;
 
   constructor(options: SceneOptions = {}) {
     super();
     this.timers = options.timers ?? realTimers;
+    this.follow = options.follow;
   }
 
   readonly persisted = {
-    save: () => ({ immediate: this.immediate, loop: this.loop }),
+    save: () => ({
+      immediate: this.immediate,
+      loop: this.loop,
+      follow: this.follow?.enabled ?? false,
+    }),
     load: (data: unknown) => {
-      const saved = data as { immediate?: unknown; loop?: unknown } | null;
+      const saved = data as { immediate?: unknown; loop?: unknown; follow?: unknown } | null;
       if (typeof saved?.immediate === "boolean") this.immediate = saved.immediate;
       if (typeof saved?.loop === "boolean") this.loop = saved.loop;
+      if (typeof saved?.follow === "boolean") this.follow?.setEnabled(saved.follow);
     },
   };
 
@@ -113,6 +126,7 @@ export class SceneOverlay extends MarkerPadsPage {
   protected displayPressed(display: number, mc: ModeContext): void {
     if (display === NOW_BUTTON) this.immediate = !this.immediate;
     else if (display === LOOP_BUTTON) this.loop = !this.loop;
+    else if (display === FOLLOW_BUTTON && this.follow) this.follow.setEnabled(!this.follow.enabled);
     else return;
     mc.saveState?.();
     mc.requestRender();
@@ -185,11 +199,12 @@ export class SceneOverlay extends MarkerPadsPage {
       ctx,
       { ...FULL, height: TAB_HEIGHT },
       {
-        tabs: ["SCENE", "NOW", "LOOP"],
+        tabs: ["SCENE", "NOW", "LOOP", this.follow ? "FOLLOW" : ""],
         active: [
           ...(mc.pinned ? [0] : []),
           ...(this.immediate ? [NOW_BUTTON] : []),
           ...(this.loop ? [LOOP_BUTTON] : []),
+          ...(this.follow?.enabled ? [FOLLOW_BUTTON] : []),
         ],
       },
     );
@@ -219,6 +234,7 @@ export class SceneOverlay extends MarkerPadsPage {
         TAB_HEIGHT + 58,
       );
     }
+    this.drawFollow(ctx, x);
     const queued = this.queuedJump;
     if (queued) {
       ctx.fillStyle = theme.selected;
@@ -233,9 +249,21 @@ export class SceneOverlay extends MarkerPadsPage {
     }
   }
 
+  /** FOLLOW on: whose channels the MK3 shows, or why it can't. Nothing while it is off. */
+  private drawFollow(ctx: SKRSContext2D, x: number): void {
+    const follow = this.follow;
+    if (!follow?.enabled) return;
+    const { group, problem } = follow.current;
+    ctx.font = font(16);
+    ctx.fillStyle = problem ? theme.dimText : theme.option;
+    const text = problem ?? (group ? `Channels: ${group}` : "Channels: all");
+    ctx.fillText(fitText(ctx, text, FULL.width - x - 24), x, FULL.height - 34);
+  }
+
   protected displayLeds(leds: LedState, mc: ModeContext): void {
     leds.setLight("display1", mc.pinned ? "bright" : "dim");
     leds.setLight("display2", this.immediate ? "bright" : "dim");
     leds.setLight("display3", this.loop ? "bright" : "dim");
+    if (this.follow) leds.setLight("display4", this.follow.enabled ? "bright" : "dim");
   }
 }
