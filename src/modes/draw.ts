@@ -48,7 +48,7 @@ export function drawTransportBar(
   fl: FlState,
   rect: Rect = TRANSPORT_RECT,
 ): void {
-  const { bar, step, tick } = fl.songPos;
+  const { bar, step, tick } = fl.barPosition;
   drawTransport(ctx, rect, {
     playing: fl.transport.playing,
     recording: fl.transport.recording,

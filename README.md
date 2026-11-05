@@ -92,6 +92,8 @@ still takes the computer (see [Limits](#limits)).
 - The LOOP overlay (holding SHIFT + RESTART to move the loop's ends), and touch strip PERFORM picking the
   plug-in's cutoff by name.
 - Everything from the [project review of 2026-11-05](docs/review-2026-11-05.md), which ends with the test list.
+- Bars in other time signatures than 4/4: the numbers on the screens, LOOP's moves, PATTERN's lengths and LIVE's
+  beats. A time signature marker in the playlist isn't followed.
 
 **Known problems**
 

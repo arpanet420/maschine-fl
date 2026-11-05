@@ -188,6 +188,8 @@ class FakeFL(object):
         self.marker_wrap = False  # does jumpToMarker(1) wrap to the first marker after the last?
         self.loop_mode = 0  # transport.getLoopMode(): 0 pattern, 1 song
         self.ppq = 96
+        self.numerator = 4  # the project's time signature
+        self.denominator = 4
         self.song_pos[2] = 0  # the position in absolute ticks
         self.visible = set()  # midi.wid* windows that are shown
         self.playlist_tracks = 500  # playlist.trackCount()
@@ -224,6 +226,12 @@ class FakeFL(object):
 
     def plugin(self, index):
         return self.channel(index)["plugin"]
+
+    def time_hint(self, ticks):
+        """arrangement.currentTimeHint: "Bar:Step:Tick" in the project's time signature. A step is a 16th."""
+        steps, tick = divmod(int(ticks), self.ppq // 4)
+        bar, step = divmod(steps, self.numerator * 16 // self.denominator)
+        return "%d:%02d:%02d" % (bar + 1, step + 1, tick)
 
     # -- module construction -----------------------------------------------------------------
 
@@ -329,6 +337,7 @@ class FakeFL(object):
 
         module(
             "arrangement",
+            currentTimeHint=lambda mode, time, *rest: fl.time_hint(time),
             jumpToMarker=jump_to_marker,
             getMarkerName=lambda index: fl.marker_names.get(
                 index, "Marker %d" % index if 0 <= index < len(fl.marker_ticks) else ""
@@ -583,6 +592,7 @@ class FakeFL(object):
             getUndoHistoryCount=lambda: fl.undo_count,
             getUndoLevelHint=lambda: fl.undo_hint,
             getRecPPQ=lambda: fl.ppq,
+            getRecPPB=lambda: fl.ppq * fl.numerator,
         )
         return mods
 
@@ -1467,17 +1477,17 @@ class StateTests(BridgeTestCase):
     def test_song_pos_comes_from_the_absolute_ticks(self):
         # FL's own B:S:T (the fake's 12:2:0) plays no part: bar 12, step 3, tick 0.
         ticks = (11 * 16 + 2) * 24
-        self.assertEqual(self.song_pos_frame(ticks), "f07d4d3303000c" + "03" + "0000" + "0060" + "f7")
+        self.assertEqual(self.song_pos_frame(ticks), "f07d4d3303000c" + "03" + "0000" + "0060" + "0010" + "04" + "f7")
 
     def test_song_pos_starts_at_bar_1_step_1(self):
-        self.assertEqual(self.song_pos_frame(0), "f07d4d33030001" + "01" + "0000" + "0060" + "f7")
+        self.assertEqual(self.song_pos_frame(0), "f07d4d33030001" + "01" + "0000" + "0060" + "0010" + "04" + "f7")
 
     def test_song_pos_keeps_the_ticks_inside_the_step(self):
-        self.assertEqual(self.song_pos_frame(24 * 4 + 7), "f07d4d33030001" + "05" + "0007" + "0060" + "f7")
+        self.assertEqual(self.song_pos_frame(24 * 4 + 7), "f07d4d33030001" + "05" + "0007" + "0060" + "0010" + "04" + "f7")
 
     def test_song_pos_follows_the_ppq(self):
         self.fl.ppq = 192  # 48 ticks to the step, and mk3d is told
-        self.assertEqual(self.song_pos_frame(48 * 16 + 5), "f07d4d33030002" + "01" + "0005" + "0140" + "f7")
+        self.assertEqual(self.song_pos_frame(48 * 16 + 5), "f07d4d33030002" + "01" + "0005" + "0140" + "0010" + "04" + "f7")
 
     def test_channels_in_chunks_of_four(self):
         frames = self.start()
@@ -4844,6 +4854,168 @@ class WatchLogTests(BridgeTestCase):
         self.assertEqual(self.probes(self.drain()), [])
 
 
+class MeterTests(BridgeTestCase):
+    """SONG_POS says how long the project's bars are (docs/sysex.md)."""
+
+    def probes(self, frames):
+        return [bytes(f[5:-2]).decode("ascii") for f in self.frames_with(frames, 0x17)]
+
+    def song_pos(self, frames):
+        data = bytes(self.frames_with(frames, 0x03)[-1][5:-1])
+        return {
+            "bar": (data[0] << 7) | data[1],
+            "step": data[2],
+            "tick": (data[3] << 7) | data[4],
+            "ppq": (data[5] << 7) | data[6],
+            "stepsPerBar": (data[7] << 7) | data[8],
+            "beatsPerBar": data[9],
+        }
+
+    def meter_of(self, numerator, denominator):
+        self.fl.numerator, self.fl.denominator = numerator, denominator
+        self.start()
+        self.clock.advance(1.1)  # the next look at it
+        self.script.OnIdle()
+        return self.script._bridge.meter
+
+    def test_song_pos_carries_it(self):
+        self.fl.numerator, self.fl.denominator = 6, 8
+        message = self.song_pos(self.start())
+        self.assertEqual((message["stepsPerBar"], message["beatsPerBar"]), (12, 6))
+
+    def test_says_steps_and_beats_for_every_meter(self):
+        cases = {
+            (4, 4): (16, 4),
+            (3, 4): (12, 3),
+            (6, 8): (12, 6),
+            (7, 8): (14, 7),
+            (5, 4): (20, 5),
+            (12, 8): (24, 12),
+            (9, 8): (18, 9),
+            (2, 2): (16, 2),
+            (6, 16): (6, 6),
+            (16, 2): (128, 16),
+        }
+        for meter, expected in cases.items():
+            self.assertEqual(self.meter_of(*meter), expected, meter)
+
+    def test_works_at_any_timebase(self):
+        for ppq in (24, 36, 96, 192, 960):
+            self.fl.ppq = ppq
+            self.assertEqual(self.meter_of(6, 8), (12, 6), ppq)
+
+    def test_the_position_stays_on_its_grid(self):
+        self.fl.song_pos[2] = 16 * 24 + 7
+        self.fl.numerator = 3
+        message = self.song_pos(self.start())
+        self.assertEqual((message["bar"], message["step"], message["tick"]), (2, 1, 7))
+
+    def test_fl_counting_from_zero_changes_nothing(self):
+        def hint(ticks):
+            steps, tick = divmod(int(ticks), self.fl.ppq // 4)
+            bar, step = divmod(steps, 12)
+            return "%d:%02d:%02d" % (bar, step, tick)
+
+        self.fl.time_hint = hint
+        self.assertEqual(self.meter_of(6, 8), (12, 6))
+
+    def test_a_hint_that_says_nothing_leaves_the_numerator_in_quarter_notes(self):
+        self.fl.time_hint = lambda ticks: "somewhere"
+        self.assertEqual(self.meter_of(3, 4), (12, 3))
+        self.assertEqual(self.meter_of(6, 8), (24, 6))  # the known limit: the log line shows the hint
+        self.assertEqual(self.meter_of(4, 4), (16, 4))
+
+    def test_hints_that_do_not_add_up_are_not_believed(self):
+        def marker_at_bar_5(ticks):
+            steps, tick = divmod(int(ticks), self.fl.ppq // 4)
+            if steps < 64:
+                bar, step = divmod(steps, 16)
+            else:
+                bar, step = divmod(steps - 64, 12)
+                bar += 4
+            return "%d:%02d:%02d" % (bar + 1, step + 1, tick)
+
+        self.fl.time_hint = marker_at_bar_5
+        self.assertEqual(self.meter_of(4, 4), (16, 4))
+
+    def test_hints_that_add_up_but_do_not_check_out_are_not_believed(self):
+        # 128 steps look like 8 bars of 16, but a bar on from the start is no new bar.
+        self.fl.time_hint = lambda ticks: "9:01:00" if ticks else "1:01:00"
+        self.assertEqual(self.meter_of(3, 4), (12, 3))
+
+    def test_a_failing_hint_or_a_missing_one_leaves_the_numerator(self):
+        self.fl.raise_on["arrangement.currentTimeHint"] = RuntimeError("boom")
+        self.assertEqual(self.meter_of(3, 4), (12, 3))
+        del self.fl.raise_on["arrangement.currentTimeHint"]
+        del sys.modules["arrangement"].currentTimeHint
+        self.assertEqual(self.meter_of(5, 4), (20, 5))
+
+    def test_with_nothing_to_go_on_it_is_4_4(self):
+        del sys.modules["arrangement"].currentTimeHint
+        del sys.modules["general"].getRecPPB
+        self.assertEqual(self.meter_of(3, 4), (16, 4))
+
+    def test_a_numerator_that_makes_no_sense_is_left_out(self):
+        self.script.general.getRecPPB = lambda: 100  # no whole number of quarter notes at PPQ 96
+        self.assertEqual(self.meter_of(3, 4), (12, 3))
+        self.assertEqual(self.meter_of(7, 8), (14, 7))
+        self.script.general.getRecPPB = lambda: 96 * 5  # hints say 12 steps: no 5 beats in that
+        self.assertEqual(self.meter_of(3, 4), (12, 3))
+        self.script.general.getRecPPB = lambda: 96 * 1000
+        del sys.modules["arrangement"].currentTimeHint
+        self.assertEqual(self.meter_of(3, 4), (16, 4))
+
+    def test_a_meter_that_cannot_be_read_keeps_the_last_one(self):
+        self.assertEqual(self.meter_of(3, 4), (12, 3))
+        self.script.general.getRecPPB = lambda: "not a number"
+        self.clock.advance(1.1)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.script.OnIdle()
+        self.assertEqual(self.script._bridge.meter, (12, 3))
+
+    def test_it_is_looked_at_once_a_second(self):
+        self.start()
+        self.drain()
+        self.fl.calls.clear()
+        self.fl.numerator = 3
+        self.clock.advance(0.5)
+        self.script.OnIdle()
+        self.assertEqual(self.fl.called("arrangement.currentTimeHint"), [])
+        self.assertEqual(self.script._bridge.meter, (16, 4))
+        self.clock.advance(0.6)
+        self.script.OnIdle()
+        self.assertLessEqual(len(self.fl.called("arrangement.currentTimeHint")), 3)
+        self.assertEqual(self.song_pos(self.take())["stepsPerBar"], 12)
+
+    def test_the_log_hears_it_with_what_fl_said(self):
+        frames = self.start()
+        self.assertEqual(
+            self.probes(frames),
+            ["meter: 16 steps, 4 beats a bar (hint 1:01:00 and 9:01:00, ppb 384, ppq 96)"],
+        )
+        self.drain()
+        self.take()
+        self.clock.advance(1.1)
+        self.script.OnIdle()
+        self.assertEqual(self.probes(self.take()), [])  # nothing new
+        self.fl.numerator, self.fl.denominator = 6, 8
+        self.clock.advance(1.1)
+        self.script.OnIdle()
+        self.assertEqual(
+            self.probes(self.take()),
+            ["meter: 12 steps, 6 beats a bar (hint 1:01:00 and 11:09:00, ppb 576, ppq 96)"],
+        )
+
+    def test_a_new_mk3d_hears_it_again(self):
+        self.start()
+        self.drain()
+        self.take()
+        self.send(self.script.frame(0x41, b""))
+        self.drain()
+        lines = self.probes(self.take())
+        self.assertEqual(len([line for line in lines if line.startswith("meter:")]), 1)
+
+
 class ManualCheckTests(BridgeTestCase):
     """What FL's scripting manual says that our first version had differently (docs/fl-api-notes.md)."""
 
@@ -4853,6 +5025,9 @@ class ManualCheckTests(BridgeTestCase):
     def sent(self):
         self.drain()
         return self.take()
+
+    def version_lines(self):
+        return [line for line in self.probes(self.sent()) if not line.startswith("meter:")]
 
     def test_on_dirty_channel_takes_the_flag_the_manual_gives_it(self):
         self.start()
@@ -4896,13 +5071,13 @@ class ManualCheckTests(BridgeTestCase):
         self.script.ui.getVersion = lambda: "26.1.5"
         self.script.general.getVersion = lambda: 44
         self.script.OnInit()
-        self.assertEqual(self.probes(self.sent()), ["FL 26.1.5, scripting API 44"])
+        self.assertEqual(self.version_lines(), ["FL 26.1.5, scripting API 44"])
         self.send(self.script.frame(0x41, b""))
-        self.assertEqual(self.probes(self.sent()), ["FL 26.1.5, scripting API 44"])
+        self.assertEqual(self.version_lines(), ["FL 26.1.5, scripting API 44"])
 
     def test_no_version_line_without_the_calls(self):
         self.script.OnInit()
-        self.assertEqual(self.probes(self.sent()), [])
+        self.assertEqual(self.version_lines(), [])
 
     def test_safe_to_edit_saying_no_is_logged_once(self):
         self.start()

@@ -221,6 +221,22 @@ it. No failure seen. mk3d's log says once per load if either ever says no (`OnSy
 
 The manual spells the event's property `pmeflags`; every script of FL's reads `pmeFlags`, so ours does too.
 
+## Time signature
+
+A step is taken to be a 16th note, PPQ / 4 ticks, in every meter, so 3/4 and 6/8 are both 12 steps a bar. SONG_POS
+keeps counting 16 steps to its `bar` because it is a position, and carries `stepsPerBar` and `beatsPerBar` for the
+screens. None of this has run in FL: mk3d's log has a `meter:` line at each script load and each change, with what FL
+answered, and the [test list](review-2026-11-05.md#test-list) asks for it.
+
+| Call | What we assume | Status |
+| ---- | -------------- | ------ |
+| `general.getRecPPB()` | The timebase × the numerator, so ÷ `getRecPPQ()` it is the beats in a bar. It knows no denominator: 6/8 and 6/4 give the same. Ignores time signature markers (stubs) | Manual |
+| `arrangement.currentTimeHint(1, ticks)` | `Bar:Step:Tick` for any time, in song mode, with no side effects. `hinted_bar_steps` asks about the start, about 128 steps on, and about one bar on. It works out the bar from the difference, so FL's bases don't matter, and it doesn't believe hints that don't add up | Stubs |
+
+Without a usable hint the beats count as quarter notes: 3/4 is right, 6/8 comes out as 6/4 (24 steps). Without
+`getRecPPB` too it is 4/4. The manual has no getter for the denominator, only `setDenominator`; `score.tsDenominator`
+belongs to piano roll scripts, an API of their own. A time signature marker in the playlist isn't followed.
+
 ## What the manual has that we don't use
 
 Compared function by function on 2026-11-05: the manual lists about 355 functions in the modules we import, the
@@ -235,7 +251,7 @@ has been tried.
 | Knob moves recorded as automation | `general.processRECEvent(id, value, REC_MIDIController)`, which includes `REC_Store`, on `getRecEventId(i) + REC_Chan_Vol` and so on, and `mixer.getTrackPluginId(t, 0) + REC_Mixer_Vol` | We set values with `setChannelVolume`, `setTrackVolume` and `setParamValue`, which may not record. Open in FL. docs/workflow.md's AUTO row |
 | FPC's pads on PAD MODE or KEYBOARD: their notes and colours | `plugins.getPadInfo(i, -1, PAD_Count / PAD_Semitone / PAD_Color / PAD_Empty / PAD_Muted, pad)`, `plugins.getColor(i, -1, GC_Semitone, pad)` | Only for FPC. Novation's script calls `getPadInfo` |
 | Erase a whole pattern, piano roll notes too | `patterns.clearPattern(i)` (API 44) | `setGridBit` can't reach piano roll notes |
-| Other meters than 4/4 | `general.getRecPPB()` ÷ `getRecPPQ()` = the numerator, `setNumerator`, `setDenominator` (API 38) | Bars on the screens assume 4 beats |
+| Set the time signature from the MK3 | `general.setNumerator`, `setDenominator` (API 38) | We only read it |
 | REC's other states | `ui.isStartOnInputEnabled`, `ui.isLoopRecEnabled`, `ui.getStepEditMode`, `OnWaitingForInput`, `FPT_WaitForInput`, `FPT_LoopRecord`, `FPT_Overdub`, `FPT_StepEdit` | FL's Rec button menu from the MK3 |
 | NOTE REPEAT and ARP on FL's clock | `device.setMasterSync(1)` sends FL's MIDI clock out of the port | Worth it only if our timer ever drifts |
 | Open the piano roll on the selected channel | `ui.openEventEditor(getRecEventId(i) + REC_Chan_PianoRoll, EE_PR)` | NAVIGATE's tile opens whichever channel FL last showed |

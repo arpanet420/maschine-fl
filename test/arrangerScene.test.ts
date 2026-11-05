@@ -82,9 +82,12 @@ describe("markers and the song position", () => {
     expect(songBeats({ bar: 1, step: 1, tick: 0 }, 96)).toBe(0);
     expect(songBeats({ bar: 2, step: 5, tick: 12 }, 96)).toBe(4 + 1 + 0.125);
     expect(songBeats({ bar: 1, step: 1, tick: 120 }, 480)).toBe(0.25);
-    expect(markerBar(0)).toBe(1);
-    expect(markerBar(4)).toBe(2);
-    expect(markerBar(3.99)).toBe(1);
+    expect(markerBar(0, 16)).toBe(1);
+    expect(markerBar(4, 16)).toBe(2);
+    expect(markerBar(3.99, 16)).toBe(1);
+    expect(markerBar(12, 12)).toBe(5); // 12 quarter notes in 3/4 or 6/8
+    expect(markerBar(2.99, 12)).toBe(1);
+    expect(markerBar(3.5, 14)).toBe(2); // 7/8
   });
 
   it("has no time for a marker the script could not place, and stops looking past it", () => {

@@ -196,6 +196,10 @@ FOCUS_DURING_SCAN_SECONDS = 0.25  # a focus change this soon after a slice of na
 
 FULL_REREAD_SECONDS = 0.1
 SONG_POS_SECONDS = 0.05
+METER_SECONDS = 1.0  # FL has no dirty flag for the time signature
+METER_PROBE_STEPS = 128  # how far from the start project_meter asks FL about: 16/2 is 128 steps
+MAX_BAR_STEPS = 256
+MAX_BAR_BEATS = 127  # SONG_POS has a u7
 ALIVE_SECONDS = 1.0  # mk3d treats FL as gone after 3.5 s of silence
 METERS_SECONDS = 0.05
 # FL calls OnIdle about every 10 ms (NI's Komplete Kontrol script counts "every 3 OnIdle calls
@@ -437,7 +441,8 @@ def encode(message):
             enc_u14(message["bar"])
             + enc_u7(message["step"])
             + enc_u14(message["tick"])
-            + (enc_u14(message["ppq"]) if "ppq" in message else b""),
+            + (enc_u14(message["ppq"]) if "ppq" in message else b"")
+            + (enc_u14(message["stepsPerBar"]) + enc_u7(message["beatsPerBar"]) if "stepsPerBar" in message else b""),
         )
     if kind == "channels":
         return frame(
@@ -851,6 +856,56 @@ def project_ppq():
         return DEFAULT_PPQ
 
 
+def split_hint(text):
+    """FL's "Bar:Step:Tick" as three numbers, None for anything else."""
+    parts = str(text).strip().split(":")
+    if len(parts) != 3 or not all(part.isdigit() for part in parts):
+        return None
+    return tuple(int(part) for part in parts)
+
+
+def hinted_bar_steps(hint, per_step):
+    """Steps in a bar by FL's own split of a time, None when its hints don't add up, and what they
+    said. Asking about a time, not reading the song position, so it works anywhere in the song and
+    can't tear. FL's bases don't matter: everything is measured from what it says about the start."""
+    start_text = _safe("", hint, 1, 0)
+    far_text = _safe("", hint, 1, METER_PROBE_STEPS * per_step)
+    said = "hint %s and %s" % (str(start_text)[:24], str(far_text)[:24])
+    start = split_hint(start_text)
+    far = split_hint(far_text)
+    if start is None or far is None or far[2] != start[2]:
+        return None, said
+    bars = far[0] - start[0]
+    steps = METER_PROBE_STEPS - (far[1] - start[1])
+    if bars <= 0 or steps <= 0 or steps % bars:
+        return None, said
+    size = steps // bars
+    one_bar_on = split_hint(_safe("", hint, 1, size * per_step))
+    return (size if one_bar_on == (start[0] + 1, start[1], start[2]) else None), said
+
+
+def project_meter(ppq):
+    """((steps, beats) in a bar of the project's time signature, what FL said, for the log). A step is
+    a 16th note in every meter. getRecPPB is the timebase times the numerator, so it gives the beats
+    but can't tell 6/8 from 6/4; FL's hints give the steps. With no usable hint the beats are taken
+    as quarter notes, and with neither it is 4/4. A time signature marker in the playlist isn't
+    followed: getRecPPB ignores them, and a marker close to the start makes the hints disagree."""
+    per_step = max(1, ppq // 4)
+    ppb = int(_optional(0, general, "getRecPPB"))
+    beats = ppb // ppq if ppb > 0 and ppb % ppq == 0 else 0
+    if beats > MAX_BAR_BEATS:
+        beats = 0
+    hint = getattr(arrangement, "currentTimeHint", None)
+    steps, said = (None, "no hint") if hint is None else hinted_bar_steps(hint, per_step)
+    if not steps:
+        steps = beats * 4
+    if not 0 < steps <= MAX_BAR_STEPS:
+        steps = 16
+    if not beats or steps % beats:
+        beats = steps // 4 if steps % 4 == 0 else steps // 2 if steps % 2 == 0 else steps
+    return (steps, min(beats, MAX_BAR_BEATS)), "%s, ppb %s, ppq %s" % (said, ppb, ppq)
+
+
 # ---------------------------------------------------------------------------------------------
 # Reading FL state
 # ---------------------------------------------------------------------------------------------
@@ -965,6 +1020,9 @@ class Bridge(object):
         self.last_full = None
         self.last_song_pos = None
         self.last_meters = None
+        self.meter = (16, 4)  # steps and beats in a bar
+        self.last_meter = None
+        self.meter_said = None  # the meter mk3d's log has
         self.last_alive = None
         self.last_snap = None  # the snap mode seen on the last service pass
         # Names of the selected channel's plugin parameters: {"key": (channel, name, count),
@@ -1340,17 +1398,42 @@ class Bridge(object):
             },
         )
 
+    def look_at_meter(self, ppq):
+        """The time signature, at most once per METER_SECONDS. A bad read keeps the last one."""
+        now = self.clock()
+        if self.last_meter is not None and now - self.last_meter < METER_SECONDS:
+            return
+        self.last_meter = now
+        found = _safe(None, project_meter, ppq)
+        if found is None:
+            return
+        self.meter = found[0]
+        if self.meter != self.meter_said:
+            self.meter_said = self.meter
+            self.queue_probe("meter: %d steps, %d beats a bar (%s)" % (self.meter + (found[1],)))
+
     def read_song_pos(self):
         # One read of the absolute position: the three B:S:T reads could tear at a boundary and
-        # their bases were never verified (a step base one off puts 1/8 on the off-beat). 16 steps
-        # to the bar, as mk3d counts them.
+        # their bases were never verified (a step base one off puts 1/8 on the off-beat). Bar and step
+        # are a position on a grid of 16 steps to the bar, in every meter; the project's own bars
+        # come with them as stepsPerBar.
         ticks = max(0, int(_safe(0, transport.getSongPos, SONGLENGTH_ABSTICKS)))
         ppq = project_ppq()
         per_step = max(1, ppq // 4)
         steps, tick = divmod(ticks, per_step)
         bar, step = divmod(steps, 16)
+        self.look_at_meter(ppq)
         self.submit(
-            "SONG_POS", {"type": "songPos", "bar": bar + 1, "step": step + 1, "tick": tick, "ppq": ppq}
+            "SONG_POS",
+            {
+                "type": "songPos",
+                "bar": bar + 1,
+                "step": step + 1,
+                "tick": tick,
+                "ppq": ppq,
+                "stepsPerBar": self.meter[0],
+                "beatsPerBar": self.meter[1],
+            },
         )
 
     def channel_total(self):
@@ -2363,6 +2446,8 @@ class Bridge(object):
             self.used_patterns_seen = None
             self.submit("HELLO", {"type": "hello", "version": PROTOCOL_VERSION})
             self.note_versions()
+            self.last_meter = None
+            self.meter_said = None  # a new mk3d: its log hears the meter too
             self.mark_all()
             self.last_full = None
         elif kind == "view":

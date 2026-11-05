@@ -10,7 +10,7 @@
 // Knobs (Maschine's pattern page, PatternPageStudioPattern.lua; FL has no pattern position or start
 // offset, so its knobs 2 and 3 are empty): knob 1 = the pattern's COLOR, cycling a dozen colours
 // (SET_PATTERN_COLOR, `patterns.setPatternColor`), knob 4 = LENGTH of the current pattern, one detent
-// = the next common length (16, 32, 64 … 512 steps = 1, 2, 4 … 32 bars), SHIFT = 1 step, 1 … 512
+// = the next common length (1, 2, 4 … 32 bars: 16, 32, 64 … 512 steps in 4/4), SHIFT = 1 step, 1 … 512
 // steps (SET_PATTERN_LENGTH, `patterns.setPatternLength`, in steps; the script answers with a PROBE
 // line that shows what FL read back). One page; the arrow buttons are not ours. Our own value wins
 // over FL's for PENDING_MS after a turn so FL answering cannot make it jump.
@@ -34,7 +34,7 @@ import {
 } from "../render/widgets.js";
 import type { FlState } from "../fl/flState.js";
 import {
-  COMMON_PATTERN_LENGTHS,
+  commonPatternLengths,
   MAX_LENGTH_PATTERN,
   MAX_PATTERN_LENGTH_STEPS,
 } from "../fl/protocol.js";
@@ -85,10 +85,10 @@ export const PATTERN_COLORS: ReadonlyArray<{ name: string; color: number }> = [
  * The length one detent away: the next common length up (or the previous one down), also from a
  * length that is not on the list; with nothing further in that direction the length stays.
  */
-export function stepCommonLength(length: number, detents: number): number {
+export function stepCommonLength(length: number, detents: number, stepsPerBar: number): number {
+  const lengths = commonPatternLengths(stepsPerBar);
   let now = length;
   for (let i = 0; i < Math.abs(detents); i++) {
-    const lengths = COMMON_PATTERN_LENGTHS;
     const next =
       detents > 0 ? lengths.find((l) => l > now) : [...lengths].reverse().find((l) => l < now);
     if (next === undefined) break;
@@ -97,9 +97,8 @@ export function stepCommonLength(length: number, detents: number): number {
   return now;
 }
 
-/** 0 … 1 on a log scale from the shortest common length to the longest. */
-const lengthGauge = (length: number): number => {
-  const first = COMMON_PATTERN_LENGTHS[0] ?? 16;
+/** 0 … 1 on a log scale from a bar to the longest common length. */
+const lengthGauge = (length: number, first: number): number => {
   const octaves = Math.log2(MAX_PATTERN_LENGTH_STEPS / first);
   return Math.min(1, Math.max(0, Math.log2(Math.max(length, first) / first) / octaves));
 };
@@ -545,7 +544,7 @@ export class PatternOverlay extends PatternBankPage {
     const now = this.length(mc);
     const length = mc.shift
       ? Math.min(MAX_PATTERN_LENGTH_STEPS, Math.max(1, now + detents))
-      : stepCommonLength(now, detents);
+      : stepCommonLength(now, detents, mc.fl.stepsPerBar);
     if (length === now) return;
     this.pendingLength = { value: length, at: this.clock() };
     mc.send({ type: "setPatternLength", pattern: mc.fl.pattern.number, length });
@@ -581,8 +580,8 @@ export class PatternOverlay extends PatternBankPage {
     };
     knobs[LENGTH_KNOB] = {
       label: "LENGTH",
-      valueText: mc.fl.missing.patternLength ? "n/a" : lengthText(length),
-      value: mc.fl.missing.patternLength ? undefined : lengthGauge(length),
+      valueText: mc.fl.missing.patternLength ? "n/a" : lengthText(length, mc.fl.stepsPerBar),
+      value: mc.fl.missing.patternLength ? undefined : lengthGauge(length, mc.fl.stepsPerBar),
       touched: touched(LENGTH_KNOB),
     };
     return knobs;

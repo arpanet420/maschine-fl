@@ -13,7 +13,7 @@
 // SONG_POS and the project's PPQ: the last marker whose tick is at or before the position.
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import type { FlState } from "../fl/flState.js";
-import { BEATS_PER_BAR } from "../fl/protocol.js";
+import { STEPS_PER_QUARTER } from "../fl/protocol.js";
 import type { Rect } from "../hw/display.js";
 import type { HwEvent } from "../hw/events.js";
 import { PAD_COUNT } from "../hw/ids.js";
@@ -48,9 +48,9 @@ export function markerBeats(fl: FlState, index: number): number | undefined {
   return ticks === undefined || ticks === null ? undefined : ticks / fl.ppq;
 }
 
-/** The marker's bar (1-based). */
-export const markerBar = (beats: number): number =>
-  Math.floor(beats / BEATS_PER_BAR + AT_MARKER) + 1;
+/** The marker's bar (1-based), from its position in quarter notes. */
+export const markerBar = (beats: number, stepsPerBar: number): number =>
+  Math.floor((beats * STEPS_PER_QUARTER) / stepsPerBar + AT_MARKER) + 1;
 
 export const markerName = (fl: FlState, index: number): string =>
   fl.markers.get(index)?.name || `Marker ${index + 1}`;
@@ -106,7 +106,7 @@ export function drawMarkerGrid(
     // A marker whose time the script could not work out still has its name.
     const beats = markerBeats(fl, index);
     cells.push({
-      tag: beats === undefined ? "Bar ?" : `Bar ${markerBar(beats)}`,
+      tag: beats === undefined ? "Bar ?" : `Bar ${markerBar(beats, fl.stepsPerBar)}`,
       name: markerName(fl, index),
       color: flColorToCss(markerColor(index)),
       current: index === current,

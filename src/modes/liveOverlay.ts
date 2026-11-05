@@ -31,7 +31,7 @@
 // `LIVE_TRACK_SCAN` tracks, the CLIPS layout and the rest of PLAN.md's LIVE redesign.
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import type { FlSection, FlState } from "../fl/flState.js";
-import { BEATS_PER_BAR, LIVE_BLOCK, LIVE_TRACK_SCAN, MAX_LIVE_BLOCKS } from "../fl/protocol.js";
+import { LIVE_BLOCK, LIVE_TRACK_SCAN, MAX_LIVE_BLOCKS } from "../fl/protocol.js";
 import type { LiveBlock, LiveTrack } from "../fl/sysex.js";
 import type { HwEvent } from "../hw/events.js";
 import { PAD_COUNT } from "../hw/ids.js";
@@ -42,7 +42,7 @@ import { DISPLAY_BUTTONS } from "./channelPadPage.js";
 import { FULL } from "./draw.js";
 import { flColorToCss, flColorToPalette } from "./format.js";
 import type { Mode, ModeContext, ModeName, ViewCommand } from "./mode.js";
-import { realTimers, songBeats, type RepeatTimers } from "./repeatScheduler.js";
+import { realTimers, type RepeatTimers } from "./repeatScheduler.js";
 
 const STOP_BUTTON = 3;
 /** A queued scene flashes at this rate (SCENE's rate). */
@@ -125,6 +125,8 @@ export function patternLabel(pattern: ClipPattern): string {
   return /^Pattern \d+$/.test(pattern.name) ? `P${pattern.number}` : pattern.name;
 }
 
+const BEAT_DOTS_WIDTH = 208;
+
 /** Dark text on a light clip color, light text on a dark one. */
 function textOn(color: number): string {
   const luma =
@@ -132,10 +134,10 @@ function textOn(color: number): string {
   return luma > 150 ? theme.background : theme.text;
 }
 
-/** The song position as bar (1-based) and beat in the bar (1–4). */
-function beatClock(fl: FlState): { bar: number; beat: number } {
-  const whole = Math.floor(songBeats(fl.songPos, fl.ppq));
-  return { bar: Math.floor(whole / BEATS_PER_BAR) + 1, beat: (whole % BEATS_PER_BAR) + 1 };
+/** The song position as bar and beat in the bar, both 1-based, in the project's time signature. */
+export function beatClock(fl: FlState): { bar: number; beat: number } {
+  const { bar, step } = fl.barPosition;
+  return { bar, beat: Math.floor(((step - 1) * fl.beatsPerBar) / fl.stepsPerBar) + 1 };
 }
 
 export interface LiveOptions {
@@ -327,12 +329,15 @@ export class LiveOverlay implements Mode {
     const position = `Bar ${bar}`;
     ctx.fillText(position, 30, cy);
     let x = 30 + ctx.measureText(position).width + 12;
-    for (let b = 1; b <= BEATS_PER_BAR; b++) {
+    // A dot for each beat, closer together when a long bar would run into the text on the right.
+    const pitch = Math.min(16, Math.floor(BEAT_DOTS_WIDTH / fl.beatsPerBar));
+    const radius = Math.max(1, Math.min(5, (pitch - 2) / 2));
+    for (let b = 1; b <= fl.beatsPerBar; b++) {
       ctx.fillStyle = playing && b === beat ? theme.accent : theme.knobRim;
       ctx.beginPath();
-      ctx.arc(x + 5, cy, 5, 0, Math.PI * 2);
+      ctx.arc(x + radius, cy, radius, 0, Math.PI * 2);
       ctx.fill();
-      x += 16;
+      x += pitch;
     }
     const queued = rows.some((row) => row?.blocks.some((b) => isScheduled(b.status)));
     if (queued && !playing) {

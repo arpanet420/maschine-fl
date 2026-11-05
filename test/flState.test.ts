@@ -39,7 +39,7 @@ describe("FlState", () => {
     expect(state.version).toBe(2);
     expect(state.channels.size).toBe(0); // the script resends everything after HELLO
     expect(events.filter((e) => e === "connection")).toHaveLength(1);
-    expect(events).toHaveLength(1 + 25);
+    expect(events).toHaveLength(1 + 26);
 
     events.length = 0;
     state.apply({ type: "alive" });
@@ -48,7 +48,7 @@ describe("FlState", () => {
 
     state.apply({ type: "goodbye" });
     expect(state.connected).toBe(false);
-    expect(events).toHaveLength(25);
+    expect(events).toHaveLength(26);
   });
 
   it("tells a swing change on its own, and keeps FL's windows and snap mode from UI_STATE", () => {
@@ -115,6 +115,36 @@ describe("FlState", () => {
     state.on("change", () => seen.push(state.songPos.bar));
     state.apply(msg("songPos"));
     expect(seen).toEqual([12]);
+  });
+
+  it("takes the project's meter from SONG_POS, and shows bars by it", () => {
+    const { state, events } = setup();
+    expect([state.stepsPerBar, state.beatsPerBar]).toEqual([16, 4]);
+    expect(state.barPosition).toEqual({ bar: 1, step: 1, tick: 0 });
+    // 16 steps from the start, in 3/4: bar 2 of 12 steps, step 5.
+    state.apply({ type: "songPos", bar: 2, step: 1, tick: 5, stepsPerBar: 12, beatsPerBar: 3 });
+    expect([state.stepsPerBar, state.beatsPerBar]).toEqual([12, 3]);
+    expect(state.songPos).toEqual({ bar: 2, step: 1, tick: 5 });
+    expect(state.barPosition).toEqual({ bar: 2, step: 5, tick: 5 });
+    expect(events).toEqual(["songPos", "meter"]);
+    // Only a change tells: and a script that doesn't send it leaves it as it is.
+    events.length = 0;
+    state.apply({ type: "songPos", bar: 2, step: 2, tick: 0, stepsPerBar: 12, beatsPerBar: 3 });
+    state.apply({ type: "songPos", bar: 2, step: 3, tick: 0 });
+    expect(events).toEqual(["songPos", "songPos"]);
+    expect(state.stepsPerBar).toBe(12);
+    // The same steps in 6/8 are another beat, not another bar: pages still have to hear of it.
+    events.length = 0;
+    state.apply({ type: "songPos", bar: 2, step: 3, tick: 0, stepsPerBar: 12, beatsPerBar: 6 });
+    expect(events).toEqual(["meter"]);
+    // Nonsense doesn't get in.
+    for (const [stepsPerBar, beatsPerBar] of [
+      [0, 0],
+      [257, 128],
+    ]) {
+      state.apply({ type: "songPos", bar: 1, step: 1, tick: 0, stepsPerBar, beatsPerBar });
+      expect([state.stepsPerBar, state.beatsPerBar]).toEqual([12, 6]);
+    }
   });
 
   it("tracks song position, selection, pattern and track", () => {
@@ -534,6 +564,7 @@ describe("FlState", () => {
         "connection",
         "transport",
         "songPos",
+        "meter",
         "channels",
         "selectedChannel",
         "channelDetail",
@@ -558,7 +589,7 @@ describe("FlState", () => {
         "activity",
       ]),
     );
-    expect(events).toHaveLength(25);
+    expect(events).toHaveLength(26);
     expect(state.connected).toBe(false);
     expect(state.tempo).toBe(0);
     expect(state.transport.playing).toBe(false);
@@ -570,6 +601,6 @@ describe("FlState", () => {
 
     // HELLO tells every section again.
     state.apply(msg("hello"));
-    expect(events).toHaveLength(50);
+    expect(events).toHaveLength(52);
   });
 });

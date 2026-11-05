@@ -23,7 +23,8 @@
 //   reading far off counts only when the next one agrees (a loop restart or a jump, not a stall).
 // - One timer is always set to the next due thing (a slot or an off) from absolute target times; a
 //   slot that is late by more than half an interval is skipped, never played in a burst.
-import { STEPS_PER_BAR } from "../fl/protocol.js";
+import { STEPS_PER_QUARTER } from "../fl/protocol.js";
+import { songSteps } from "../fl/sysex.js";
 import type { SongPosition } from "../fl/sysex.js";
 
 export type RateFeel = "straight" | "dotted" | "triplet";
@@ -150,10 +151,9 @@ export function intervalMs(bpm: number, rate: number): number {
   return (60000 / tempo) * intervalBeats(rate);
 }
 
-/** SONG_POS in beats from bar 1 (a bar is 4 beats); `ppq` is the project's ticks per beat. */
+/** SONG_POS in beats (quarter notes, in every meter) from the song's start; `ppq` is ticks per quarter note. */
 export function songBeats(pos: SongPosition, ppq: number): number {
-  const steps = (pos.bar - 1) * STEPS_PER_BAR + (pos.step - 1);
-  return steps / (STEPS_PER_BAR / 4) + pos.tick / ppq;
+  return songSteps(pos) / STEPS_PER_QUARTER + pos.tick / ppq;
 }
 
 /** A hit velocity (0–1) as the first note's MIDI velocity: 1–127. */

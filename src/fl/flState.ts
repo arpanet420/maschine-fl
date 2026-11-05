@@ -21,12 +21,21 @@ import type {
   UiStateInfo,
   UndoStateInfo,
 } from "./sysex.js";
-import { FOCUS_NONE, UI_WINDOWS } from "./protocol.js";
+import { songSteps } from "./sysex.js";
+import {
+  DEFAULT_BEATS_PER_BAR,
+  DEFAULT_STEPS_PER_BAR,
+  FOCUS_NONE,
+  MAX_BEATS_PER_BAR,
+  MAX_STEPS_PER_BAR,
+  UI_WINDOWS,
+} from "./protocol.js";
 
 export type FlSection =
   | "connection"
   | "transport"
   | "songPos"
+  | "meter"
   | "channels"
   | "selectedChannel"
   | "channelDetail"
@@ -54,6 +63,7 @@ const SECTIONS: readonly FlSection[] = [
   "connection",
   "transport",
   "songPos",
+  "meter",
   "channels",
   "selectedChannel",
   "channelDetail",
@@ -109,6 +119,9 @@ interface Data {
   swing: number;
   mainVolume: number | undefined;
   songPos: SongPosition;
+  /** The project's time signature: 16 and 4 in 4/4, 12 and 6 in 6/8. */
+  stepsPerBar: number;
+  beatsPerBar: number;
   /** When the last SONG_POS arrived (the state's clock, ms); undefined before the first. */
   songPosAt: number | undefined;
   channels: Map<number, ChannelEntry>;
@@ -179,6 +192,8 @@ function emptyData(): Data {
     swing: 0,
     mainVolume: undefined,
     songPos: { bar: 1, step: 1, tick: 0 },
+    stepsPerBar: DEFAULT_STEPS_PER_BAR,
+    beatsPerBar: DEFAULT_BEATS_PER_BAR,
     songPosAt: undefined,
     channels: new Map(),
     channelTotal: 0,
@@ -221,6 +236,13 @@ function emptyData(): Data {
 }
 
 /** Field-by-field comparison of two flat records. */
+/** A whole number from 1 to `max`; undefined for anything else. */
+function within(value: number | undefined, max: number): number | undefined {
+  return value !== undefined && Number.isInteger(value) && value >= 1 && value <= max
+    ? value
+    : undefined;
+}
+
 function same<T extends object>(a: T, b: T): boolean {
   return (Object.keys(a) as (keyof T)[]).every((key) => a[key] === b[key]);
 }
@@ -318,8 +340,27 @@ export class FlState extends EventEmitter<{ change: [section: FlSection] }> {
   get missing(): Readonly<MissingFeatures> {
     return this.data.missing;
   }
+  /** Where the song is, on SONG_POS's grid of 16 steps to the bar: for working out positions. */
   get songPos(): Readonly<SongPosition> {
     return this.data.songPos;
+  }
+  /** Where the song is in the project's own bars: for showing it. */
+  get barPosition(): Readonly<SongPosition> {
+    const { songPos, stepsPerBar } = this.data;
+    const steps = songSteps(songPos);
+    return {
+      bar: Math.floor(steps / stepsPerBar) + 1,
+      step: (steps % stepsPerBar) + 1,
+      tick: songPos.tick,
+    };
+  }
+  /** Steps (16th notes) in a bar of the project's time signature. */
+  get stepsPerBar(): number {
+    return this.data.stepsPerBar;
+  }
+  /** Beats in a bar of the project's time signature: its numerator. */
+  get beatsPerBar(): number {
+    return this.data.beatsPerBar;
   }
   /** When the last SONG_POS arrived, on the clock given to the constructor. */
   get songPosAt(): number | undefined {
@@ -438,7 +479,13 @@ export class FlState extends EventEmitter<{ change: [section: FlSection] }> {
         d.songPos = songPos;
         d.ppq = ppq;
         d.songPosAt = this.clock();
+        const stepsPerBar = within(message.stepsPerBar, MAX_STEPS_PER_BAR) ?? d.stepsPerBar;
+        const beatsPerBar = within(message.beatsPerBar, MAX_BEATS_PER_BAR) ?? d.beatsPerBar;
+        const meterChanged = d.stepsPerBar !== stepsPerBar || d.beatsPerBar !== beatsPerBar;
+        d.stepsPerBar = stepsPerBar;
+        d.beatsPerBar = beatsPerBar;
         this.changed("songPos", changed);
+        this.changed("meter", meterChanged);
         break;
       }
       case "channels": {

@@ -1,7 +1,8 @@
+import { createCanvas } from "@napi-rs/canvas";
 import { describe, expect, it } from "vitest";
 import { LIVE_BLOCK, MAX_LIVE_BLOCKS } from "../src/fl/protocol.js";
 import { flColorToPalette } from "../src/modes/format.js";
-import { patternLabel, patternsByColor } from "../src/modes/liveOverlay.js";
+import { beatClock, patternLabel, patternsByColor } from "../src/modes/liveOverlay.js";
 import { stackHarness } from "../src/tools/stackHarness.js";
 
 const RED = 0xe0505a;
@@ -16,6 +17,47 @@ function openLive(options: Parameters<typeof stackHarness>[0] = {}) {
 }
 
 describe("LIVE overlay", () => {
+  it("counts bars and beats in the project's time signature", () => {
+    const h = openLive();
+    h.songPos(1, 1);
+    expect(beatClock(h.fl)).toEqual({ bar: 1, beat: 1 });
+    h.songPos(1, 4);
+    expect(beatClock(h.fl)).toEqual({ bar: 1, beat: 1 });
+    h.songPos(1, 5);
+    expect(beatClock(h.fl)).toEqual({ bar: 1, beat: 2 });
+    h.songPos(2, 1); // 16 steps from the start
+    expect(beatClock(h.fl)).toEqual({ bar: 2, beat: 1 });
+    h.meter(12, 3); // 3/4
+    expect(beatClock(h.fl)).toEqual({ bar: 2, beat: 2 });
+    h.meter(12, 6); // 6/8
+    expect(beatClock(h.fl)).toEqual({ bar: 2, beat: 3 });
+    h.meter(14, 7); // 7/8
+    expect(beatClock(h.fl)).toEqual({ bar: 2, beat: 2 });
+  });
+
+  it("draws a dot for each beat, and a long bar stays clear of the text on the right", () => {
+    const dots = (beats: number) => {
+      const h = openLive();
+      h.meter(beats * 2, beats);
+      const left = createCanvas(480, 272).getContext("2d");
+      const right = createCanvas(480, 272).getContext("2d");
+      const ends: number[] = [];
+      for (const ctx of [left, right]) {
+        const original = ctx.arc.bind(ctx);
+        ctx.arc = (x: number, y: number, radius: number, from: number, to: number) => {
+          ends.push(x + radius);
+          original(x, y, radius, from, to);
+        };
+      }
+      h.stack.render(left, right, h.mc);
+      return ends;
+    };
+    expect(dots(4)).toHaveLength(4);
+    expect(dots(7)).toHaveLength(7);
+    expect(dots(16)).toHaveLength(16);
+    expect(Math.max(...dots(16))).toBeLessThan(310); // "Queued — press PLAY" starts further right
+  });
+
   it("watches scenes, block window 0, as soon as it opens", () => {
     const h = openLive();
     const view = h.views.at(-1);

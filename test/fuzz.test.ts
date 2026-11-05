@@ -139,6 +139,7 @@ function runPages(seed: number): void {
     [3, () => h.select(int(channels))],
     [3, () => h.playing(r() < 0.6)],
     [4, () => h.songPos(1 + int(40), 1 + int(16), int(24))],
+    [2, () => h.meter(pick([16, 12, 14, 6, 24, 20, 1, 3, 256]), pick([4, 3, 6, 7, 5, 1, 127]))],
     [1, deviceLost],
   ];
   const total = actions.reduce((sum, [weight]) => sum + weight, 0);

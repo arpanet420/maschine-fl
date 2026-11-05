@@ -219,6 +219,11 @@ export function stackHarness(
     fl.apply({ type: "songPos", bar, step, tick });
     stack.onFlChange("songPos", mc);
   };
+  /** The project's time signature, as SONG_POS says it: 12 and 3 for 3/4, 12 and 6 for 6/8. */
+  const meter = (stepsPerBar: number, beatsPerBar: number) => {
+    fl.apply({ type: "songPos", ...fl.songPos, stepsPerBar, beatsPerBar });
+    stack.onFlChange("meter", mc);
+  };
   /** A touch strip report: position 0–1, touched. The result says whether LEDs or read-out changed. */
   const stripAt = (position: number, touchedNow = true) =>
     strip.handle({ type: "strip", position, touched: touchedNow }, mc);
@@ -337,6 +342,7 @@ export function stackHarness(
     time,
     playing,
     songPos,
+    meter,
     knob,
     ledState,
     light,

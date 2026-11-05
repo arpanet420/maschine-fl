@@ -12,13 +12,13 @@
 // else the current marker's section when there are markers, else the first four bars. The range is
 // saved with the page stack's state. RESTART's LED is bright while FL says a loop is active.
 //
-// Positions are kept in steps (16th notes, 4 beats a bar) from bar 1 and sent as ticks (`fl.ppq`
-// ticks a beat). NOT VERIFIED (docs/fl-ilmcp.md): that `selectionSet` takes absolute ticks; the
+// Positions are kept in steps (16th notes in every meter, `fl.stepsPerBar` to the bar) from the song's
+// start and sent as ticks (`fl.ppq` to the quarter note). NOT VERIFIED (docs/fl-ilmcp.md): that `selectionSet` takes absolute ticks; the
 // script's PROBE line after each set (`selectionSet(0, 1536) -> active=1 start=0 end=1536`) shows it.
 // Our own values win over FL's for PENDING_MS after each change, so FL answering cannot make them jump.
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import type { FlSection, FlState } from "../fl/flState.js";
-import { MAX_LOOP_TICKS, STEPS_PER_BAR } from "../fl/protocol.js";
+import { MAX_LOOP_TICKS, STEPS_PER_QUARTER } from "../fl/protocol.js";
 import type { HwEvent } from "../hw/events.js";
 import type { LedState } from "../hw/leds.js";
 import { paletteColor, type LedVariant } from "../hw/palette.js";
@@ -52,10 +52,10 @@ const ON_OFF_BUTTON = 1;
 const CLEAR_BUTTON = 2;
 /** The loop at least this long, in steps. */
 const MIN_STEPS = 1;
-/** The longest loop and the furthest start: 256 bars. */
-const MAX_STEPS = 256 * STEPS_PER_BAR;
-/** The default range without markers, and the last marker's section: four bars. */
-const DEFAULT_STEPS = 4 * STEPS_PER_BAR;
+/** The longest loop and the furthest start, in steps: 256 bars of 4/4. */
+const MAX_STEPS = 4096;
+/** The default range without markers, and the last marker's section. */
+const DEFAULT_BARS = 4;
 const SAVE_DELAY_MS = 400;
 const KNOB_ROW: Rect = { ...FULL, y: FULL.height - 110, height: 110 };
 const RULER: Rect = { x: 14, y: TAB_HEIGHT + 34, width: FULL.width - 28, height: 118 };
@@ -115,11 +115,11 @@ export class LoopOverlay extends MarkerPadsPage {
   // ── The loop, in steps ─────────────────────────────────────────────────────
 
   private stepsOf(ticks: number, fl: FlState): number {
-    return (ticks / fl.ppq) * (STEPS_PER_BAR / 4);
+    return (ticks / fl.ppq) * STEPS_PER_QUARTER;
   }
 
   private ticksOf(steps: number, fl: FlState): number {
-    return Math.round((steps * fl.ppq) / (STEPS_PER_BAR / 4));
+    return Math.round((steps * fl.ppq) / STEPS_PER_QUARTER);
   }
 
   /** The loop as shown: ours for a moment after a change, else FL's; the remembered range if off. */
@@ -193,13 +193,15 @@ export class LoopOverlay extends MarkerPadsPage {
     }
     this.toggle(mc);
     const loop = this.shown(mc.fl);
+    const { stepsPerBar } = mc.fl;
+    const range = `${positionStepsText(loop.start, stepsPerBar)} – ${positionStepsText(loop.end, stepsPerBar)}`;
     mc.reportAction?.(
       {
         title: loop.active ? "LOOP ON" : "LOOP OFF",
-        detail: `${positionStepsText(loop.start)} – ${positionStepsText(loop.end)}`,
+        detail: range,
         source: "SHIFT + RESTART",
       },
-      `loop ${loop.active ? "on" : "off"}: ${positionStepsText(loop.start)} – ${positionStepsText(loop.end)}`,
+      `loop ${loop.active ? "on" : "off"}: ${range}`,
     );
   }
 
@@ -271,7 +273,7 @@ export class LoopOverlay extends MarkerPadsPage {
     const detents = Math.trunc((this.turns[knob] ?? 0) / DETENT_COUNTS);
     if (detents === 0) return;
     this.turns[knob] = (this.turns[knob] ?? 0) - detents * DETENT_COUNTS;
-    const unit = mc.shift ? 1 : STEPS_PER_BAR;
+    const unit = mc.shift ? 1 : mc.fl.stepsPerBar;
     const loop = this.shown(mc.fl);
     if (knob === 0) {
       // Start: the loop moves, its length stays.
@@ -284,7 +286,7 @@ export class LoopOverlay extends MarkerPadsPage {
   }
 
   private turnNav(delta: number, mc: ModeContext): void {
-    const unit = (mc.shift ? 1 : STEPS_PER_BAR) * delta;
+    const unit = (mc.shift ? 1 : mc.fl.stepsPerBar) * delta;
     const loop = this.shown(mc.fl);
     if (this.boundary === "start") this.setLoop(loop.start + unit, loop.end, mc);
     else if (this.boundary === "end") this.setLoop(loop.start, loop.end + unit, mc);
@@ -356,7 +358,7 @@ export class LoopOverlay extends MarkerPadsPage {
     this.renderLeft(left, mc, loop);
     this.drawRightTabs(right, mc);
     if (fl.markerTotal === 0) {
-      drawRuler(right, RULER, loop);
+      drawRuler(right, RULER, loop, fl.stepsPerBar);
     } else {
       drawMarkerGrid(right, GRID_RECT, fl, this.bank, this.loopMarker(fl));
       drawFooter(right, markerWindowText(fl, this.bank));
@@ -382,19 +384,20 @@ export class LoopOverlay extends MarkerPadsPage {
       ctx.fillText("Not available in this FL version", x, TAB_HEIGHT + 40);
       return;
     }
-    this.drawRange(ctx, x, TAB_HEIGHT + 34, loop);
+    const { stepsPerBar } = mc.fl;
+    this.drawRange(ctx, x, TAB_HEIGHT + 34, loop, stepsPerBar);
     const touched = (knob: number) => mc.touchedKnobs.has(knob);
     const knobs: KnobProps[] = [
       {
         label: "Start",
-        valueText: positionStepsText(loop.start),
-        value: loop.start / (64 * STEPS_PER_BAR),
+        valueText: positionStepsText(loop.start, stepsPerBar),
+        value: loop.start / (64 * stepsPerBar),
         touched: touched(0),
       },
       {
         label: "Length",
-        valueText: lengthText(loop.end - loop.start),
-        value: (loop.end - loop.start) / (64 * STEPS_PER_BAR),
+        valueText: lengthText(loop.end - loop.start, stepsPerBar),
+        value: (loop.end - loop.start) / (64 * stepsPerBar),
         touched: touched(1),
       },
     ];
@@ -402,16 +405,22 @@ export class LoopOverlay extends MarkerPadsPage {
   }
 
   /** The range big, with what the 4D turn moves in color: the picked boundary, or both. */
-  private drawRange(ctx: SKRSContext2D, x: number, y: number, loop: Shown): void {
+  private drawRange(
+    ctx: SKRSContext2D,
+    x: number,
+    y: number,
+    loop: Shown,
+    stepsPerBar: number,
+  ): void {
     const moved = loop.active ? theme.accent : theme.text;
     const parts = [
       {
-        text: positionStepsText(loop.start),
+        text: positionStepsText(loop.start, stepsPerBar),
         color: this.boundary === "end" ? theme.dimText : moved,
       },
       { text: " – ", color: theme.dimText },
       {
-        text: positionStepsText(loop.end),
+        text: positionStepsText(loop.end, stepsPerBar),
         color: this.boundary === "start" ? theme.dimText : moved,
       },
     ];
@@ -427,7 +436,7 @@ export class LoopOverlay extends MarkerPadsPage {
 
 // ── Ranges ──────────────────────────────────────────────────────────────────────
 
-/** A loop in steps that FL can take: start ≥ 0, at least a step long, within 256 bars. */
+/** A loop in steps that FL can take: start ≥ 0, at least a step long, within `MAX_STEPS`. */
 export function sanitize(start: number, end: number): StepRange {
   const from = clamp(Math.round(start), 0, MAX_STEPS - MIN_STEPS);
   const to = clamp(Math.round(end), from + MIN_STEPS, MAX_STEPS);
@@ -438,10 +447,13 @@ export function sanitize(start: number, end: number): StepRange {
 export function markerSection(fl: FlState, index: number): StepRange | undefined {
   const beats = markerBeats(fl, index);
   if (beats === undefined) return undefined;
-  const start = beats * (STEPS_PER_BAR / 4);
+  const start = beats * STEPS_PER_QUARTER;
   const next = index + 1 < fl.markerTotal ? markerBeats(fl, index + 1) : undefined;
-  const nextSteps = next === undefined ? undefined : next * (STEPS_PER_BAR / 4);
-  const end = nextSteps !== undefined && nextSteps > start ? nextSteps : start + DEFAULT_STEPS;
+  const nextSteps = next === undefined ? undefined : next * STEPS_PER_QUARTER;
+  const end =
+    nextSteps !== undefined && nextSteps > start
+      ? nextSteps
+      : start + DEFAULT_BARS * fl.stepsPerBar;
   return sanitize(start, end);
 }
 
@@ -451,15 +463,15 @@ export function defaultRange(fl: FlState): StepRange {
     const section = markerSection(fl, Math.max(0, currentMarker(fl)));
     if (section) return section;
   }
-  return { start: 0, end: DEFAULT_STEPS };
+  return { start: 0, end: DEFAULT_BARS * fl.stepsPerBar };
 }
 
 // ── The bar ruler ───────────────────────────────────────────────────────────────
 
 /** Bars from bar 1, a window of 16 bars or more around the loop, the loop filled in FL's orange. */
-export function drawRuler(ctx: SKRSContext2D, rect: Rect, loop: Shown): void {
-  const startBar = loop.start / STEPS_PER_BAR;
-  const endBar = loop.end / STEPS_PER_BAR;
+export function drawRuler(ctx: SKRSContext2D, rect: Rect, loop: Shown, stepsPerBar: number): void {
+  const startBar = loop.start / stepsPerBar;
+  const endBar = loop.end / stepsPerBar;
   const first = Math.floor(startBar / 4) * 4;
   const wanted = Math.max(16, Math.ceil((endBar - first) / 4) * 4);
   const bars = Math.min(64, wanted);

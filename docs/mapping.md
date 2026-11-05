@@ -226,10 +226,9 @@ bright while open; the PAD MODE / KEYBOARD radio pair stays lit as it is.
   when on, default on): while playing, the page turns to the play head's page each time the head
   enters a page it was not on; paging by hand sticks until then. Turning it on while playing turns
   to the head at once. SHIFT + FOLLOW is GRID (below).
-- **Play head** (pad: white; screen: orange outline): from SONG_POS, which always counts 16 steps to
-  the bar: position in the pattern = `((bar − 1) × 16 + step − 1) mod pattern length`. It is a guess
-  for song mode, where the pattern may not start at a multiple of its own length, and the bar numbers
-  are only right in 4/4.
+- **Play head** (pad: white; screen: orange outline): from SONG_POS, which counts 16 steps to its bar
+  in every meter: position in the pattern = `((bar − 1) × 16 + step − 1) mod pattern length`. It is a
+  guess for song mode, where the pattern may not start at a multiple of its own length.
 - **Pad LEDs**: on = the channel's color, bright; off = the channel's color dim in steps 1–4 and
   9–12 and fainter (the palette's true dim step) in 5–8 and 13–16, so the groups of 4 alternate as
   in FL's channel rack; the play head white; off past the pattern length.
@@ -293,8 +292,8 @@ bright while open; the PAD MODE / KEYBOARD radio pair stays lit as it is.
   no pattern position or start offset, so knobs 2 and 3 are empty and do nothing; knob 1 is `COLOR`).
   One page: the arrow buttons do nothing.
   - **Knob 4 `LENGTH`** (left screen, column 4) = the length of the current pattern: one detent
-    (120 counts) = the next or previous common length: 16, 32, 64, 128, 256, 512 steps (1, 2, 4, 8, 16, 32
-    bars); from a length that is not on the list the first detent snaps to the nearest list value in that
+    (120 counts) = the next or previous common length: 1, 2, 4, 8, 16, 32 bars of the project's time signature (16,
+    32, 64, 128, 256, 512 steps in 4/4; 12, 24 … 384 in 3/4), up to 512 steps; from a length that is not on the list the first detent snaps to the nearest list value in that
     direction, and the ends stay put. SHIFT = fine, ±1 step, from 1 to 512. Each change sends
     SET_PATTERN_LENGTH (`patterns.setPatternLength`, in steps: verified in FL 2026, docs/fl-ilmcp.md). The shown value is ours for 300 ms after a turn
     (the pending-value pattern), then FL's. The knob reads `2 bars`, `1 bar 4 steps` or `6 steps`.
@@ -419,8 +418,8 @@ overlay, so nothing repeats there. GROUP A–H still pick the bank.
   velocity (`round(pressure × 127)`, at least 1). No aftertouch is sent while repeating.
 - **Timing**: interval = 60 / BPM × 4 / denominator (× 2/3 for triplets, × 3/2 for dotted); BPM is
   `fl.tempo`, 120 while it is 0. All held pads share one grid.
-  - **While FL plays** the grid is FL's: bar 1 is the origin (16 steps per bar, `ppq` ticks per beat;
-    bug 1 in docs/bugs.md); a SONG_POS older than 500 ms counts
+  - **While FL plays** the grid is FL's: the song's start is the origin, in quarter notes in every meter (`ppq` ticks
+    each; bug 1 in docs/bugs.md); a SONG_POS older than 500 ms counts
     as stopped. A dotted rate and 1/4T do not come back to the bar for several bars, so their grid
     starts at the press instead, rounded to the straight value under the dotted one (a beat for 1/4T).
   - **The position is a running estimate**, not the last SONG_POS. A SONG_POS can only be late (FL's
@@ -792,7 +791,8 @@ NOTE REPEAT: Gate, Swing. ARP: every knob with a number. SETTINGS: its four knob
 Code: `src/modes/loopOverlay.ts` (built on `MarkerPadsPage`, like SCENE). The **song loop** is FL's
 playlist time selection (`arrangement.selectionSet(start, end)` in ticks, `selectionClear()`,
 `selectionIsActive()`; hidden functions, NOT VERIFIED: docs/fl-ilmcp.md). Positions are worked out in
-steps (16th notes, 4 beats a bar) from bar 1 and sent as ticks (`fl.ppq` ticks a beat).
+steps (16th notes in every meter) from the song's start and sent as ticks (`fl.ppq` to the quarter note). A bar is
+one of the project's: `fl.stepsPerBar` steps.
 
 - **SHIFT + tap RESTART** (released before 400 ms): loop on or off, no page; the card
   `LOOP ON bar 5 – bar 9` / `LOOP OFF` shows on the left screen. Off = `selectionClear`; on = the
@@ -995,7 +995,7 @@ on one does nothing in FL.
 bottom-left like the other grids), each in a color from a fixed rotation (FL's step red, orange, yellow,
 mint, blue, violet by marker index); the marker the song position is in is bright, the others dim, pads
 past the last marker are off. The marker the song is in is the last one at or before SONG_POS, turned
-into beats with the PPQ of MARKERS (16 steps per bar, as the STEP page assumes). Display 7 `<<` and
+into quarter notes with the PPQ of MARKERS. Display 7 `<<` and
 8 `>>` (right screen) page between the banks, and show only when there is another bank. The right screen
 is a 4×4 grid of the marker names in FL's look, pad 1 bottom-left, the corner text `Bar n`, the current
 marker outlined in orange. Without markers the pads are off, and the left screen says `No markers` on SCENE
@@ -1060,7 +1060,7 @@ right screen's rows.
   default color, or sharing one, stay unlabelled. NOT VERIFIED on hardware that
   `getLiveBlockColor` equals `getPatternColor` for an unrecolored clip.
 - Left: the `LIVE` and `STOP` tabs; a header with a play triangle (green while FL plays), `Bar n`
-  and four beat dots (the current beat orange), plus `Queued — press PLAY` in mint while a clip is
+  and a dot for each beat of the project's bar (the current beat orange), plus `Queued — press PLAY` in mint while a clip is
   queued and FL is stopped, or `Performance mode is off in FL` instead; then the track rows: the
   track color, its name, `M` / `S` badges, and on the right what it plays (orange triangle) and
   has queued (mint outline triangle): the pattern's full name, or the block number when the color

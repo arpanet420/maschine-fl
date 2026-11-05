@@ -134,9 +134,19 @@ export const TO_FL = {
   nudgeParam: 0x6d,
 } as const;
 
-/** SONG_POS counts 16 steps to the bar and 4 beats to the bar, whatever the project's time signature. */
-export const STEPS_PER_BAR = 16;
-export const BEATS_PER_BAR = 4;
+/** A step is a 16th note in every time signature. */
+export const STEPS_PER_QUARTER = 4;
+/**
+ * SONG_POS is a position, not a bar number: its `bar` counts 16 steps whatever the project's meter. The
+ * project's own bars are `FlState.stepsPerBar` and `barPosition`.
+ */
+export const SONG_POS_STEPS_PER_BAR = 16;
+/** 4/4, until the script says otherwise. */
+export const DEFAULT_STEPS_PER_BAR = 16;
+export const DEFAULT_BEATS_PER_BAR = 4;
+/** The longest bar FlState takes from SONG_POS, and the most beats. */
+export const MAX_STEPS_PER_BAR = 256;
+export const MAX_BEATS_PER_BAR = 127;
 
 export const CMD = { ...FROM_FL, ...TO_FL } as const;
 
@@ -181,8 +191,12 @@ export const FEATURE_MISSING = {
 export const UI_KEYS = ["up", "down", "left", "right", "enter", "escape"] as const;
 /** Longest pattern the length setter and DOUBLE ask for: 32 bars of 16 steps. */
 export const MAX_PATTERN_LENGTH_STEPS = 512;
-/** The common pattern lengths in steps (1, 2, 4, 8, 16 and 32 bars) the LENGTH knob steps through. */
-export const COMMON_PATTERN_LENGTHS: readonly number[] = [16, 32, 64, 128, 256, 512];
+/** The common pattern lengths, in steps of whole bars, the LENGTH knob steps through. */
+const COMMON_PATTERN_BARS: readonly number[] = [1, 2, 4, 8, 16, 32];
+export const commonPatternLengths = (stepsPerBar: number): readonly number[] =>
+  COMMON_PATTERN_BARS.map((bars) => bars * stepsPerBar).filter(
+    (length) => length <= MAX_PATTERN_LENGTH_STEPS,
+  );
 /** SET_PATTERN_LENGTH names the pattern with a `u7`: patterns from 128 up cannot be resized. */
 export const MAX_LENGTH_PATTERN = 127;
 /** SET_LOOP / LOOP_STATE ticks are `u21`. */

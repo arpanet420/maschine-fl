@@ -10,6 +10,8 @@ import { HOLD_MS } from "../src/modes/pageStack.js";
 import { defaultRange, markerSection, sanitize } from "../src/modes/loopOverlay.js";
 import { MARKER_COLORS } from "../src/modes/markerPage.js";
 import { PATTERN_COLORS, stepCommonLength } from "../src/modes/patternOverlay.js";
+import { songBeats } from "../src/modes/repeatScheduler.js";
+import { playHeadStep } from "../src/modes/stepPage.js";
 import { stackHarness, type StackHarness } from "../src/tools/stackHarness.js";
 
 const dirs: string[] = [];
@@ -55,13 +57,13 @@ const drawnText = (h: StackHarness) => {
 
 describe("text", () => {
   it("writes lengths and positions in bars and steps", () => {
-    expect(lengthText(32)).toBe("2 bars");
-    expect(lengthText(16)).toBe("1 bar");
-    expect(lengthText(20)).toBe("1 bar 4 steps");
-    expect(lengthText(6)).toBe("6 steps");
-    expect(lengthText(1)).toBe("1 step");
-    expect(positionStepsText(64)).toBe("bar 5");
-    expect(positionStepsText(66)).toBe("5.3");
+    expect(lengthText(32, 16)).toBe("2 bars");
+    expect(lengthText(16, 16)).toBe("1 bar");
+    expect(lengthText(20, 16)).toBe("1 bar 4 steps");
+    expect(lengthText(6, 16)).toBe("6 steps");
+    expect(lengthText(1, 16)).toBe("1 step");
+    expect(positionStepsText(64, 16)).toBe("bar 5");
+    expect(positionStepsText(66, 16)).toBe("5.3");
   });
 });
 
@@ -439,19 +441,19 @@ describe("PATTERN: LENGTH on knob 4", () => {
     h.patternInfo({ length: 128 });
     h.knob(3, -240);
     expect(h.sentOf("setPatternLength").at(-1)?.length).toBe(32);
-    expect(stepCommonLength(16, 5)).toBe(512);
-    expect(stepCommonLength(512, -5)).toBe(16);
+    expect(stepCommonLength(16, 5, 16)).toBe(512);
+    expect(stepCommonLength(512, -5, 16)).toBe(16);
   });
 
   it("snaps an odd length to the nearest list value in the direction of the turn", () => {
-    expect(stepCommonLength(33, 1)).toBe(64);
-    expect(stepCommonLength(33, -1)).toBe(32);
-    expect(stepCommonLength(33, 2)).toBe(128);
-    expect(stepCommonLength(33, -2)).toBe(16);
-    expect(stepCommonLength(1, 1)).toBe(16);
-    expect(stepCommonLength(17, -1)).toBe(16);
-    expect(stepCommonLength(100, 1)).toBe(128);
-    expect(stepCommonLength(100, -1)).toBe(64);
+    expect(stepCommonLength(33, 1, 16)).toBe(64);
+    expect(stepCommonLength(33, -1, 16)).toBe(32);
+    expect(stepCommonLength(33, 2, 16)).toBe(128);
+    expect(stepCommonLength(33, -2, 16)).toBe(16);
+    expect(stepCommonLength(1, 1, 16)).toBe(16);
+    expect(stepCommonLength(17, -1, 16)).toBe(16);
+    expect(stepCommonLength(100, 1, 16)).toBe(128);
+    expect(stepCommonLength(100, -1, 16)).toBe(64);
   });
 
   it("stops at both ends of the list, and SHIFT is clamped to 1 … 512 steps", () => {
@@ -664,5 +666,94 @@ describe("PATTERN: COLOR on page 1, next to LENGTH", () => {
     h.advance(1000);
     h.knob(0, -120);
     expect(h.sentOf("setPatternColor")[1]?.color).toBe(PATTERN_COLORS.at(-1)?.color);
+  });
+});
+
+describe("bars in other meters than 4/4", () => {
+  const BAR_OF_3_4 = 288; // 12 steps of 24 ticks
+
+  it("lengths and positions count the project's bars", () => {
+    expect(lengthText(12, 12)).toBe("1 bar");
+    expect(lengthText(28, 12)).toBe("2 bars 4 steps");
+    expect(lengthText(14, 14)).toBe("1 bar");
+    expect(positionStepsText(24, 12)).toBe("bar 3");
+    expect(positionStepsText(26, 12)).toBe("3.3");
+  });
+
+  it("LOOP moves by the project's bars and says them", () => {
+    const h = stackHarness();
+    h.meter(12, 3);
+    h.loopState(true, 4 * BAR_OF_3_4, 8 * BAR_OF_3_4);
+    openLoop(h);
+    h.state.shift = false;
+    h.knob(0, 120);
+    const moved = { type: "setLoop", start: 5 * BAR_OF_3_4, end: 9 * BAR_OF_3_4 };
+    expect(h.sentOf("setLoop").at(-1)).toEqual(moved);
+    const text = drawnText(h);
+    expect(text.left).toContain("bar 6");
+    expect(text.left).toContain("bar 10");
+    expect(text.left).toContain("4 bars");
+    h.turn(-1);
+    expect(h.sentOf("setLoop").at(-1)).toEqual({
+      type: "setLoop",
+      start: 4 * BAR_OF_3_4,
+      end: 8 * BAR_OF_3_4,
+    });
+    h.state.shift = true;
+    h.knob(0, 120); // SHIFT: a step, in every meter
+    expect(h.sentOf("setLoop").at(-1)).toEqual({
+      type: "setLoop",
+      start: 4 * BAR_OF_3_4 + STEP,
+      end: 8 * BAR_OF_3_4 + STEP,
+    });
+  });
+
+  it("the default loop and the last marker's section are four of the project's bars", () => {
+    const h = stackHarness();
+    h.meter(12, 3);
+    expect(defaultRange(h.fl)).toEqual({ start: 0, end: 48 });
+    const marked = stackHarness({ markers: [{ ticks: 2 * BAR_OF_3_4, name: "Last" }] });
+    marked.meter(12, 3);
+    expect(markerSection(marked.fl, 0)).toEqual({ start: 24, end: 72 });
+  });
+
+  it("the card of SHIFT + tap RESTART says the project's bars", () => {
+    const h = stackHarness();
+    h.meter(12, 3);
+    h.state.shift = true;
+    h.press("restart");
+    h.advance(100);
+    h.release("restart");
+    expect(h.sentOf("setLoop")).toEqual([{ type: "setLoop", start: 0, end: 4 * BAR_OF_3_4 }]);
+    expect(h.log).toContain("loop on: bar 1 – bar 5");
+  });
+
+  it("a marker's corner says the project's bar", () => {
+    const h = stackHarness({ markers: [{ ticks: 2 * BAR_OF_3_4, name: "Verse" }] });
+    h.meter(12, 3);
+    openLoop(h);
+    expect(drawnText(h).right).toContain("Bar 3");
+  });
+
+  it("PATTERN's LENGTH walks whole bars of the project", () => {
+    expect(stepCommonLength(12, 5, 12)).toBe(384);
+    expect(stepCommonLength(384, 1, 12)).toBe(384); // 768 is more than a pattern can be
+    expect(stepCommonLength(16, 1, 12)).toBe(24);
+    expect(stepCommonLength(16, -1, 12)).toBe(12);
+    const h = stackHarness({ patternLength: 12 });
+    h.meter(12, 3);
+    h.press("pattern");
+    expect(drawnText(h).left).toContain("1 bar");
+    h.knob(3, 120);
+    expect(h.sentOf("setPatternLength").at(-1)?.length).toBe(24);
+  });
+
+  it("the meter moves bars on the screens, not the play head", () => {
+    const h = stackHarness({ patternLength: 12 });
+    h.playing(true);
+    h.meter(12, 3);
+    h.songPos(2, 1); // 16 steps from the start
+    expect(playHeadStep(h.fl)).toBe(4);
+    expect(songBeats(h.fl.songPos, h.fl.ppq)).toBe(4);
   });
 });

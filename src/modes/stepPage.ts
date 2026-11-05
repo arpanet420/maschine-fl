@@ -13,13 +13,12 @@
 //   position, each time the play head enters another page (so paging by hand sticks until then).
 // - GROUP A–H still pick the channel bank, so the steps switch to the channel selected there, and the
 //   4D picks the channel.
-// - The play position comes from SONG_POS, assuming 16 steps per bar: position in the pattern =
-//   ((bar − 1) × 16 + step − 1) mod pattern length (docs/mapping.md).
+// - The play position comes from SONG_POS: its steps from the start, mod pattern length (docs/mapping.md).
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import type { FlSection, FlState } from "../fl/flState.js";
 import type { HwEvent } from "../hw/events.js";
 import type { ButtonId } from "../hw/ids.js";
-import { STEPS_PER_BAR } from "../fl/protocol.js";
+import { songSteps } from "../fl/sysex.js";
 import { PAD_COUNT } from "../hw/ids.js";
 import type { Rect } from "../hw/display.js";
 import type { LedState } from "../hw/leds.js";
@@ -96,13 +95,12 @@ export const pageCount = (length: number): number =>
 
 /**
  * The step the play head is on in the current pattern (0-based), undefined while FL is stopped. The
- * position comes from SONG_POS with 16 steps to the bar, wrapped to the pattern's length.
+ * position comes from SONG_POS, wrapped to the pattern's length.
  */
 export function playHeadStep(fl: FlState): number | undefined {
   const length = fl.pattern.length;
   if (!fl.transport.playing || length <= 0) return undefined;
-  const { bar, step } = fl.songPos;
-  const position = (bar - 1) * STEPS_PER_BAR + (step - 1);
+  const position = songSteps(fl.songPos);
   return ((position % length) + length) % length;
 }
 

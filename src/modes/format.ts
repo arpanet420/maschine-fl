@@ -1,6 +1,5 @@
 // Text and color helpers shared by modes and the log.
 import { paletteColor, rgbToPalette, type LedVariant } from "../hw/palette.js";
-import { STEPS_PER_BAR } from "../fl/protocol.js";
 import { theme } from "../render/widgets.js";
 
 export const pct = (value: number) => `${Math.round(value * 100)}%`;
@@ -32,10 +31,10 @@ export function flColorToPalette(color: number, variant: LedVariant = "bright"):
 }
 
 /** `2 bars`, `1 bar 4 steps`, `6 steps`: a length in steps. */
-export function lengthText(steps: number): string {
+export function lengthText(steps: number, stepsPerBar: number): string {
   const total = Math.max(0, Math.round(steps));
-  const bars = Math.floor(total / STEPS_PER_BAR);
-  const rest = total % STEPS_PER_BAR;
+  const bars = Math.floor(total / stepsPerBar);
+  const rest = total % stepsPerBar;
   const barText = `${bars} bar${bars === 1 ? "" : "s"}`;
   const stepText = `${rest} step${rest === 1 ? "" : "s"}`;
   if (bars === 0) return stepText;
@@ -43,9 +42,9 @@ export function lengthText(steps: number): string {
 }
 
 /** `bar 5` on a bar line, else `5.3` (bar and 16th step in it), for a position in steps from bar 1. */
-export function positionStepsText(steps: number): string {
+export function positionStepsText(steps: number, stepsPerBar: number): string {
   const total = Math.round(steps);
-  const bar = Math.floor(total / STEPS_PER_BAR) + 1;
-  const step = (total % STEPS_PER_BAR) + 1;
+  const bar = Math.floor(total / stepsPerBar) + 1;
+  const step = (total % stepsPerBar) + 1;
   return step === 1 ? `bar ${bar}` : `${bar}.${step}`;
 }

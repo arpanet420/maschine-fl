@@ -135,6 +135,7 @@ export function describeSection(fl: FlState, section: FlSection): string | undef
       return list.length > 0 ? `missing in this FL version: ${list.join(", ")}` : undefined;
     }
     case "songPos":
+    case "meter": // the script's PROBE line says it, and how it knows
     case "meters":
     case "patternGrid":
     case "activity":

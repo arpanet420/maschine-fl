@@ -1,4 +1,5 @@
 import {
+  DEFAULT_BEATS_PER_BAR,
   CHANNEL_FLAGS,
   CHANNEL_PROPS,
   FEATURE_MISSING,
@@ -17,6 +18,7 @@ import {
   PATTERN_FLAGS,
   PATTERN_GRID_FLAGS,
   PEAK_MAX,
+  SONG_POS_STEPS_PER_BAR,
   SYSEX_HEADER,
   TEMPO_MAX,
   TEMPO_MIN,
@@ -37,13 +39,16 @@ export interface TransportState {
   countIn: boolean;
 }
 
+/** 1-based, on SONG_POS's grid of 16 steps to the bar, or in the project's bars (`FlState.barPosition`). */
 export interface SongPosition {
-  /** 1-based. */
   bar: number;
-  /** 1-based. */
   step: number;
   tick: number;
 }
+
+/** SONG_POS as whole steps (16th notes) from the start of the song. */
+export const songSteps = (pos: SongPosition): number =>
+  (pos.bar - 1) * SONG_POS_STEPS_PER_BAR + (pos.step - 1);
 
 export interface ChannelEntry {
   selected: boolean;
@@ -228,7 +233,7 @@ export type FlMessage =
    * `mainVolume` is FL's main volume (`REC_MainVol`) as 0–1, absent from older senders (unknown).
    */
   | { type: "transport"; state: TransportState; tempo: number; swing: number; mainVolume?: number }
-  | ({ type: "songPos"; ppq?: number } & SongPosition)
+  | ({ type: "songPos"; ppq?: number; stepsPerBar?: number; beatsPerBar?: number } & SongPosition)
   | { type: "channels"; total: number; offset: number; entries: ChannelEntry[] }
   | ({ type: "selectedChannel" } & SelectedChannelInfo)
   | ({ type: "channelDetail" } & ChannelDetailInfo)
@@ -625,6 +630,7 @@ function readFlMessage(command: number, payload: number[], r: Reader): FlMessage
         step: r.u7(),
         tick: r.u14(),
         ...(r.remaining >= 2 ? { ppq: r.u14() } : {}),
+        ...(r.remaining >= 3 ? { stepsPerBar: r.u14(), beatsPerBar: r.u7() } : {}),
       };
     case FROM_FL.channels:
       return {
@@ -890,6 +896,9 @@ export function encodeFlMessage(message: FlMessage): number[] {
     case "songPos":
       w.u14(message.bar).u7(message.step).u14(message.tick);
       if (message.ppq !== undefined) w.u14(message.ppq);
+      if (message.stepsPerBar !== undefined) {
+        w.u14(message.stepsPerBar).u7(message.beatsPerBar ?? DEFAULT_BEATS_PER_BAR);
+      }
       break;
     case "channels":
       w.u14(message.total)
