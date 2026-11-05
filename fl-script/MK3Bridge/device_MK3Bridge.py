@@ -208,6 +208,9 @@ FOCUS_SETTLE_SECONDS = 1.0  # after the script moved the focus: what FL reports 
 
 FULL_REREAD_SECONDS = 0.1
 SONG_POS_SECONDS = 0.05
+# The marker scan waits this long, or this many service passes, for a jump to show in getSongPos (bug #14)
+MARKER_SETTLE_SECONDS = 0.3
+MARKER_SETTLE_PASSES = 30
 METER_SECONDS = 1.0  # FL has no dirty flag for the time signature
 METER_PROBE_STEPS = 128  # how far from the start project_meter asks FL about: 16/2 is 128 steps
 MAX_BAR_STEPS = 256
@@ -292,6 +295,23 @@ def _log_once(where, error):
         _logged_errors.clear()
     _logged_errors.add(key)
     _log(where, "failed:", error)
+    _forward_error(where, error)
+
+
+MAX_FORWARDED_ERRORS = 20
+_forwarded_errors = [0]
+
+
+def _forward_error(where, error):
+    """mk3d's log gets the first errors too (as a PROBE): FL's Script output window is easy to miss (bug #15)."""
+    bridge = globals().get("_bridge")
+    if bridge is None or _forwarded_errors[0] >= MAX_FORWARDED_ERRORS:
+        return
+    _forwarded_errors[0] += 1
+    try:
+        bridge.queue_probe("script error: %s failed: %s" % (where, error))
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------------------------
@@ -788,7 +808,9 @@ def decode(data):
         if command == CMD_PRESET_STEP:
             return {"type": "presetStep", "dir": "next" if r.u7() else "prev"}
         if command == CMD_JUMP_MARKER:
-            return {"type": "jumpMarker", "index": r.u7(), "quantized": r.u7() != 0}
+            index, quantized = r.u7(), r.u7() != 0
+            loop = r.u7() != 0 if r.pos < len(r.payload) else False  # an older mk3d sends no loop
+            return {"type": "jumpMarker", "index": index, "quantized": quantized, "loop": loop}
         if command == CMD_SET_LOOP_MODE:
             return {"type": "setLoopMode", "song": r.u7() != 0}
         if command == CMD_REQUEST_MARKERS:
@@ -1105,12 +1127,21 @@ class Bridge(object):
         # Playlist markers: [(ticks, name)] in time order from the last scan. A scan runs only while FL is
         # stopped (docs/fl-api-notes.md); marker_scan = one is wanted,
         # marker_stale = the list may be out of date, scan as soon as FL stops. marker_outbox = MARKERS
-        # frames not yet sent, one per service pass. marker_pending = a quantized jump waits for the bar.
+        # frames not yet sent, one per service pass. marker_pending = a quantized jump waits for the bar line
+        # ({index, bar}, service_queued_jump).
         self.markers = []
         self.marker_scan = False
         self.marker_stale = False
         self.marker_outbox = []
         self.marker_pending = None
+        self.jump_watch = None  # the positions after a queued jump, for the log (service_markers)
+        self.marker_job = None  # the scan in progress, one step per service pass (scan_markers)
+        # What the last scan that found every time saw (the names and FL's undo history): while it is the same,
+        # a request is answered from the cache, so the playhead isn't moved for nothing (scan_wanted).
+        self.marker_key = None
+        # A queued jump's timing: ticks the song moved per service pass while one waited (service_queued_jump).
+        self.pass_ticks = None
+        self.last_pass_pos = None
         # The touch strip's PERFORM sweep while a touch is on: {"index", "param" (a plugin parameter or None
         # = the channel cutoff), "before"}, else None. strip_params caches the cutoff parameter per
         # (channel, plugin name): the parameter's index, or None for "none found".
@@ -1427,7 +1458,11 @@ class Bridge(object):
             if name not in dirty:
                 continue
             if name == "song_pos":
+                if self.marker_job is not None:
+                    continue  # the scan is moving it; finish_marker_scan marks it again
                 self.last_song_pos = now
+            if name == "loop" and self.marker_job is not None:
+                continue  # the scan may have set the time selection aside
             try:
                 getattr(self, "read_" + name)()
             except Exception as error:
@@ -2472,57 +2507,192 @@ class Bridge(object):
         """Run what is due for the markers: a pending jump when FL has stopped, a scan (only while FL
         is stopped), and one MARKERS frame of the outbox."""
         playing = self.is_playing()
-        if self.marker_pending is not None and not playing:
-            index, self.marker_pending = self.marker_pending, None
-            self.go_to_marker(index)
+        if self.jump_watch is not None:
+            watch = self.jump_watch
+            watch["seen"].append(str(int(_safe(0, transport.getSongPos, SONGLENGTH_ABSTICKS))))
+            watch["left"] -= 1
+            if watch["left"] <= 0:
+                self.jump_watch = None
+                self.queue_probe("after the jump the song was at %s" % " ".join(watch["seen"]))
+        if self.marker_pending is not None:
+            self.service_queued_jump(playing)
         if self.marker_stale and not playing:
             self.marker_stale = False
             self.marker_scan = True
-        if self.marker_scan:
+        if self.marker_job is not None:
+            self.step_marker_scan()
+        elif self.marker_scan:
             self.marker_scan = False
             if playing:
                 # A jump while playing is audible: answer with the cache and scan when FL stops.
                 self.marker_stale = True
                 self.publish_markers()
-            else:
+            elif self.scan_wanted():
                 self.scan_markers()
+            else:
+                self.publish_markers()
         if self.marker_outbox:
             key, message = self.marker_outbox.pop(0)
             self.submit(key, message)
 
+    def marker_state(self):
+        """What a scan's result depends on that can be read without moving the playhead: the names, and FL's
+        undo history, which moves with an edit such as a marker moved (assumed, docs/fl-api-notes.md)."""
+        return (
+            tuple(self.marker_names()),
+            int(_general(0, "getUndoHistoryPos")),
+            int(_general(0, "getUndoHistoryCount")),
+        )
+
+    def scan_wanted(self):
+        """Scan only when the last full scan may be out of date: every scan moves the playhead (bug #14)."""
+        return self.marker_key is None or self.marker_state() != self.marker_key
+
     def scan_markers(self):
-        """Build the marker list by jumping through it (FL must be stopped), then restore the position
-        and queue the list for sending. docs/fl-api-notes.md has what is assumed."""
+        """Start a marker scan: the list is built by jumping through it (FL must be stopped), one jump per
+        service pass, and the position is read on the pass after the jump. In one call FL gave back the
+        position from before the jumps (bug #14). docs/fl-api-notes.md has what is assumed."""
         names = self.marker_names()
-        found = []
-        if names:  # no names, no markers: nothing to jump through
-            start = int(_safe(0, transport.getSongPos, SONGLENGTH_ABSTICKS))
-            try:
-                transport.setSongPos(0, SONGLENGTH_ABSTICKS)
+        if not names:  # no names, no markers: nothing to jump through
+            self.markers = []
+            self.publish_markers()
+            return
+        start = int(_safe(0, transport.getSongPos, SONGLENGTH_ABSTICKS))
+        selection = self.set_selection_aside()
+        self.queue_probe(
+            "marker scan: %d names, from tick %d%s"
+            % (len(names), start, "; time selection %d to %d set aside" % selection if selection else "")
+        )
+        self.marker_job = {
+            "names": names,
+            "start": start,
+            "phase": "zero",
+            "found": [],
+            "trail": [],
+            "last": 0,
+            "stayed": False,
+            "back": None,
+            "before": start,  # the position before the last call: until it changes, the call may not have landed
+            "since": self.clock(),
+            "waited": 0,
+            "selection": selection,
+        }
+        try:
+            transport.setSongPos(0, SONGLENGTH_ABSTICKS)
+        except Exception as error:
+            _log_once("marker scan", error)
+            self.finish_marker_scan(failed=True)
+
+    def set_selection_aside(self):
+        """With a time selection, FL's marker jumps go to the selection instead (bug #14: `0 0 15360 15360` with
+        markers at 0, 3072 and 15360 and a selection from 15360). Clear it for the scan; returns (start, end) to
+        put back, or None."""
+        if not _attr(False, arrangement, "selectionIsActive"):
+            return None
+        selection = (int(_attr(0, arrangement, "selectionStart")), int(_attr(0, arrangement, "selectionEnd")))
+        clear = getattr(arrangement, "selectionClear", None)
+        if not callable(getattr(arrangement, "selectionSet", None)) or not callable(clear):
+            return None  # it couldn't be put back
+        _safe(None, clear)
+        return selection
+
+    def step_marker_scan(self):
+        """One step of the scan: read where the last call left the position, then make the next call."""
+        job = self.marker_job
+        if self.is_playing():
+            # Play was pressed during the scan: stop jumping, put the position back, scan when FL stops.
+            self.marker_stale = True
+            self.finish_marker_scan(failed=True)
+            return
+        try:
+            position = int(transport.getSongPos(SONGLENGTH_ABSTICKS))
+            if position == job["before"] and job["waited"] < MARKER_SETTLE_PASSES:
+                if self.clock() - job["since"] < MARKER_SETTLE_SECONDS:
+                    job["waited"] += 1
+                    return  # not landed yet, or not moving at all: look again on the next pass
+            job["trail"].append("%d/%d" % (position, job["waited"] + 1))
+            job["before"], job["since"], job["waited"] = position, self.clock(), 0
+            phase = job["phase"]
+            found = job["found"]
+            if phase == "zero":
                 arrangement.jumpToMarker(0, False)
-                last = int(transport.getSongPos(SONGLENGTH_ABSTICKS))
-                if last > 0:
-                    found.append(last)  # jumpToMarker(0) took us to the first marker ahead
-                while len(found) < MAX_MARKERS:
-                    arrangement.jumpToMarker(1, False)
-                    position = int(transport.getSongPos(SONGLENGTH_ABSTICKS))
-                    if position <= last:
-                        break
+                job["phase"] = "first"
+            elif phase == "first":
+                job["last"] = position
+                job["stayed"] = position == 0
+                if position > 0:
+                    found.append(position)  # jumpToMarker(0) took us to the first marker ahead
+                arrangement.jumpToMarker(1, False)
+                job["phase"] = "next"
+            elif phase == "next":
+                if position > job["last"]:
                     found.append(position)
-                    last = position
-            except Exception as error:
-                _log_once("marker scan", error)
-            finally:
-                _safe(None, transport.setSongPos, start, SONGLENGTH_ABSTICKS)
-                self.mark("song_pos")
-        if len(found) != len(names):
-            # The scan and the names disagree (a marker at tick 0 is not reached by a jump, or a jump
-            # went wrong): which time belongs to which name is unknown, so the times are.
-            if names:
-                _log_once("marker scan", "%d times for %d names: times unknown" % (len(found), len(names)))
-            found = [None] * len(names)
+                    job["last"] = position
+                    if len(found) < MAX_MARKERS:
+                        arrangement.jumpToMarker(1, False)
+                    else:
+                        self.finish_marker_scan()
+                elif job["stayed"] and found and len(found) + 1 == len(job["names"]):
+                    # Jumping forward from tick 0 skips a marker AT tick 0 (Skarv puts the first project's
+                    # there). One jump back from the first marker found tells it from a name the jumps never
+                    # reach: only a marker at 0 takes it to 0.
+                    transport.setSongPos(found[0], SONGLENGTH_ABSTICKS)
+                    job["phase"] = "from first"
+                else:
+                    self.finish_marker_scan()
+            elif phase == "from first":
+                arrangement.jumpToMarker(-1, False)
+                job["phase"] = "back"
+            elif phase == "back":
+                job["back"] = position
+                if position == 0:
+                    found.insert(0, 0)
+                self.finish_marker_scan()
+        except Exception as error:
+            _log_once("marker scan", error)
+            self.finish_marker_scan(failed=True)
+
+    def finish_marker_scan(self, failed=False):
+        """Put the position back and queue the list; times the scan could not tie to names are unknown."""
+        job, self.marker_job = self.marker_job, None
+        _safe(None, transport.setSongPos, job["start"], SONGLENGTH_ABSTICKS)
+        if job["selection"] is not None:
+            _safe(None, arrangement.selectionSet, *job["selection"])
+        self.mark("song_pos")
+        self.mark("loop")
+        names, found, back = job["names"], job["found"], job["back"]
+        if back is not None:
+            self.queue_probe(
+                "marker scan: %d names, %d times; jumping back from the first went to tick %d%s"
+                % (len(names), len(found), back, ": a marker at tick 0" if back == 0 else "")
+            )
+        if failed or len(found) != len(names):
+            # The scan and the names disagree (a name the jumps never reach, or a jump went wrong): which time
+            # belongs to which name is unknown, so the times are.
+            self.queue_probe(
+                "marker scan: %d times for %d names; positions read (tick/passes) %s; %s"
+                % (len(found), len(names), " ".join(job["trail"]) or "none", self.selection_text())
+            )
+            known = [t for t, n in self.markers]
+            if [n for t, n in self.markers] == names and None not in known:
+                # The same markers as the last good scan: their times are kept rather than lost.
+                self.queue_probe("marker scan: kept the last times")
+                found = known
+            else:
+                self.queue_probe("marker scan: times unknown")
+                found = [None] * len(names)
         self.markers = list(zip(found, names))
+        self.marker_key = None if failed or len(job["found"]) != len(names) else self.marker_state()
         self.publish_markers()
+
+    def selection_text(self):
+        """The playlist time selection for the log: jumps may keep inside it."""
+        active = getattr(arrangement, "selectionIsActive", None)
+        if active is None or not _safe(False, active):
+            return "no time selection"
+        start = _safe(None, getattr(arrangement, "selectionStart", lambda: None))
+        end = _safe(None, getattr(arrangement, "selectionEnd", lambda: None))
+        return "time selection %s to %s" % (start, end)
 
     def publish_markers(self):
         """Queue the cached list as MARKERS frames of at most 8 entries; one goes out per service pass."""
@@ -2541,29 +2711,98 @@ class Bridge(object):
         self.drop_family("MARKERS")
         self.marker_scan = True
 
-    def go_to_marker(self, index):
+    def go_to_marker(self, index, loop=False):
         # A marker whose time is unknown cannot be jumped to.
         if 0 <= index < len(self.markers) and self.markers[index][0] is not None:
+            if loop:
+                self.loop_section(index)
             _safe(None, transport.setSongPos, self.markers[index][0], SONGLENGTH_ABSTICKS)
             self.mark("song_pos")
 
-    def jump_marker(self, index, quantized):
-        """JUMP_MARKER: now, or (while playing, `quantized`) at the next bar from OnUpdateBeatIndicator."""
+    def loop_section(self, index):
+        """SCENE's LOOP: the song loop (time selection) becomes marker `index`'s section, up to the next marker
+        with a later time, the last one to the song's end (getSongLength, NOT VERIFIED; four bars when that is
+        no later)."""
+        start = self.markers[index][0]
+        later = [t for t, _ in self.markers[index + 1 :] if t is not None and t > start]
+        end = later[0] if later else int(_attr(0, transport, "getSongLength", SONGLENGTH_ABSTICKS))
+        if end <= start:
+            end = start + 4 * self.bar_ticks()
+        function = getattr(arrangement, "selectionSet", None)
+        if callable(function):
+            _safe(None, function, start, end)
+            self.mark("loop")
+        return start, end
+
+    def jump_marker(self, index, quantized, loop=False):
+        """JUMP_MARKER: now, or (while playing, `quantized`) at the next bar line (service_queued_jump)."""
         if not 0 <= index < len(self.markers):
             return
         if quantized and self.is_playing():
-            self.marker_pending = index
+            position = int(_safe(0, transport.getSongPos, SONGLENGTH_ABSTICKS))
+            self.marker_pending = {"index": index, "bar": position // self.bar_ticks(), "loop": loop}
+            self.last_pass_pos = position
             return
         self.marker_pending = None
-        self.go_to_marker(index)
+        self.go_to_marker(index, loop)
 
-    def on_beat(self, value):
-        """OnUpdateBeatIndicator: value 1 is a bar. A quantized jump that waits runs now."""
-        if value != 1 or self.marker_pending is None:
+    def bar_ticks(self):
+        """A bar of the project's meter in the absolute ticks markers use."""
+        return max(1, self.meter[0] * max(1, project_ppq() // 4))
+
+    def service_queued_jump(self, playing):
+        """A jump queued for the next bar, looked at on every service pass, on FL's own thread. A pass just before
+        the bar line goes to the marker itself, at most a pass and a half early, so the old bar is that much
+        shorter; a pass just after the line goes to the marker plus what has gone, so the beat carries on. It never
+        lands in front of the marker: that is still the previous section, and its Marker loop (or the old time
+        selection) took FL back to that section's start (bug #15: `to tick 3067` for a marker at 3072). FL's bar
+        callback isn't used: what it does was never seen, and it may come on another thread (#10)."""
+        pending = self.marker_pending
+        index = pending["index"]
+        if not playing:
+            self.marker_pending = None
+            self.go_to_marker(index, pending.get("loop", False))
             return
-        index, self.marker_pending = self.marker_pending, None
-        self.go_to_marker(index)
-        self.service()
+        if not 0 <= index < len(self.markers) or self.markers[index][0] is None:
+            self.marker_pending = None
+            return
+        target = self.markers[index][0]
+        bar = self.bar_ticks()
+        position = int(transport.getSongPos(SONGLENGTH_ABSTICKS))
+        last, self.last_pass_pos = self.last_pass_pos, position
+        if last is not None and 0 < position - last < bar:
+            step = position - last
+            self.pass_ticks = step if self.pass_ticks is None else (self.pass_ticks * 3 + step) // 4
+        this_bar = position // bar
+        if this_bar != pending["bar"]:
+            gone = position - this_bar * bar
+            how = "late by %d" % gone
+            if gone * 2 >= bar:  # far past the line (a slow pass, or a loop): the marker itself
+                gone = 0
+                how = "late, at the marker"
+            land = target + gone
+        else:
+            left = (this_bar + 1) * bar - position
+            # A pass and a half ahead; at most a 16th, so one slow pass can't cut the old bar much shorter
+            lead = min((self.pass_ticks or 0) * 3 // 2 + 1, max(1, project_ppq() // 4))
+            if left > lead:
+                return  # not yet
+            land = target
+            how = "early by %d" % left
+        self.marker_pending = None
+        looped = ""
+        if pending.get("loop"):
+            # The loop changes in the same pass as the position: set earlier, a loop that ends before the song's
+            # position could send FL back to its start off the bar line.
+            looped = "; loop %d to %d" % self.loop_section(index)
+        _safe(None, transport.setSongPos, land, SONGLENGTH_ABSTICKS)
+        self.mark("song_pos")
+        self.queue_probe(
+            "queued jump to marker %d (tick %d): %s ticks at tick %d, to tick %d%s; a pass every %s ticks"
+            % (index + 1, target, how, position, land, looped, self.pass_ticks if self.pass_ticks is not None else "?")
+        )
+        # Where FL goes in the passes after (a landing just before a new loop's start is untried, bug #15)
+        self.jump_watch = {"left": 4, "seen": []}
 
     def set_loop_mode(self, song):
         """SET_LOOP_MODE: setLoopMode() only toggles, so call it when the mode differs."""
@@ -2674,7 +2913,7 @@ class Bridge(object):
             self.load_preset(message["index"])
             self.mark("presets")
         elif kind == "jumpMarker":
-            self.jump_marker(message["index"], message["quantized"])
+            self.jump_marker(message["index"], message["quantized"], message.get("loop", False))
         elif kind == "setLoopMode":
             self.set_loop_mode(message["song"])
             self.mark("transport")
@@ -3547,6 +3786,7 @@ def OnProjectLoad(status):
         _bridge.param_search_late.clear()
         if status not in (midi.PL_Start, getattr(midi, "PL_LoadError", -1)):
             _bridge.marker_stale = True  # a new project: scan its markers as soon as FL is stopped
+            _bridge.marker_key = None
         if status != midi.PL_Start:
             _bridge.service()
     except Exception as error:
@@ -3561,13 +3801,6 @@ def OnIdle():
         _bridge.service()
     except Exception as error:
         _log_once("OnIdle", error)
-
-
-def OnUpdateBeatIndicator(value):
-    try:
-        _bridge.on_beat(value)
-    except Exception as error:
-        _log_once("OnUpdateBeatIndicator", error)
 
 
 def OnUpdateLiveMode(*args):

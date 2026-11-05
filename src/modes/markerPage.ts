@@ -176,10 +176,10 @@ export abstract class MarkerPadsPage implements Mode {
   /** A display button (0–7) other than the bank buttons was pressed. */
   protected abstract displayPressed(display: number, mc: ModeContext): void;
 
-  /** Jump to marker `index` and have the bank follow it when FL reports it. */
-  protected jump(index: number, quantized: boolean, mc: ModeContext): void {
+  /** Jump to marker `index` (with `loop`, looping its section) and have the bank follow it when FL reports it. */
+  protected jump(index: number, quantized: boolean, mc: ModeContext, loop = false): void {
     this.following = index;
-    mc.send({ type: "jumpMarker", index, quantized });
+    mc.send({ type: "jumpMarker", index, quantized, loop });
   }
 
   // ── Banks and pads ─────────────────────────────────────────────────────────

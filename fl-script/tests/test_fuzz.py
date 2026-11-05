@@ -49,7 +49,7 @@ class ScriptFuzzTests(test_bridge.BridgeTestCase):
         elif roll < 0.94:
             script.OnProjectLoad(rnd.randint(0, 100))
         elif roll < 0.96:
-            script.OnUpdateBeatIndicator(rnd.randint(0, 2))
+            self.fl.playing = not self.fl.playing
         elif roll < 0.98:
             script.OnUpdateLiveMode()
         else:

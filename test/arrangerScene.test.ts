@@ -142,10 +142,10 @@ describe("SCENE", () => {
     const h = stackHarness({ markers: markersEvery4Bars(8) });
     h.press("scene");
     h.pad(2);
-    expect(jumps(h)).toEqual([{ type: "jumpMarker", index: 2, quantized: false }]);
+    expect(jumps(h)).toEqual([{ type: "jumpMarker", index: 2, quantized: false, loop: true }]);
     h.playing(true);
     h.pad(3);
-    expect(jumps(h).at(-1)).toEqual({ type: "jumpMarker", index: 3, quantized: true });
+    expect(jumps(h).at(-1)).toEqual({ type: "jumpMarker", index: 3, quantized: true, loop: true });
     h.release("scene");
   });
 
@@ -158,23 +158,39 @@ describe("SCENE", () => {
     h.tap("display2"); // NOW
     expect(h.light("display2")).toBe("bright");
     h.pad(1);
-    expect(jumps(h)).toEqual([{ type: "jumpMarker", index: 1, quantized: false }]);
+    expect(jumps(h)).toEqual([{ type: "jumpMarker", index: 1, quantized: false, loop: true }]);
     h.tap("display2"); // back to quantized
     h.pad(1);
-    expect(jumps(h).at(-1)).toEqual({ type: "jumpMarker", index: 1, quantized: true });
+    expect(jumps(h).at(-1)).toEqual({ type: "jumpMarker", index: 1, quantized: true, loop: true });
     h.tap("display2");
     const saved = JSON.parse(readFileSync(pinsPath, "utf8")) as {
       pages?: { scene?: { immediate?: boolean } };
     };
-    expect(saved.pages?.scene).toEqual({ immediate: true });
+    expect(saved.pages?.scene).toEqual({ immediate: true, loop: true });
     h.release("scene");
 
     const again = stackHarness({ markers: markersEvery4Bars(8), pinsPath });
     again.playing(true);
     again.press("scene");
     again.pad(2);
-    expect(jumps(again)).toEqual([{ type: "jumpMarker", index: 2, quantized: false }]);
+    expect(jumps(again)).toEqual([{ type: "jumpMarker", index: 2, quantized: false, loop: true }]);
     expect(again.light("display2")).toBe("bright");
+  });
+
+  it("loops the scene with LOOP on (the default), and LOOP off just jumps; LOOP is saved", () => {
+    const pinsPath = tempPins();
+    const h = stackHarness({ markers: markersEvery4Bars(8), pinsPath });
+    h.press("scene");
+    expect(h.light("display3")).toBe("bright");
+    h.pad(2);
+    expect(jumps(h).at(-1)).toEqual({ type: "jumpMarker", index: 2, quantized: false, loop: true });
+    h.tap("display3");
+    expect(h.light("display3")).toBe("dim");
+    h.pad(3);
+    expect(jumps(h).at(-1)).toEqual({ type: "jumpMarker", index: 3, quantized: false, loop: false });
+    h.release("scene");
+    const saved = JSON.parse(readFileSync(pinsPath, "utf8")) as { pages?: { scene?: { loop?: boolean } } };
+    expect(saved.pages?.scene?.loop).toBe(false);
   });
 
   it("flashes the queued pad until the song is in the new marker", () => {
@@ -239,7 +255,7 @@ describe("SCENE", () => {
     expect(h.light("display8")).toBe("dim");
     h.tap("display8");
     h.pad(0);
-    expect(jumps(h)).toEqual([{ type: "jumpMarker", index: 16, quantized: false }]);
+    expect(jumps(h)).toEqual([{ type: "jumpMarker", index: 16, quantized: false, loop: true }]);
     expect(drawnText(h).right).toEqual(expect.arrayContaining(["<<", "Part 17", "17–20 of 20"]));
     h.tap("display7");
     expect(drawnText(h).right).not.toContain("<<");

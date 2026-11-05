@@ -99,7 +99,7 @@
           "muted": true,
           "solo": true,
           "color": 1193046,
-          "name": "Hö hat"
+          "name": "H\u00f6 hat"
         }
       ]
     },
@@ -752,7 +752,7 @@
         "Init",
         "Pad A",
         "Bass 1",
-        "Lead – wide",
+        "Lead \u2013 wide",
         "Pluck",
         "Keys",
         "Strings",
@@ -936,9 +936,21 @@
     "message": {
       "type": "jumpMarker",
       "index": 5,
-      "quantized": true
+      "quantized": true,
+      "loop": false
     },
-    "hex": "f07d4d33560501f7"
+    "hex": "f07d4d3356050100f7"
+  },
+  {
+    "name": "jumpMarkerLooped",
+    "direction": "toFl",
+    "message": {
+      "type": "jumpMarker",
+      "index": 2,
+      "quantized": true,
+      "loop": true
+    },
+    "hex": "f07d4d3356020101f7"
   },
   {
     "name": "jumpMarkerNow",
@@ -946,9 +958,10 @@
     "message": {
       "type": "jumpMarker",
       "index": 0,
-      "quantized": false
+      "quantized": false,
+      "loop": false
     },
-    "hex": "f07d4d33560000f7"
+    "hex": "f07d4d3356000000f7"
   },
   {
     "name": "setLoopModeSong",

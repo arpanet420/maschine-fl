@@ -324,7 +324,11 @@ class FakeFL(object):
         def jump_to_marker(delta, select=False):
             ticks = fl.marker_ticks
             position = fl.song_pos[2]
-            if delta > 0:
+            if delta > 0 and fl.selection is not None:
+                # Seen in FL (bug #14): with a time selection the jump goes to its start, and from there nowhere.
+                if fl.selection[0] > position:
+                    fl.song_pos[2] = fl.selection[0]
+            elif delta > 0:
                 ahead = [t for t in ticks if t > position]
                 if ahead:
                     fl.song_pos[2] = ahead[min(delta, len(ahead)) - 1]
@@ -643,6 +647,8 @@ class BridgeTestCase(unittest.TestCase):
         self.clock = Clock()
         self.script._bridge.clock = self.clock
         self.script._logged_errors.clear()
+        # Most tests count PROBE frames; the forwarded errors have a test of their own.
+        self.script._forwarded_errors[0] = self.script.MAX_FORWARDED_ERRORS
         self.addCleanup(self._restore_modules)
 
     def _restore_modules(self):
@@ -666,7 +672,7 @@ class BridgeTestCase(unittest.TestCase):
             self.script.OnIdle()
             sent = self.fl.sysex_out[before:]
             frames.extend(sent)
-            if not sent and not self.bridge.queue and not self.bridge.dirty and not self.bridge.pg_todo:
+            if not sent and not self.bridge.queue and not self.bridge.dirty and not self.bridge.pg_todo and self.bridge.marker_job is None:
                 return frames
         self.fail("queue never drained")
 
@@ -3472,19 +3478,200 @@ class MarkerTests(BridgeTestCase):
         self.assertTrue(all(args == (1, False) for args in jumps[1:]))
         self.assertEqual(len(jumps), 1 + 5)  # four markers, one more jump that goes nowhere
 
-    def test_a_marker_at_tick_zero_makes_the_scan_disagree_so_the_times_are_unknown(self):
-        # The jumps reach two markers, the names say three: no @0 is invented, the names stay.
+    def test_a_position_that_moves_only_after_the_call_still_gives_the_times(self):
+        # FL in bug #14: getSongPos in the same call still gave the position from before the jumps. Here a
+        # jump lands only when the call that made it has returned.
         self.fl.marker_ticks = [0, 384, 768]
+        arrangement_module, transport_module = sys.modules["arrangement"], sys.modules["transport"]
+        jump, set_pos = arrangement_module.jumpToMarker, transport_module.setSongPos
+        landing = []
+
+        def late(move):
+            def call(*args):
+                before = self.fl.song_pos[2]
+                move(*args)
+                landing.append(self.fl.song_pos[2])
+                self.fl.song_pos[2] = before
+            return call
+
+        self.start()
+        self.take()
+        arrangement_module.jumpToMarker, transport_module.setSongPos = late(jump), late(set_pos)
+        try:
+            self.request()
+            for _ in range(150):
+                while landing:
+                    self.fl.song_pos[2] = landing.pop(0)
+                self.script.OnIdle()
+        finally:
+            arrangement_module.jumpToMarker, transport_module.setSongPos = jump, set_pos
+        while landing:
+            self.fl.song_pos[2] = landing.pop(0)
+        self.assertEqual(self.listed(self.take()), [(0, "Marker 0"), (384, "Marker 1"), (768, "Marker 2")])
+        self.assertEqual(self.fl.song_pos[2], 1000)  # put back
+
+    def test_a_jump_that_lands_a_few_passes_late_is_waited_for(self):
+        # FL in bug #14: one pass was not always enough (`positions read 0 0 0` between scans that found 3072).
+        self.fl.marker_ticks = [0, 384, 768]
+        arrangement_module = sys.modules["arrangement"]
+        jump = arrangement_module.jumpToMarker
+        landing = []
+
+        def late(*args):
+            before = self.fl.song_pos[2]
+            jump(*args)
+            landing.append([3, self.fl.song_pos[2]])  # lands three passes later
+            self.fl.song_pos[2] = before
+
+        self.start()
+        self.take()
+        arrangement_module.jumpToMarker = late
+        try:
+            self.request()
+            for _ in range(200):
+                for item in landing:
+                    item[0] -= 1
+                    if item[0] == 0:
+                        self.fl.song_pos[2] = item[1]
+                landing[:] = [item for item in landing if item[0] > 0]
+                self.script.OnIdle()
+        finally:
+            arrangement_module.jumpToMarker = jump
+        self.assertEqual(self.listed(self.take()), [(0, "Marker 0"), (384, "Marker 1"), (768, "Marker 2")])
+        self.assertEqual(self.fl.song_pos[2], 1000)
+
+    def test_no_song_position_goes_out_while_the_scan_moves_it(self):
+        self.fl.marker_ticks = [384 * (i + 1) for i in range(6)]
+        self.start()
+        self.take()
+        self.request()
+        frames = []
+        while self.bridge.marker_job is not None:
+            before = len(self.fl.sysex_out)
+            self.clock.advance(0.06)  # past SONG_POS_SECONDS on every pass
+            self.script.OnIdle()
+            frames.extend(self.fl.sysex_out[before:])
+        self.assertEqual([f for f in frames if list(f)[4] == self.script.CMD_SONG_POS], [])
+        self.assertEqual(self.fl.song_pos[2], 1000)
+
+    def test_play_during_the_scan_puts_the_position_back_and_scans_after(self):
+        self.start()
+        self.take()
+        self.request()
+        self.script.OnIdle()
+        self.script.OnIdle()
+        self.assertIsNotNone(self.bridge.marker_job)
+        self.fl.playing = True
+        self.script.OnIdle()
+        self.assertIsNone(self.bridge.marker_job)
+        self.assertEqual(self.fl.song_pos[2], 1000)
+        self.assertTrue(self.bridge.marker_stale)
+        self.fl.playing = False
+        self.drain()
+        self.assertEqual(
+            self.listed(self.take())[-4:],
+            [(384, "Marker 0"), (768, "Marker 1"), (1536, "Marker 2"), (3840, "Marker 3")],
+        )
+
+    def test_a_time_selection_is_set_aside_for_the_scan_and_put_back(self):
+        self.fl.marker_ticks = [0, 3072, 15360]
+        self.fl.selection = (15360, 18432)
+        self.start()
+        self.take()
+        self.request()
+        frames = self.drain()
+        self.assertEqual(self.listed(frames), [(0, "Marker 0"), (3072, "Marker 1"), (15360, "Marker 2")])
+        self.assertEqual(self.fl.selection, (15360, 18432))
+        loop_states = [f for f in frames if list(f)[4] == self.script.CMD_LOOP_STATE]
+        self.assertEqual(loop_states, [])  # the MK3 never saw it go
+        probes = b"".join(bytes(f) for f in self.fl.sysex_out if list(f)[4] == 0x17)
+        self.assertIn(b"time selection 15360 to 18432 set aside", probes)
+
+    def test_a_failed_scan_keeps_the_last_times_for_the_same_markers(self):
         self.start()
         self.take()
         self.request()
         self.drain()
+        self.take()
+        self.fl.selection = (192, 960)
+        sys.modules["arrangement"].selectionClear = lambda: None  # FL keeps it: the jumps go astray
+        self.fl.undo_pos, self.fl.undo_count = 1, 1  # an edit, so the next request scans
+        self.request()
+        frames = self.drain()
+        self.assertEqual(
+            self.listed(frames), [(384, "Marker 0"), (768, "Marker 1"), (1536, "Marker 2"), (3840, "Marker 3")]
+        )
+        probes = b"".join(bytes(f) for f in frames if list(f)[4] == 0x17)
+        self.assertIn(b"kept the last times", probes)
+
+    def test_a_marker_at_tick_zero_is_found_by_jumping_back_from_the_first(self):
+        # A Skarv splice: the first project's marker is at 0, which jumping forward from 0 skips.
+        self.fl.marker_ticks = [0, 384, 768]
+        self.start()
+        self.take()
+        self.fl.calls[:] = []
+        self.request()
+        self.drain()
+        self.assertEqual(self.listed(self.take()), [(0, "Marker 0"), (384, "Marker 1"), (768, "Marker 2")])
+        self.assertIn((-1, False), self.fl.called("arrangement.jumpToMarker"))
+        self.assertEqual(self.fl.song_pos[2], 1000)  # put back
+
+    def test_the_log_says_what_the_jump_back_found(self):
+        self.fl.marker_ticks = [0, 384, 768]
+        self.start()
+        self.request()
+        self.drain()
+        probes = [bytes(f) for f in self.fl.sysex_out if list(f)[4] == 0x17]
+        self.assertTrue(any(b"jumping back from the first went to tick 0: a marker at tick 0" in f for f in probes))
+
+    def test_a_marker_at_tick_zero_is_not_assumed_when_the_jump_back_stays(self):
+        # A name the jumps never reach looks the same going forward; going back finds nothing at 0.
         unknown = self.script.MARKER_TICKS_UNKNOWN
         self.assertEqual(unknown, 0x1FFFFF)
+        self.fl.marker_names = {2: "Ghost"}
+        self.fl.marker_ticks = [384, 768]
+        self.start()
+        self.take()
+        self.request()
+        self.drain()
         self.assertEqual(
             self.listed(self.take()),
-            [(unknown, "Marker 0"), (unknown, "Marker 1"), (unknown, "Marker 2")],
+            [(unknown, "Marker 0"), (unknown, "Marker 1"), (unknown, "Ghost")],
         )
+        self.assertEqual(self.fl.song_pos[2], 1000)
+
+    def test_the_log_says_where_each_jump_landed_when_times_are_unknown(self):
+        # Bug #14: FL found 1 time for 3 names on a splice; the log has to say why.
+        self.fl.marker_names = {2: "Ghost"}
+        self.fl.marker_ticks = [384, 768]
+        self.fl.selection = (192, 960)
+        self.start()
+        self.request()
+        self.drain()
+        probes = [bytes(f) for f in self.fl.sysex_out if list(f)[4] == 0x17]
+        text = b"".join(probes)
+        self.assertIn(b"2 times for 3 names; positions read", text)
+        self.assertIn(b"marker scan: times unknown", text)
+        self.assertIn(b"(tick/passes) 0/1 0/31 384/1 768/1", text)  # setSongPos(0), jumpToMarker(0) waits, each jump(1)
+        self.assertIn(b"selection 192 to 960", text)
+
+    def test_a_jump_back_that_fails_keeps_the_times_unknown(self):
+        self.fl.marker_ticks = [0, 384, 768]
+        original = sys.modules["arrangement"].jumpToMarker
+
+        def failing(delta, select=False):
+            if delta < 0:
+                raise RuntimeError("boom")
+            original(delta, select)
+
+        sys.modules["arrangement"].jumpToMarker = failing
+        self.start()
+        self.take()
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.request()
+            self.drain()
+        self.assertEqual({t for t, _ in self.listed(self.take())}, {self.script.MARKER_TICKS_UNKNOWN})
+        self.assertEqual(self.fl.song_pos[2], 1000)
 
     def test_the_names_give_the_count_and_the_scan_only_the_times(self):
         self.start()
@@ -3532,7 +3719,8 @@ class MarkerTests(BridgeTestCase):
         self.assertEqual(self.markers_frames(self.take()), [(0, 0, [], 96)])
 
     def test_a_jump_to_a_marker_with_an_unknown_time_does_nothing(self):
-        self.fl.marker_ticks = [0, 384, 768]
+        self.fl.marker_names = {2: "Ghost"}
+        self.fl.marker_ticks = [384, 768]
         self.scanned()
         self.fl.calls[:] = []
         self.jump(1, False)
@@ -3611,9 +3799,9 @@ class MarkerTests(BridgeTestCase):
         self.start()
         self.take()
         before = len(self.fl.sysex_out)
-        self.request()  # the scan and the first chunk
+        self.request()  # the scan starts: a jump per pass, then a chunk per pass
         per_pass = [len(self.markers_frames(self.fl.sysex_out[before:]))]
-        for _ in range(8):
+        for _ in range(150):  # a pass per jump, and up to MARKER_SETTLE_PASSES for one that doesn't move
             before = len(self.fl.sysex_out)
             self.script.OnIdle()
             per_pass.append(len(self.markers_frames(self.fl.sysex_out[before:])))
@@ -3727,33 +3915,76 @@ class MarkerTests(BridgeTestCase):
         self.jump(127, True)
         self.assertEqual(self.fl.called("transport.setSongPos"), [])
 
-    def test_quantized_jump_while_playing_waits_for_the_bar(self):
+    def play_to(self, *ticks):
+        """FL plays on: the song is at each of these ticks on a service pass."""
+        for tick in ticks:
+            self.fl.song_pos[2] = tick
+            self.script.OnIdle()
+
+    def test_quantized_jump_lands_on_the_bar_line_from_just_before_it(self):
+        # Bars of 384 ticks; marker 2 is at 768. Passes 8 ticks apart: the jump goes when 12 or fewer are left.
         self.scanned()
         self.fl.playing = True
+        self.fl.song_pos[2] = 400
         self.jump(1, True)
+        self.play_to(*range(408, 757, 8))
         self.assertEqual(self.fl.called("transport.setSongPos"), [])
-        self.script.OnUpdateBeatIndicator(2)  # a beat: not yet
-        self.script.OnUpdateBeatIndicator(0)
-        self.assertEqual(self.fl.called("transport.setSongPos"), [])
-        self.script.OnUpdateBeatIndicator(1)  # the bar
+        self.play_to(764)  # 4 ticks before the line at 768: the marker itself, never in front of it
         self.assertEqual(self.fl.called("transport.setSongPos"), [(768, 2)])
-        self.script.OnUpdateBeatIndicator(1)  # only once
-        self.assertEqual(len(self.fl.called("transport.setSongPos")), 1)
+        self.play_to(772, 780, 1152)
+        self.assertEqual(len(self.fl.called("transport.setSongPos")), 1)  # only once
+
+    def test_a_pass_just_after_the_line_lands_as_far_into_the_target(self):
+        self.scanned()
+        self.fl.playing = True
+        self.fl.song_pos[2] = 100
+        self.jump(3, True)  # marker 4 at 3840
+        self.play_to(108, 116, 390)  # the pass came 6 ticks after the line at 384
+        self.assertEqual(self.fl.called("transport.setSongPos"), [(3846, 2)])
+
+    def test_far_past_the_line_it_lands_on_the_marker(self):
+        self.scanned()
+        self.fl.playing = True
+        self.fl.song_pos[2] = 100
+        self.jump(3, True)
+        self.play_to(600)  # a song loop or a stall: 216 ticks into the next bar
+        self.assertEqual(self.fl.called("transport.setSongPos"), [(3840, 2)])
+
+    def test_a_marker_at_tick_zero_is_taken_from_just_before_the_line_too(self):
+        self.fl.marker_ticks = [0, 384, 768]
+        self.scanned()
+        self.fl.playing = True
+        self.fl.song_pos[2] = 500
+        self.jump(0, True)
+        self.play_to(*range(508, 765, 8))
+        self.assertEqual(self.fl.called("transport.setSongPos"), [(0, 2)])
+
+    def test_the_log_says_how_a_queued_jump_landed(self):
+        self.scanned()
+        self.fl.playing = True
+        self.fl.song_pos[2] = 400
+        self.jump(1, True)
+        self.play_to(408, 416, 764)
+        self.drain()
+        probes = b"".join(bytes(f) for f in self.fl.sysex_out if list(f)[4] == 0x17)
+        self.assertIn(b"queued jump to marker 2 (tick 768): early by 4 ticks at tick 764, to tick 768", probes)
 
     def test_a_newer_quantized_jump_replaces_the_waiting_one(self):
         self.scanned()
         self.fl.playing = True
+        self.fl.song_pos[2] = 100
         self.jump(1, True)
         self.jump(3, True)
-        self.script.OnUpdateBeatIndicator(1)
-        self.assertEqual(self.fl.called("transport.setSongPos"), [(3840, 2)])
+        self.play_to(390)
+        self.assertEqual(self.fl.called("transport.setSongPos"), [(3846, 2)])
 
     def test_a_jump_now_cancels_a_waiting_one(self):
         self.scanned()
         self.fl.playing = True
+        self.fl.song_pos[2] = 100
         self.jump(1, True)
         self.jump(2, False)
-        self.script.OnUpdateBeatIndicator(1)
+        self.play_to(390)
         self.assertEqual(self.fl.called("transport.setSongPos"), [(1536, 2)])
 
     def test_a_waiting_jump_runs_at_once_when_fl_stops(self):
@@ -3764,13 +3995,89 @@ class MarkerTests(BridgeTestCase):
         self.script.OnIdle()
         self.assertEqual(self.fl.called("transport.setSongPos"), [(768, 2)])
 
-    def test_the_beat_callback_survives_errors(self):
+    def test_script_errors_reach_mk3d_once_each_and_at_most_twenty(self):
+        self.script._forwarded_errors[0] = 0
+        self.start()
+        with contextlib.redirect_stdout(io.StringIO()):
+            for k in range(30):
+                self.script._log_once("somewhere %d" % (k % 25), RuntimeError("boom"))
+        self.drain()
+        probes = [bytes(f) for f in self.fl.sysex_out if list(f)[4] == 0x17]
+        errors = [p for p in probes if b"script error: " in p]
+        self.assertEqual(len(errors), 20)
+        self.assertTrue(any(b"script error: somewhere 0 failed: boom" in p for p in errors))
+
+    def looped_jump(self, index, quantized):
+        return self.send(self.script.frame(0x56, bytes([index, 1 if quantized else 0, 1])))
+
+    def test_a_looped_jump_while_stopped_loops_the_section(self):
+        self.scanned()  # markers at 384, 768, 1536, 3840
+        self.looped_jump(1, False)
+        self.assertEqual(self.fl.selection, (768, 1536))
+        self.assertEqual(self.fl.song_pos[2], 768)
+
+    def test_the_last_marker_loops_to_the_song_end(self):
+        self.scanned()
+        self.fl.song_length[2] = 7680
+        self.looped_jump(3, False)
+        self.assertEqual(self.fl.selection, (3840, 7680))
+
+    def test_the_last_marker_loops_four_bars_when_the_song_ends_there(self):
+        self.scanned()
+        self.fl.song_length[2] = 3840
+        self.looped_jump(3, False)
+        self.assertEqual(self.fl.selection, (3840, 3840 + 4 * 384))
+
+    def test_a_queued_looped_jump_moves_the_loop_in_the_same_pass(self):
+        self.scanned()
+        self.fl.selection = (384, 768)  # looping marker 1's section
+        self.fl.playing = True
+        self.fl.song_pos[2] = 400
+        self.looped_jump(2, True)
+        self.play_to(*range(408, 757, 8))
+        self.assertEqual(self.fl.selection, (384, 768))  # the old loop plays on until the line
+        self.play_to(764)
+        self.assertEqual(self.fl.selection, (1536, 3840))
+        self.assertEqual(self.fl.called("transport.setSongPos"), [(1536, 2)])
+        self.play_to(1540, 1548, 1556, 1564)
+        self.drain()
+        probes = b"".join(bytes(f) for f in self.fl.sysex_out if list(f)[4] == 0x17)
+        self.assertIn(b"loop 1536 to 3840", probes)
+        self.assertIn(b"after the jump the song was at 1540 1548 1556 1564", probes)
+
+    def test_an_old_jump_frame_without_the_loop_byte_still_jumps(self):
+        self.scanned()
+        self.jump(2, False)
+        self.assertEqual(self.fl.song_pos[2], 1536)
+        self.assertIsNone(self.fl.selection)
+
+    def test_a_waiting_jump_survives_errors(self):
         self.scanned()
         self.fl.playing = True
+        self.fl.song_pos[2] = 100
         self.jump(1, True)
         self.fl.raise_on["transport.setSongPos"] = RuntimeError("boom")
-        self.script.OnUpdateBeatIndicator(1)  # no exception
-        self.script.OnUpdateBeatIndicator("bar?")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.play_to(390, 400)  # no exception
+        self.assertIsNone(self.bridge.marker_pending)
+
+    def test_a_request_with_nothing_changed_is_answered_without_moving_the_playhead(self):
+        self.scanned()
+        self.request()
+        self.drain()
+        self.assertEqual(self.fl.called("arrangement.jumpToMarker"), [])
+        self.assertEqual(self.fl.called("transport.setSongPos"), [])
+        self.assertEqual(len(self.listed(self.take())), 4)
+        self.fl.undo_pos, self.fl.undo_count = 1, 1  # an edit, maybe a marker moved
+        self.request()
+        self.drain()
+        self.assertGreater(len(self.fl.called("arrangement.jumpToMarker")), 0)
+
+    def test_a_project_load_scans_again(self):
+        self.scanned()
+        self.script.OnProjectLoad(self.script.midi.PL_LoadOk)
+        self.drain()
+        self.assertGreater(len(self.fl.called("arrangement.jumpToMarker")), 0)
 
     # -- ADD_MARKER, SET_LOOP_MODE, PLAYLIST_VIEW, SET_SONG_POS --------------------------------
 

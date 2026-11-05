@@ -6,21 +6,21 @@ the rest. Code: `src/main.ts` (global), `src/modes/pageStack.ts` (the page butto
 
 ## Global controls
 
-| Control      | Action                                                                                                                                                                                                                                                        |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Shift        | Modifier. Its LED is bright while held                                                                                                                                                                                                                        |
-| Play         | CC 102: play/pause                                                                                                                                                                                                                                            |
-| Stop         | CC 103: stop                                                                                                                                                                                                                                                  |
-| Rec          | CC 104: toggle record. Shift + Rec: CC 105, toggle count-in                                                                                                                                                                                                   |
-| Restart      | CC 108: stop, then start (from the song start). **Shift + tap: song loop on/off** (the stack's `tap`, no restart); **Shift + hold (400 ms): the LOOP overlay** (see "LOOP" below). The LED is dim, bright while FL's song loop is active (LOOP_STATE) |
-| Tap          | CC 107: tap tempo. Shift + Tap: CC 106, toggle metronome                                                                                                                                                                                                      |
-| Pads 1–16    | Numbered like Maschine: pad 1 is the bottom-left pad, rows go up. What a hit does depends on the pad mode (see "Pad modes" below): KEYBOARD (default) plays notes `base + pad` (base 36 = C3, so 36–51, bottom-left = 36) on MIDI channel 1, which FL plays on the selected channel; PAD MODE plays the channel under the pad (note = its group-local index on MIDI channel 2; verified in FL 2026). Velocity from the hit (through the SETTINGS curve), or the fixed value while FIXED VEL is on; poly aftertouch from the pressure. A page that uses the pads (an overlay) takes them instead |
-| Touch strip  | Four modes picked by PITCH / MOD / PERFORM / NOTES: channel pitch, mod wheel, a filter sweep or notes (see "Touch strip" below) |
-| Pitch, Mod, Perform, Notes | The touch strip's mode, a radio group (exactly one bright): press = that mode, press the lit one = no mode (all dim; the strip LEDs then show the play position). Default PITCH, saved with the page state. Every page; SHIFT + button does nothing |
-| Volume, Swing, Tempo | Quick edit: a radio group that turns the 4D encoder into an editor for the current page (see "Quick edit" below). Press = on (bright), press the lit one = off (dim) |
-| Shift + pads | Not notes: Maschine's action row (see "SHIFT + pads" below) |
-| Page buttons | Open pages, see "Pages" below. SHIFT is read when the button is pressed                                                                                                                                                                                       |
-| Group A–H    | Pick the channel bank (see "Channel banks" below), on every page except the Mixer, which keeps them as its track buttons. LEDs: the current bank bright white, other banks that exist dim white, the rest off                                                  |
+| Control                    | Action                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shift                      | Modifier. Its LED is bright while held                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Play                       | CC 102: play/pause                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Stop                       | CC 103: stop                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Rec                        | CC 104: toggle record. Shift + Rec: CC 105, toggle count-in                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Restart                    | CC 108: stop, then start (from the song start). **Shift + tap: song loop on/off** (the stack's `tap`, no restart); **Shift + hold (400 ms): the LOOP overlay** (see "LOOP" below). The LED is dim, bright while FL's song loop is active (LOOP_STATE)                                                                                                                                                                                                                                                                                                                                           |
+| Tap                        | CC 107: tap tempo. Shift + Tap: CC 106, toggle metronome                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Pads 1–16                  | Numbered like Maschine: pad 1 is the bottom-left pad, rows go up. What a hit does depends on the pad mode (see "Pad modes" below): KEYBOARD (default) plays notes `base + pad` (base 36 = C3, so 36–51, bottom-left = 36) on MIDI channel 1, which FL plays on the selected channel; PAD MODE plays the channel under the pad (note = its group-local index on MIDI channel 2; verified in FL 2026). Velocity from the hit (through the SETTINGS curve), or the fixed value while FIXED VEL is on; poly aftertouch from the pressure. A page that uses the pads (an overlay) takes them instead |
+| Touch strip                | Four modes picked by PITCH / MOD / PERFORM / NOTES: channel pitch, mod wheel, a filter sweep or notes (see "Touch strip" below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Pitch, Mod, Perform, Notes | The touch strip's mode, a radio group (exactly one bright): press = that mode, press the lit one = no mode (all dim; the strip LEDs then show the play position). Default PITCH, saved with the page state. Every page; SHIFT + button does nothing                                                                                                                                                                                                                                                                                                                                             |
+| Volume, Swing, Tempo       | Quick edit: a radio group that turns the 4D encoder into an editor for the current page (see "Quick edit" below). Press = on (bright), press the lit one = off (dim)                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Shift + pads               | Not notes: Maschine's action row (see "SHIFT + pads" below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Page buttons               | Open pages, see "Pages" below. SHIFT is read when the button is pressed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Group A–H                  | Pick the channel bank (see "Channel banks" below), on every page except the Mixer, which keeps them as its track buttons. LEDs: the current bank bright white, other banks that exist dim white, the rest off                                                                                                                                                                                                                                                                                                                                                                                   |
 
 While FL isn't connected the screens show "Waiting for FL Studio…" and the pages get no events.
 
@@ -45,7 +45,7 @@ is not built yet logs `page "<name>" is not built yet` once per press and change
   top and show that page. Pressing the button of the page already shown leaves the control pages
   where they are and goes back to the last control page on the others; its FL window closes (above).
 - **Overlays** (SCENE, PATTERN, EVENTS, DUPLICATE, SELECT, SOLO, MUTE, NOTE REPEAT, NAVIGATE;
-  SHIFT + SCENE = LIVE; SHIFT + FOLLOW = GRID; SHIFT + RESTART = LOOP, a *hold* overlay that
+  SHIFT + SCENE = LIVE; SHIFT + FOLLOW = GRID; SHIFT + RESTART = LOOP, a _hold_ overlay that
   opens only after 400 ms, a tap runs its own action): hold to peek, closed on release. Display
   button 1 is the pin tab, named after the page: pressing it pins the overlay so it stays after the
   release; pressing it again unpins (and closes it at once if its button isn't held). A pinned
@@ -444,8 +444,8 @@ overlay, so nothing repeats there. GROUP A–H still pick the bank.
   - **While FL is stopped** the grid runs free from the press and a new pad sounds at once; a pad hit
     within a quarter interval before a slot waits for the next one.
   - A tempo change moves the next slot without restarting the grid. One timer is set to the next due slot or note
-  off (absolute times from `performance.now()`); a slot more than half an interval late is skipped,
-  never played in a burst. Before each on, a note still sounding is ended.
+    off (absolute times from `performance.now()`); a slot more than half an interval late is skipped,
+    never played in a burst. Before each on, a note still sounding is ended.
 - **Screens**: left, tabs `NOTE RPT` `LOCK` `HOLD` `GATE RESET`, the rate big, and Rate / Unit / Gate / Swing under knobs 1–4; right, the note
   values on display 5–8 and two beats of repeats (start and length of each note, odd repeats mint).
 - **`MK3D_REPEAT_LOG=1`** logs every slot that plays as `[repeat] n gap late beat reading`: the time
@@ -455,6 +455,7 @@ overlay, so nothing repeats there. GROUP A–H still pick the bank.
   pinned; display 2 and 3 bright when on, dim otherwise; display 4 dim; display 5–8 the current note
   value bright, the others dim. The pads are the pad mode's; a repeating pad
   is pressed while its note sounds, so it flashes with each repeat.
+
 ### ARP (NOTE REPEAT in KEYBOARD and CHORDS)
 
 Code: `src/modes/arpPanel.ts` (controls, screens, LEDs), `src/modes/arpeggiator.ts` (the notes and
@@ -547,22 +548,22 @@ Right screen (display buttons 5–8 above, knobs 5–8 below):
 Display button LEDs: dim when the button has a function, bright when it is on (Mute or Solo of the
 selected channel), off when unused (display 4–8, and 1–3 without a channel).
 
-| Control                 | Action                                                                                        |
-| ----------------------- | --------------------------------------------------------------------------------------------- |
-| Display 1               | Toggle mute of the selected channel                                                           |
-| Display 2               | Toggle solo of the selected channel                                                           |
-| Display 3               | Show the channel's editor (plug-in or sampler window)                                         |
-| Knob 1                  | Previous/next channel, one per 40 counts (the remainder carries over, so slow turns work)     |
-| Knob 5                  | Volume (%)                                                                                    |
-| Knob 6                  | Pan (`C`, `L40`, `R40`)                                                                       |
-| Knob 7                  | Pitch (semitones: the knob's −1…1 times the channel's pitch range)                            |
-| Knob 8                  | Mixer track the channel is routed to (`Master`, the track's name or `Insert N`)               |
-| Knobs 2–4, display 4–8  | Unused                                                                                        |
-| 4D encoder turn         | Previous/next channel; the window moves a page when the selection leaves it                   |
-| 4D encoder tilt up/down | Previous/next channel, lit where there is one to go to (left/right unused)                    |
-| 4D encoder push         | Show the channel's editor                                                                     |
-| Arrow left/right        | Previous/next page of 16 channels                                                             |
-| Group A–H               | Pick the channel bank (page stack, "Channel banks"); the list follows the selection           |
+| Control                 | Action                                                                                    |
+| ----------------------- | ----------------------------------------------------------------------------------------- |
+| Display 1               | Toggle mute of the selected channel                                                       |
+| Display 2               | Toggle solo of the selected channel                                                       |
+| Display 3               | Show the channel's editor (plug-in or sampler window)                                     |
+| Knob 1                  | Previous/next channel, one per 40 counts (the remainder carries over, so slow turns work) |
+| Knob 5                  | Volume (%)                                                                                |
+| Knob 6                  | Pan (`C`, `L40`, `R40`)                                                                   |
+| Knob 7                  | Pitch (semitones: the knob's −1…1 times the channel's pitch range)                        |
+| Knob 8                  | Mixer track the channel is routed to (`Master`, the track's name or `Insert N`)           |
+| Knobs 2–4, display 4–8  | Unused                                                                                    |
+| 4D encoder turn         | Previous/next channel; the window moves a page when the selection leaves it               |
+| 4D encoder tilt up/down | Previous/next channel, lit where there is one to go to (left/right unused)                |
+| 4D encoder push         | Show the channel's editor                                                                 |
+| Arrow left/right        | Previous/next page of 16 channels                                                         |
+| Group A–H               | Pick the channel bank (page stack, "Channel banks"); the list follows the selection       |
 
 Knob behavior:
 
@@ -720,11 +721,11 @@ it off. SHIFT + the button does nothing. While a mode is on, **4D turns** edit i
 reaching the page (push and tilt still go to the page); a turn is 1/100 (volume, swing) or ±1 BPM /
 semitone, SHIFT 1/1000 and ±0.01.
 
-| Mode   | Nothing held                                 | While a pad is held                                         |
-| ------ | -------------------------------------------- | ----------------------------------------------------------- |
-| VOLUME | FL's main volume (SET_MAIN_VOLUME)           | the channel's volume (SET_CHANNEL)                          |
-| SWING  | main swing (SET_SWING)                       | the same                                                    |
-| TEMPO  | tempo (SET_TEMPO, 10–522 BPM)                | the channel's pitch (`TUNE`, SET_CHANNEL pitch, ± its range) |
+| Mode   | Nothing held                       | While a pad is held                                          |
+| ------ | ---------------------------------- | ------------------------------------------------------------ |
+| VOLUME | FL's main volume (SET_MAIN_VOLUME) | the channel's volume (SET_CHANNEL)                           |
+| SWING  | main swing (SET_SWING)             | the same                                                     |
+| TEMPO  | tempo (SET_TEMPO, 10–522 BPM)      | the channel's pitch (`TUNE`, SET_CHANNEL pitch, ± its range) |
 
 The held pad's channel is the one the pad plays in PAD MODE, else the selected channel. Values use
 the pending-value pattern (ours for 300 ms after a turn, then FL's).
@@ -745,16 +746,16 @@ turned in the last 2 s, or while a pad is held.
 Code: `src/modes/shiftPads.ts`, run by the page stack. While SHIFT is held the pads don't play and
 no page gets them: they are Maschine's action row (pad 1 bottom-left).
 
-| Pad | Action                                  | Pad | Action                                           |
-| --- | --------------------------------------- | --- | ------------------------------------------------ |
-| 1   | undo (UI)                               | 9   | clear: CLEAR_STEPS, selected channel             |
-| 2   | redo (UI)                               | 10  | clear automation (no FL equivalent)              |
-| 3   | step undo (no FL equivalent)            | 11  | copy: the step clipboard (UI 10)                 |
-| 4   | step redo (no FL equivalent)            | 12  | paste: the step clipboard (UI 11)                |
-| 5   | quantize (UI, `quickQuantize(…, 0)`)    | 13  | transpose −1 semitone (TRANSPOSE)                |
-| 6   | quantize starts (UI, `…, 1`)            | 14  | transpose +1 semitone                            |
-| 7   | nudge ◀ (no FL equivalent)              | 15  | transpose −12 (octave)                           |
-| 8   | nudge ▶ (no FL equivalent)              | 16  | transpose +12 (octave)                           |
+| Pad | Action                               | Pad | Action                               |
+| --- | ------------------------------------ | --- | ------------------------------------ |
+| 1   | undo (UI)                            | 9   | clear: CLEAR_STEPS, selected channel |
+| 2   | redo (UI)                            | 10  | clear automation (no FL equivalent)  |
+| 3   | step undo (no FL equivalent)         | 11  | copy: the step clipboard (UI 10)     |
+| 4   | step redo (no FL equivalent)         | 12  | paste: the step clipboard (UI 11)    |
+| 5   | quantize (UI, `quickQuantize(…, 0)`) | 13  | transpose −1 semitone (TRANSPOSE)    |
+| 6   | quantize starts (UI, `…, 1`)         | 14  | transpose +1 semitone                |
+| 7   | nudge ◀ (no FL equivalent)           | 15  | transpose −12 (octave)               |
+| 8   | nudge ▶ (no FL equivalent)           | 16  | transpose +12 (octave)               |
 
 13–16 transpose the selected channel's recorded notes in the current pattern (TRANSPOSE, docs/sysex.md), in every
 pad mode; the KEYBOARD base note keeps its own controls (display buttons 5–8). The FL script rewrites the pitch of
@@ -1010,7 +1011,7 @@ Code: `src/modes/sceneOverlay.ts`, the shared part in `src/modes/markerPage.ts`.
 **playlist marker** stands for a scene or section; FL's script lists the markers by name and finds their
 times by scanning while FL is stopped, and sends them as MARKERS (docs/sysex.md, "Markers"). The overlay
 asks for a fresh scan when it opens (REQUEST_MARKERS). Markers whose times are unknown (the scan
-disagreed with the names, e.g. a marker at tick 0) are listed by name with the corner text `Bar ?`; a press
+disagreed with the names) are listed by name with the corner text `Bar ?`; a press
 on one does nothing in FL.
 
 **Pads and grid**: the pads are the markers of the current bank of 16 (pad 1 = the first marker of the bank,
@@ -1029,7 +1030,10 @@ does nothing (FL's script cannot delete a marker).
 A press switches like Maschine's scenes: **at the next bar while FL plays, at
 once while it is stopped** (JUMP_MARKER with `quantized` only while playing). Display 2 `NOW`
 toggles quantized and immediate (underlined = immediate); the choice is saved in `pages.json`
-(`pages.scene.immediate`). A queued jump flashes its pad (pressed variant against dim, 250 ms) and
+(`pages.scene.immediate`). Display 3 `LOOP` (on by default, `pages.scene.loop`) makes a press loop the
+marker's section too: the song loop (time selection) becomes the marker up to the next one, the last one
+to the song's end, set by the FL script in the same pass as the jump, so in a live set FL stays in a song
+until the next scene is picked. A queued jump flashes its pad (pressed variant against dim, 250 ms) and
 outlines its cell in mint, and the left screen says `Queued: <name>`, until SONG_POS shows it happened
 (the song is in that marker again from an earlier position, or FL stopped). Left screen: the current
 marker big. Right screen: tabs `<<` `>>` and `1–16 of n` under the grid. SHIFT + SCENE
@@ -1037,7 +1041,7 @@ is LIVE (below).
 
 NOT VERIFIED (docs/sysex.md): that `channels.isGridBitAssigned` tells piano roll channels from step
 channels (ARRANGER), the marker scan's assumptions (marker order, a marker at tick 0, pattern loop mode) and
-`OnUpdateBeatIndicator` timing for quantized jumps (SCENE).
+the timing of quantized jumps from the song position (SCENE, docs/bugs.md #15).
 
 ### LIVE (hold SHIFT + SCENE)
 
@@ -1070,6 +1074,7 @@ API gives no block count for an open-ended timeline).
 **Screens** (made to be read without looking at FL; `npm run pagepng` draws them as
 `out/ui-live-*.png`): both screens share one row per track, so the left screen's names label the
 right screen's rows.
+
 - Right: the clip matrix, column numbers (the scenes the pads fire: orange while one of its clips
   plays, mint while one is queued) over 8 track rows × 16 blocks in the clips' colors; a playing
   clip is solid with a light frame, a queued one framed in mint (flashing with the pads), an idle

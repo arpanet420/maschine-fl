@@ -347,8 +347,9 @@ export type FlCommand =
   /** Set FL's snap mode (`midi.Snap_*`). */
   | { type: "setSnap"; mode: number }
   | { type: "ui"; action: UiAction }
-  /** Go to marker `index` (0-based, time order): now, or at the next bar while playing (`quantized`). */
-  | { type: "jumpMarker"; index: number; quantized: boolean }
+  /** Go to marker `index` (0-based, time order): now, or at the next bar while playing (`quantized`); with
+   * `loop`, the song loop becomes that marker's section at the same moment (SCENE's LOOP). */
+  | { type: "jumpMarker"; index: number; quantized: boolean; loop: boolean }
   /** Loop mode: song (true) or pattern (false). */
   | { type: "setLoopMode"; song: boolean }
   /** Scan the markers again (ARRANGER or SCENE opened); FL answers with MARKERS. */
@@ -1154,7 +1155,7 @@ export function encodeCommand(command: FlCommand): number[] {
       w.u7(codeOf(UI_ACTIONS, command.action));
       break;
     case "jumpMarker":
-      w.u7(command.index).flag(command.quantized);
+      w.u7(command.index).flag(command.quantized).flag(command.loop);
       break;
     case "requestMarkers":
     case "closeAllWindows":
@@ -1297,7 +1298,7 @@ function readCommand(command: number, r: Reader): FlCommand | undefined {
     case TO_FL.ui:
       return { type: "ui", action: nameOf(UI_ACTIONS, r.u7()) };
     case TO_FL.jumpMarker:
-      return { type: "jumpMarker", index: r.u7(), quantized: r.flag() };
+      return { type: "jumpMarker", index: r.u7(), quantized: r.flag(), loop: r.flag() };
     case TO_FL.setLoopMode:
       return { type: "setLoopMode", song: r.flag() };
     case TO_FL.requestMarkers:

@@ -1,8 +1,10 @@
 // SCENE overlay (hold SCENE; display button 1 is its pin tab `SCENE`). Pads = the playlist's
 // markers, banks with display 7 and 8 `<<` `>>` (markerPage.ts); a press switches the way Maschine switches scenes: at the next bar while FL plays, at once while it
-// is stopped (JUMP_MARKER with `quantized`; the FL script keeps the jump pending until FL's bar
-// beat). Display 2 `NOW` toggles quantized and immediate (bright = immediate), saved with the page
-// stack's state.
+// is stopped (JUMP_MARKER with `quantized`; the FL script keeps the jump pending and lands it on the
+// bar line). Display 2 `NOW` toggles quantized and immediate (bright = immediate), display 3 `LOOP` makes a
+// press also loop the marker's section (bright = on, the default): the FL script sets the song loop to the
+// marker up to the next one (the last: to the song's end) at the moment it jumps, so a live set stays in a
+// song until the next scene is picked. Both are saved with the page stack's state.
 //
 // A queued jump shows its pad flashing (pressed variant against dim, and the grid cell outlined in
 // mint) until SONG_POS shows the jump happened: the song is in that marker again from an earlier
@@ -27,6 +29,7 @@ import { GRID_RECT, drawFooter } from "./padGrid.js";
 import { realTimers, songBeats, type RepeatTimers } from "./repeatScheduler.js";
 
 const NOW_BUTTON = 1;
+const LOOP_BUTTON = 2;
 /** A queued pad flashes at this rate. */
 const FLASH_MS = 250;
 
@@ -45,6 +48,8 @@ export class SceneOverlay extends MarkerPadsPage {
   readonly name = "scene";
   /** NOW: jump at once instead of at the next bar. */
   immediate = false;
+  /** LOOP: a press loops the marker's section too. */
+  loop = true;
   private queuedJump: Queued | undefined;
   private flashOn = true;
   private flashTimer: unknown;
@@ -57,10 +62,11 @@ export class SceneOverlay extends MarkerPadsPage {
   }
 
   readonly persisted = {
-    save: () => ({ immediate: this.immediate }),
+    save: () => ({ immediate: this.immediate, loop: this.loop }),
     load: (data: unknown) => {
-      const saved = data as { immediate?: unknown } | null;
+      const saved = data as { immediate?: unknown; loop?: unknown } | null;
       if (typeof saved?.immediate === "boolean") this.immediate = saved.immediate;
+      if (typeof saved?.loop === "boolean") this.loop = saved.loop;
     },
   };
 
@@ -89,7 +95,7 @@ export class SceneOverlay extends MarkerPadsPage {
     const { fl } = mc;
     // Stopped: now. Playing: at the next bar, unless NOW is on.
     const quantized = fl.transport.playing && !this.immediate;
-    this.jump(index, quantized, mc);
+    this.jump(index, quantized, mc, this.loop);
     if (quantized) {
       this.queuedJump = {
         index,
@@ -105,8 +111,9 @@ export class SceneOverlay extends MarkerPadsPage {
   }
 
   protected displayPressed(display: number, mc: ModeContext): void {
-    if (display !== NOW_BUTTON) return;
-    this.immediate = !this.immediate;
+    if (display === NOW_BUTTON) this.immediate = !this.immediate;
+    else if (display === LOOP_BUTTON) this.loop = !this.loop;
+    else return;
     mc.saveState?.();
     mc.requestRender();
   }
@@ -178,8 +185,12 @@ export class SceneOverlay extends MarkerPadsPage {
       ctx,
       { ...FULL, height: TAB_HEIGHT },
       {
-        tabs: ["SCENE", "NOW"],
-        active: [...(mc.pinned ? [0] : []), ...(this.immediate ? [NOW_BUTTON] : [])],
+        tabs: ["SCENE", "NOW", "LOOP"],
+        active: [
+          ...(mc.pinned ? [0] : []),
+          ...(this.immediate ? [NOW_BUTTON] : []),
+          ...(this.loop ? [LOOP_BUTTON] : []),
+        ],
       },
     );
     const x = 24;
@@ -225,5 +236,6 @@ export class SceneOverlay extends MarkerPadsPage {
   protected displayLeds(leds: LedState, mc: ModeContext): void {
     leds.setLight("display1", mc.pinned ? "bright" : "dim");
     leds.setLight("display2", this.immediate ? "bright" : "dim");
+    leds.setLight("display3", this.loop ? "bright" : "dim");
   }
 }
