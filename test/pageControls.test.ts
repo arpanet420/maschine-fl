@@ -134,10 +134,20 @@ describe("MUTE and SOLO with MIXER as the main page", () => {
         h.press(what);
         expect(h.stack.top).toBeUndefined(); // the Mixer stays on the screens
         h.pad(5);
-        expect(h.sent.at(-1)).toEqual({ type: "setChannel", index: 5, what, value: 1 });
+        // MUTE toggles the pad's channel; SOLO clears the solo of channel 7 while one is on
+        expect(h.sent.at(-1)).toEqual(
+          what === "mute"
+            ? { type: "setChannel", index: 5, what, value: 1 }
+            : { type: "setChannel", index: 6, what, value: 0 },
+        );
         h.pad(5, "up");
         h.pad(6);
-        expect(h.sent.at(-1)).toEqual({ type: "setChannel", index: 6, what, value: 0 });
+        expect(h.sent.at(-1)).toEqual({
+          type: "setChannel",
+          index: 6,
+          what,
+          value: what === "mute" ? 0 : 1,
+        });
         h.pad(6, "up");
         expect(h.midi).toEqual([]);
         h.release(what);

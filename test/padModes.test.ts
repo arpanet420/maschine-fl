@@ -897,16 +897,53 @@ describe("SELECT overlay", () => {
 });
 
 describe("SOLO overlay", () => {
-  it("a pad toggles the solo of that channel from FL's solo flag", () => {
-    const { press, pad, sent } = harness({ soloed: [3] });
+  it("with no channel soloed a pad solos its channel", () => {
+    const { press, pad, sent } = harness();
     press("solo");
     pad(0);
-    pad(3);
-    pad(3, "up");
+    pad(0, "up");
+    expect(sent).toEqual([{ type: "setChannel", index: 0, what: "solo", value: 1 }]);
+  });
+
+  it("while a channel is soloed any pad clears the solo instead of moving it", () => {
+    for (const pressed of [0, 3]) {
+      const { press, pad, sent } = harness({ soloed: [3] });
+      press("solo");
+      pad(pressed);
+      expect(sent).toEqual([{ type: "setChannel", index: 3, what: "solo", value: 0 }]);
+    }
+  });
+
+  it("clears every soloed channel FL reports", () => {
+    const { press, pad, sent } = harness({ soloed: [1, 5] });
+    press("solo");
+    pad(9);
+    expect(sent).toEqual([
+      { type: "setChannel", index: 1, what: "solo", value: 0 },
+      { type: "setChannel", index: 5, what: "solo", value: 0 },
+    ]);
+  });
+
+  it("a quick second press undoes the first before FL answers", () => {
+    const { press, pad, sent } = harness();
+    press("solo");
+    pad(0);
+    pad(0, "up");
+    pad(6);
+    pad(6, "up");
+    pad(6);
     expect(sent).toEqual([
       { type: "setChannel", index: 0, what: "solo", value: 1 },
-      { type: "setChannel", index: 3, what: "solo", value: 0 },
+      { type: "setChannel", index: 0, what: "solo", value: 0 },
+      { type: "setChannel", index: 6, what: "solo", value: 1 },
     ]);
+  });
+
+  it("lights the pad it soloed before FL answers", () => {
+    const { press, pad, ledState } = harness();
+    press("solo");
+    pad(1);
+    expect(ledState().padLeds[padByte(1)]).toBe(flColorToPalette(BLUE, "bright"));
   });
 
   it("works on the bank of the selected channel", () => {

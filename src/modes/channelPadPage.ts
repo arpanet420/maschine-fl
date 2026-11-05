@@ -139,7 +139,7 @@ export abstract class ChannelPadPage implements Mode {
     const cells: Array<PadCell | undefined> = [];
     for (let pad = 0; pad < PAD_COUNT; pad++) {
       const channel = this.channelAt(pad, mc.fl);
-      cells.push(channel && this.cell(channel));
+      cells.push(channel && this.cell(channel, mc.fl));
     }
     drawPadGrid(right, GRID_RECT, cells);
     drawFooter(right, this.windowText(mc.fl));
@@ -151,7 +151,8 @@ export abstract class ChannelPadPage implements Mode {
   protected rightTabs?(mc: ModeContext): readonly string[];
 
   /** The grid cell of a channel. */
-  protected cell(channel: PadChannel): PadCell {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- `fl` is for subclasses
+  protected cell(channel: PadChannel, fl: FlState): PadCell {
     const { entry, index } = channel;
     return {
       number: index + 1,
@@ -163,7 +164,8 @@ export abstract class ChannelPadPage implements Mode {
   }
 
   /** How bright the pad over a channel is lit: the selected channel's bright, the rest dim. */
-  protected padLevel(channel: PadChannel): "dim" | "bright" {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- `fl` is for subclasses
+  protected padLevel(channel: PadChannel, fl: FlState): "dim" | "bright" {
     return channel.selected ? "bright" : "dim";
   }
 
@@ -179,7 +181,7 @@ export abstract class ChannelPadPage implements Mode {
       const channel = this.channelAt(pad, mc.fl);
       leds.setPad(
         pad,
-        channel ? flColorToPalette(channel.entry.color, this.padLevel(channel)) : LED_OFF,
+        channel ? flColorToPalette(channel.entry.color, this.padLevel(channel, mc.fl)) : LED_OFF,
       );
     }
   }

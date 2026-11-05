@@ -264,9 +264,13 @@ bright while open; the PAD MODE / KEYBOARD radio pair stays lit as it is.
 
 ## Solo overlay (hold SOLO)
 
-- Pads 1–16 are the 16 channels of the current bank; a pad press toggles that channel's solo
-  (SET_CHANNEL solo, from FL's own solo flag in CHANNELS). Soloed channels are bright on the pads
-  and outlined in red with an `S` on the grid, the others dim. GROUP A–H pick the bank.
+- Pads 1–16 are the 16 channels of the current bank. With no channel soloed, a pad press solos its
+  channel (SET_CHANNEL solo, from FL's own solo flag in CHANNELS); while one is, **any pad press clears
+  the solo** so every channel plays again, instead of moving it to the pad's channel (the owner's wish,
+  2026-11-05). Only the bank's channels are known: a solo outside it moves to the pad's channel, as in
+  FL. A press counts for 300 ms (PENDING_MS), so a quick second press undoes it before FL answers.
+  Soloed channels are bright on the pads and outlined in red with an `S` on the grid, the others dim.
+  GROUP A–H pick the bank.
 - Left screen: pin tab `SOLO`, the window text and the number of soloed channels.
 - On MIXER, SOLO opens no page: the Mixer claims it and solos mixer tracks. SOLO + pad still solos the channel.
 
