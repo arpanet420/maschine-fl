@@ -126,7 +126,7 @@ docstrings; probably "Image-Line MCP", FL's AI/assistant hooks) and the piano ro
   (SET_PATTERN_COLOR); its PROBE line shows the colour byte order FL read back.
 - A function missing in another FL version is reported once in FEATURES; mk3d then shows `Not
   available in this FL version` and sends nothing (the script never calls what `getattr` does not find).
-- Still unused: `clearPattern`, `duplicatePatternData`, `movePattern`, swing, time signature, FX slot mix.
+- Still unused: `clearPattern`, `movePattern`, swing, time signature, FX slot mix.
 
 ## Plugin loader trial (2026-10-19, NOT VERIFIED)
 

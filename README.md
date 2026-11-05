@@ -203,6 +203,7 @@ Much of the work was finding out how things behave, and it is written down in ca
 | [sysex.md](docs/sysex.md)       | The SysEx protocol between mk3d and the FL script, with shared test vectors              |
 | [nks.md](docs/nks.md)           | How NKS pages, preset names and logos are found in installed files (read-only)           |
 | [fl-ilmcp.md](docs/fl-ilmcp.md) | FL Studio 2026's undocumented scripting functions: what exists and what works            |
+| [fl-api-notes.md](docs/fl-api-notes.md) | What the FL script assumes about FL's API, and what has been seen in FL            |
 | [design.md](docs/design.md)     | How FL draws its mixer and controls, and how the screens copy the look                   |
 
 The protocol facts come from observing the author's own unit with the diagnostic tools in `src/tools/`, from reading

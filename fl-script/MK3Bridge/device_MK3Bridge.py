@@ -15,245 +15,8 @@
 # built-in modules imported below, so fl-script/tests/test_bridge.py loads this file with fake
 # modules. Keep this a single file: FL loads it through a symlink from its Hardware folder.
 #
-# FL API notes. Verified = checked against the IL-Group FL-Studio-API-Stubs clone in
-# reference/FL-Studio-API-Stubs (names, argument order, defaults, "Included since API version")
-# and FL's own midi.py. NOT VERIFIED = needs a live FL Studio test:
-#   - mixer.getCurrentTempo(): seen in FL 26.1.5, getCurrentTempo(True) gives whole BPM (140),
-#     not BPM x 1000. We read the float version and scale down anything above 1000 to be safe.
-#   - SONG_POS comes from transport.getSongPos(SONGLENGTH_ABSTICKS) and general.getRecPPQ() alone;
-#     FL's B:S:T bases do not matter.
-#   - patterns.getPatternLength is documented as "length in beats", but FL 26.1.5 returned 64 for
-#     a 4-bar pattern: it is steps (STEPS_PER_UNIT = 1).
-#   - plugins.getParamName for every index 0..getParamCount-1 (4240 for a VST, most unnamed at the end)
-#     is read in slices of PARAM_SCAN_PER_PASS per OnIdle for PARAM_NAMES; how long a slice takes in
-#     FL is NOT VERIFIED (lower the constant if OnIdle stutters).
-#   - Touch strip (STRIP): all NOT VERIFIED in a live FL. channels.setChannelPitch on a VST channel
-#     (FL does not apply raw pitch bend from this port, so the strip sets the channel pitch instead);
-#     that parameter 4096 + 1 of a VST (FL's wrapper: 4096-4223 = MIDI CC 0-127) is the mod wheel;
-#     and the PERFORM cutoff name match (a name with "cutoff", or "freq" with "vcf"/"filter"/"flt",
-#     e.g. Diva's "VCF1: Frequency"; the choice is logged as a PROBE line).
-#   - FL colors are 0x--RRGGBB, which is what the wire carries, so nothing is swapped (`fl_color`; the
-#     stubs say 0x--BBGGRR, checkpoint 5 and FL's own utils.ColorToRGB say otherwise).
-#   - channels.selectedChannel(True) returns -1 when nothing is selected (documented).
-#   - muteChannel/muteTrack/soloTrack/armTrack are documented as toggles (the first three have
-#     an optional value argument whose behaviour is not described well), so "set to value" is
-#     done by comparing with the current state and toggling only when needed.
-#   - general.undoUp() = undo, general.undoDown() = redo (documented as "like undo"/"like redo",
-#     with a note that FL 21 and later may have flipped the visual order: undoUp could then move
-#     "down" in the history list, i.e. redo). mk3d's UNDO_STATE (below) and the SHIFT + pad read-out
-#     show what really happened; if the two are swapped in FL, swap them in run_ui.
-#   - ui.up/down/left/right() are called without arguments (the value argument is undocumented).
-#   - The event.sysex of OnSysEx includes the F0 ... F7 framing (as the v1 script assumed).
-#   - Channel detail (CHANNEL_DETAIL). Verified in the stubs/midi.py: names, argument order and
-#     modes of channels.getChannelPitch(index, mode) (0 = factor of range, 2 = range in semitones),
-#     setChannelPitch(index, value, mode=0), getChannelType, getTargetFxTrack, setTargetFxTrack
-#     (channelIndex, mixerIndex), getRecEventId, isChannelSolo, soloChannel (toggle) and
-#     showEditor(index, value=-1) (toggle); midi.REC_Chan_FCut/FRes, REC_GetValue, REC_MIDIController
-#     and FromMIDI_Max (2^30) exist in FL 2026's midi.py. All channel indexes are group-local
-#     (useGlobalIndex stays False), like the rest of the script. NOT VERIFIED (live FL needed):
-#       * the value range general.processRECEvent(id, 0, REC_GetValue) returns for the filter knobs.
-#         We assume 0..FromMIDI_Max (REC_VALUE_MAX), the same scale REC_MIDIController writes use;
-#         if FL answers in the control's own range the cutoff/resonance readings will be too big.
-#       * writing the filter knobs with REC_MIDIController and round(value * REC_VALUE_MAX).
-#       * getChannelPitch(index, 2) (stubs: "not guaranteed to be correct") and that pitch is
-#         clamped to -1...1 by us (FL may report more when automated).
-#       * soloChannel's effect on other channels (FL may un-solo them) and that isChannelSolo
-#         reflects it right away, which the "set to value" compare relies on.
-#       * showEditor toggles (no value is passed), so a repeated command closes the window.
-#       * "editor follows selection" (SELECT_CHANNEL while a generator editor is focused):
-#         - ui.getFocused(midi.widPluginGenerator) and ui.getFocusedFormID() (= channel rack index
-#           for a generator window) behaving as the stubs say, and OnRefresh really delivering
-#           midi.HW_Dirty_FocusedWindow when the focus moves.
-#         - channels.showEditor(i, 1) on a window that is already open (should be a no-op) and
-#           showEditor(i, 0) closing it (API v3+).
-#         - channels.focusEditor(i) bringing that window to the front.
-#         - follow_opened/seen_open only learn from focus changes and mk3d's SHOW_EDITOR, so a window
-#           the user closes with the mouse stays in the set (stale entry): a later follow may then
-#           skip closing it, or close a window that was opened by hand after all. Accepted.
-#   - Pattern commands (CLONE_PATTERN, NEW_PATTERN) and CLEAR_STEPS. Verified in the stubs:
-#     patterns.clonePattern(index=None) (API v25: clones the pattern at `index`, default the selected
-#     one, and closes the piano roll), patterns.findFirstNextEmptyPat(flags, x=-1, y=-1) with
-#     midi.FFNEP_DontPromptName, channels.setGridBit(index, position, value). NOT VERIFIED:
-#       * that clonePattern takes the 1-based pattern number the other patterns.* functions use (the
-#         stub only says "index of pattern");
-#       * that FL selects the clone itself. If the selected pattern did not change and the pattern
-#         count grew, the script jumps to number + 1 (assuming FL inserts the clone after its source);
-#       * that findFirstNextEmptyPat(FFNEP_DontPromptName) creates and selects a new empty pattern
-#         when every pattern has content, without asking for a name;
-#       * that patterns.patternCount counts a fresh empty pattern (see "may count only patterns that
-#         have content" in docs/sysex.md), which the clone fallback above relies on;
-#       * CLEAR_STEPS: one setGridBit(channel, i, False) per step of getPatternLength(current) in one
-#         callback (patterns are at most a few hundred steps); how long that takes in FL.
-#   - PAD MODE notes (OnNoteOn/OnNoteOff on MIDI channel 2, see CHANNEL_NOTE_CHANNEL). Verified in
-#     the stubs: channels.midiNoteOn(indexGlobal, note, velocity, channel=-1) (velocity 0 = note
-#     off) and channels.getChannelIndex(index) (group index -> global index). Verified live in
-#     FL 2026 by the owner (2026-10-19): OnNoteOn is called for notes on MIDI channel 2 from this
-#     port, channels.midiNoteOn with the converted index plays the right channel, and root note 60
-#     (CHANNEL_NOTE_ROOT) sounds right.
-#   - CHANNELS flag 4 (solo) from channels.isChannelSolo(i); see also the soloChannel notes above.
-#   - Quick edit, SHIFT + pads, NAVIGATE and GRID (SET_TEMPO, SET_SWING, SHOW_WINDOW, SET_SNAP, the
-#     new UI actions, TRANSPORT swing and UI_STATE). Every call is wrapped in try/except. Names,
-#     argument order and flags are verified in the stubs (ui.getVisible/getFocused/showWindow/
-#     hideWindow/setFocused/getSnapMode/setSnapMode/cut/copy/paste, channels.quickQuantize(index,
-#     startOnly=1), midi.REC_Tempo/REC_MainShuffle/REC_UpdateValue/REC_UpdateControl). NOT VERIFIED
-#     (live FL needed):
-#       * SET_TEMPO: processRECEvent(REC_Tempo, round(bpm * 1000), REC_UpdateValue | REC_UpdateControl)
-#         changes the tempo and updates FL's tempo display (the stub's own example uses
-#         REC_Control | REC_UpdateControl instead);
-#       * swing: REC_MainShuffle is read with device.getLinkedValue like the filter knobs
-#         (processRECEvent(REC_GetValue) read 0 for those in FL 26.1.5) and written with
-#         REC_MIDIController | REC_UpdateControl on the 0..FromMIDI_Max scale, so we assume FL
-#         maps that onto the whole 0...100 % range of the main swing knob;
-#       * snap values: GRID sends the numbers of midi.__snap_modes. The stub lists Bar, Events and
-#         Markers (14, 16, 17) with the same numbers as 1/6, 1/3 and 1/2 bar; mk3d uses 14/16/17
-#         for Bar/Events/Markers. ui.setSnapMode(value) works through ui.snapMode(delta) in the
-#         stub and may skip the "disabled" step around 2;
-#       * quickQuantize's startOnly: 0 quantizes the whole note, 1 only its start (the stub says
-#         "???", default 1); QUANTIZE sends 0 and QUANTIZE STARTS 1. Without a piano roll open FL
-#         may do nothing or act on the channel's current pattern;
-#       * cut/copy/paste no longer use ui.cut/copy/paste (they act on whatever window has the focus);
-#         see "Undo, UNDO_STATE and the step clipboard" below;
-#       * UI_STATE: ui.getFocused(5) is true when a plugin window has the focus (midi.widPlugin is
-#         only listed for ui.getFocused in the stub); the windows 0..4 are tried first.
-#       * main volume: REC_MainVol is read with device.getLinkedValue and written with
-#         REC_MIDIController | REC_UpdateControl on the 0..FromMIDI_Max scale, exactly like the swing
-#         (processRECEvent(REC_GetValue) may read 0), and that this is the "main volume" knob FL shows
-#         in the toolbar and not the Master mixer fader. A failing read leaves mainVolume out of
-#         TRANSPORT (mk3d then shows no value) instead of reporting 0.
-#       * "restart" (CC 108) is stop() then start(): that start() begins playback from the
-#         position stop() leaves, which FL normally resets to the start; not seen live.
-
-# BROWSER presets (PRESETS, PRESET_STEP, the VIEW presets flag) and FILE (UI saveNew). Verified in the
-# stubs: plugins.getPresetCount(index, slotIndex=-1), plugins.nextPreset/prevPreset(index, slotIndex=-1),
-# plugins.getName(index, slotIndex=-1, flag=FPN_Param, paramIndex=0) with midi.FPN_Patch (3, "name of the
-# patch defined by plugin?") and midi.FPN_Preset (6, "for plugins that support internal presets, the name
-# of the preset at paramIndex"), and midi.FPT_Save (92) / FPT_SaveNew (93) for transport.globalTransport.
-# PRESETS is only read while VIEW has the presets flag (the BROWSER page is shown). NOT VERIFIED (live FL
-# needed):
-#   * how FPN_Patch, FPN_Preset and getPresetCount behave for VST, VST3 and FL's own plugins: whether the
-#     count is 0 for plugins without programs, whether the patch name equals one of the preset names, and
-#     whether next/prevPreset wrap around at the ends (the script assumes they do when it guesses the
-#     index after a step);
-#   * how long reading the names of a bank takes: a bank of up to PRESET_SCAN_LIMIT (1024) presets is read
-#     whole, once, in one callback (cached until the channel, plugin or count changes), and only the patch
-#     name is read on later passes; for bigger banks the names are read only around the index the script
-#     last knew (it starts at 0 and follows PRESET_STEP);
-#   * that FL changes the patch name right after nextPreset/prevPreset; the script keeps its own index
-#     PRESET_SETTLE_SECONDS after a step or load (the re-read after that checks it against FL);
-#   * (hardware finding, Diva in mk3d's log) for a VST FPN_Patch does not match the preset names, but FL
-#     names the channel after the VST's current program: channels.getChannelName(index) == the preset's
-#     name. The current preset is therefore the one named like FPN_Patch, else like the channel, else the
-#     last guess; a step from an unknown index is followed by a fresh read instead of a guess;
-#   * PRESET_WINDOW / PRESET_LOAD (BROWSER's cursor and push): PRESET_LOAD steps next/prevPreset the short
-#     way round from the current index, PRESET_STEPS_PER_PASS calls per service pass; whether FL
-#     processes that many VST program changes in one callback without stalling is not verified;
-#   * midi.FPT_SaveNew (UI saveNew) saves a new version of the project file ("save new version").
-
-# TRANSPOSE (66, SHIFT + pads 13-16). One undo point ("MK3: transpose", UF_PR): every step that is on
-# (getGridBit) of the channel gets getCurrentStepParam(channel, step, pPitch) + semitones written back
-# with setStepParameterByIndex(channel, pattern, step, pPitch, value), clamped to 0...127. setGridBit is
-# never called (it inserts notes on piano roll channels). KNOWN BUG (owner, 2026-10-19): FL reports
-# piano roll notes as grid bits too, so on a piano roll channel this moves one note per step position
-# and can split chords. The API has no way to select or move piano roll notes; the piano roll's arrow
-# keys only scroll when nothing is selected (tried in f52c0b8, reverted). Left as is for now.
-# Undo, UNDO_STATE and the step clipboard (all NOT VERIFIED, live FL needed). Verified in the stubs:
-# general.saveUndo(undoName, flags, update=True), undoUp, undoDown, getUndoHistoryPos,
-# getUndoHistoryCount, getUndoHistoryLast, getUndoLevelHint and midi.UF_* (UF_PR "piano roll,
-# includes modifications to patterns"; UF_SS is the same value; UF_None "???"):
-#   * every step edit of a batch (CLEAR_STEPS, paste, cut) calls general.saveUndo("MK3: <what>",
-#     UF_PR) ONCE before the first setGridBit, so FL gets one undo entry instead of one per step.
-#     Whether FL wants the point saved before or after the change is not known: if undo then
-#     seems to lose the edit one entry late, move the call behind the loop in Bridge.batch;
-#   * while a batch runs, service() reads nothing (FL may call OnRefresh/OnIdle from inside
-#     saveUndo/setGridBit): the grid, the undo state and everything else are marked dirty after the
-#     loop and go out once, never half done;
-#   * UNDO_STATE sends position = getUndoHistoryPos(), count = getUndoHistoryCount() and the text
-#     of getUndoLevelHint(). The stub says Pos "seems to behave the same as Count" and that
-#     getUndoHistoryLast() is the current position (0 = newest), while the hint is built from
-#     Last + 1 and Count: mk3d logs and shows all three so the owner can see which is which;
-#   * the step clipboard: copy (UI 10) stores the selected channel's getGridBit for every step of
-#     the current pattern (getPatternLength) in the script; paste (11) writes it back into the
-#     selected channel of the current pattern, up to the shorter of the two lengths, as one batch;
-#     cut (9) is copy + clear as one batch. The clipboard lives until the script is reloaded.
-
-# ARRANGER and SCENE: playlist markers (MARKERS, JUMP_MARKER, SET_LOOP_MODE, REQUEST_MARKERS, TRANSPORT's
-# song-mode flag). FL has no scenes; a marker stands for one.
-# Verified in the stubs: arrangement.jumpToMarker(delta, select), getMarkerName(index) (absolute index),
-# transport.getSongPos/setSongPos(position, mode) with midi.SONGLENGTH_ABSTICKS (2), getLoopMode() (0 pattern,
-# 1 song) and setLoopMode() (a toggle, no argument), general.getRecPPQ() and the OnUpdateBeatIndicator(value)
-# callback (1 = bar, 2 = beat, 0 = off). The API has no marker count
-# and no marker time, so the list is built by SCANNING, and only while FL is stopped (a jump while playing
-# is audible): remember the position, setSongPos(0), jumpToMarker(1, False) + getSongPos(ABSTICKS) until the
-# position stops increasing (at most MAX_MARKERS = 127, `total` is a u7), name i = getMarkerName(i), then
-# restore the position. NOT VERIFIED (live FL needed), and what the script assumes:
-#   * marker kinds: every marker counts, whatever its kind (time, section, ...);
-#   * index order = time order: getMarkerName(i) is the name of the i-th marker by time, and
-#     jumpToMarker(1) goes to the next marker by time and stays where it is (or wraps to an earlier
-#     tick) after the last one, which ends the scan either way;
-#   * a jump at position 0: jumpToMarker(1, False) from tick 0 skips a marker AT tick 0, so the script first
-#     tries jumpToMarker(0, False) at position 0. If that moves the position past 0 it is taken as the first
-#     marker ahead; if it stays at 0, a marker at tick 0 is assumed to exist only when getMarkerName(n) for
-#     the n markers found afterwards is not empty (that index would otherwise be one past the end). A marker
-#     whose name is empty at tick 0 is therefore missed;
-#   * the scan in pattern loop mode: getSongPos/setSongPos then address the pattern and the markers are
-#     probably not reached; mk3d shows whatever comes back;
-#   * setSongPos(ticks, SONGLENGTH_ABSTICKS) moves the position (also while playing) and ticks are the
-#     same absolute ticks the markers use (PPQ ticks per quarter note, sent in MARKERS);
-#   * JUMP_MARKER with `quantized` while playing is kept pending and run when OnUpdateBeatIndicator says
-#     "bar" (1); while stopped it runs at once, also a pending one when FL stops. A bar beat that arrives
-#     late makes the jump late by a callback;
-#   * SET_LOOP_MODE: setLoopMode() toggles, so it is only called when getLoopMode() differs.
-# MARKERS goes out as chunks of at most 8, one chunk per service pass (never the whole list in one call).
-# A scan is wanted on REQUEST_STATE, REQUEST_MARKERS and on project load; while FL plays
-# the cached list is answered instead and the scan runs when FL stops.
-#
-# Marker names and times (the redo after the owner's hardware test): the probe showed that
-# getMarkerName(i) lists the markers reliably (0-based) while the jump scan gave unstable positions (a
-# marker alternately at 0 and at 1158). So the COUNT and the NAMES now come from getMarkerName(i) until it
-# is empty (at most MAX_MARKERS; NOT VERIFIED: an unnamed marker would end the list early) and the scan is
-# only used for the TIMES. When the scan found a different number of times than there are names, they
-# cannot be matched up: the names are kept and every time is sent as unknown (MARKERS `ticks` =
-# MARKER_TICKS_UNKNOWN = 0x1FFFFF, JSON null in the test vectors) instead of guessing, so a marker is
-# never invented at tick 0. A marker AT tick 0 makes the scan find one time too few, so such a project
-# has unknown times (names and the jump scan's probe at tick 0 can tell, but it no longer guesses). A
-# marker with an unknown time cannot be jumped to (JUMP_MARKER does nothing for it).
-#
-# ARRANGER is the pattern overview (PATTERN_GRID 1B, VIEW flag 4 `patternGrid`): while the flag is set the
-# script reads the current pattern's steps (`channels.getGridBit(channel, step)`) for the 16 channels of the
-# VIEW's channel bank (channelOffset), the whole pattern up to MAX_PATTERN_STEPS = 256 steps, in chunks of
-# 16 steps, and sends a chunk when it changed (the usual per-key cache: `PATTERN_GRID@channel@start`). The
-# reading is paced like the parameter scan: at most PATTERN_GRID_CHUNKS_PER_PASS chunks per service pass
-# (64 getGridBit calls and at most that many frames), the chunks of VIEW's step page first, so a full
-# 16 x 256 re-read is spread over many passes and never comes out as a burst. A new scan starts when the
-# last one is done (the 100 ms re-read just keeps it going) or restarts, visible page first, on a grid
-# change (SET_STEP, a batch edit, OnRefresh/OnDirtyChannel flags that mark "grid") or a moved VIEW window.
-# A pattern change (patterns.patternNumber) forgets the sent chunks, so every chunk of the new pattern is
-# sent again after PATTERN (mk3d clears its steps when PATTERN's number changes); so does the flag going on.
-# The channel is the same index CHANNELS and SELECTED_CHANNEL use (a `u7`: channels from 128 up get no
-# row). The flags byte has bit 0 = the channel uses the step sequencer: channels.isGridBitAssigned(channel)
-# (the stub says only "whether the grid bit is assigned"). NOT VERIFIED: that it tells a piano roll channel
-# from a step channel. When the function is missing, raises, or returns True, the flag is 1 (mk3d then shows
-# nothing special), so a wrong guess never hides steps.
-#
-# SET_PATTERN_LENGTH, SET_PATTERN_COLOR, SET_LOOP, REQUEST_LOOP, LOOP_STATE and FEATURES (PATTERN overlay knobs,
-# the song loop). patterns.setPatternLength(pattern, length) and arrangement.selectionSet(start, end) /
-# selectionClear() / selectionIsActive() are HIDDEN functions (docs/fl-ilmcp.md: found in FL 2026's
-# engine; the getters answered in the owner's probe, the setters are untried), patterns.setPatternColor
-# is in the stubs. Every call goes through getattr + try/except; a missing function is reported once in
-# FEATURES (mk3d shows "Not available in this FL version") and nothing is called. NOT VERIFIED (live FL):
-#   * setPatternLength's unit: assumed the one getPatternLength returns (steps in FL 26.1.5, see
-#     STEPS_PER_UNIT), the pattern 1-based like the other patterns.* calls;
-#   * selectionSet's unit: assumed absolute ticks (the unit of MARKERS), selectionStart/End read back
-#     the same way; selectionClear() for start = end = 0;
-#   * setPatternColor's byte order (the script passes the wire's 0xRRGGBB through unchanged, as it does
-#     for the colors it reads).
-# A setter that fails sends one PROBE frame (`setPatternLength(3, 32) -> error: boom`), which mk3d logs as
-# `<- FL probe: ...`. LOOP_STATE is read on every service pass (three cheap getters, like the snap mode) and
-# sent when it changed, on REQUEST_LOOP and after SET_LOOP.
-#
-# PLUGIN_PICKER and UI_KEY: FL's script API has no "add plugin" call, so the BROWSER page's PLUG-INS opens FL's
-# Plugin picker (the toolbar's plug button, transport.globalTransport(FPT_F8), docs/fl-ilmcp.md) and sends plain
-# keys (ui.up/down/...) to it.
+# What this script assumes about FL's API, and how much of that has been seen in FL, is in
+# docs/fl-api-notes.md.
 
 import contextlib
 import math
@@ -441,7 +204,7 @@ STEP_PARAM_TICKS = 7
 TEMPO_SCALE = 1000.0  # applied only when getCurrentTempo() reports more than 1000 (BPM x 1000)
 STEPS_PER_UNIT = 1  # getPatternLength is already in steps (verified in FL 26.1.5)
 
-# Filter knobs are read and written as REC events on this 0..REC_VALUE_MAX scale (see header).
+# Filter knobs are read and written as REC events on this 0..REC_VALUE_MAX scale (docs/fl-api-notes.md).
 REC_VALUE_MAX = getattr(midi, "FromMIDI_Max", 1 << 30)
 
 # Song positions and marker times are absolute ticks.
@@ -1465,7 +1228,7 @@ class Bridge(object):
         return _attr(0, transport, "getLoopMode")
 
     def read_swing(self):
-        """The main swing as 0...1 (see the NOT VERIFIED notes in the header)."""
+        """The main swing as 0...1 (docs/fl-api-notes.md)."""
         return self.read_rec_norm(midi.REC_MainShuffle)
 
     def read_main_volume(self):
@@ -1477,7 +1240,7 @@ class Bridge(object):
         return _clamp01(float(raw))
 
     def read_undo_state(self):
-        """FL's undo history: position, count and FL's own hint text (see the header)."""
+        """FL's undo history: position, count and FL's own hint text (docs/fl-api-notes.md)."""
         self.submit(
             "UNDO_STATE",
             {
@@ -1626,7 +1389,7 @@ class Bridge(object):
     def read_presets(self):
         """PRESETS for the selected channel's plugin: the count, the current preset and up to 8 names
         (around the current preset, or at the offset mk3d asked for with PRESET_WINDOW). Only while
-        VIEW asks (the BROWSER page is shown). NOT VERIFIED (header)."""
+        VIEW asks (the BROWSER page is shown). docs/fl-api-notes.md has what is open."""
         if not self.view.presets:
             return
         index = self.selected_channel_index()
@@ -2391,7 +2154,7 @@ class Bridge(object):
 
     def scan_markers(self):
         """Build the marker list by jumping through it (FL must be stopped), then restore the position
-        and queue the list for sending. See the header for what is assumed."""
+        and queue the list for sending. docs/fl-api-notes.md has what is assumed."""
         names = self.marker_names()
         found = []
         if names:  # no names, no markers: nothing to jump through

@@ -32,6 +32,4 @@ Read CLAUDE.md, then PLAN.md (the master plan with checkpoint results), then thi
 
 ## Unverified FL behaviour to watch
 
-Listed at the top of `fl-script/MK3Bridge/device_MK3Bridge.py` (some of that header has been confirmed since, see
-PLAN.md), in [sysex.md](sysex.md) under "To confirm in FL" and in the README's "Built, not yet confirmed on the
-hardware".
+Listed in [fl-api-notes.md](fl-api-notes.md) and in the README's "Built, not yet confirmed on the hardware".

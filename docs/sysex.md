@@ -163,7 +163,7 @@ marker time. The **count and the names** come from `getMarkerName(i)` until it i
 **only while FL is stopped** (a jump while playing is audible): it remembers the song position, sets it to
 0, then repeats `jumpToMarker(1, False)` + `getSongPos(SONGLENGTH_ABSTICKS)` until the position stops
 increasing, and puts the position back (a project without names is not scanned). A marker at tick 0 is
-probed with `jumpToMarker(0, False)` first (see the NOT VERIFIED header of the script). When the scan
+probed with `jumpToMarker(0, False)` first (see [fl-api-notes.md](fl-api-notes.md)). When the scan
 found a different number of times than there are names the two cannot be matched up, so the names are kept
 and **every time is sent as unknown** (`ticks` 0x1FFFFF) instead of guessing; no marker is invented at
 tick 0. A marker AT tick 0 makes the scan one short, so such a project has unknown times (known limit; the
@@ -288,70 +288,6 @@ byte, which older receivers ignore.
 
 Version 1 sent TRANSPORT with flags only. mk3d reads tempo as 0 when it is missing.
 
-## To confirm in FL (Checkpoint 5)
+## What is still to confirm in FL
 
-Constants at the top of the script, taken from the API stubs but not yet seen in FL:
-
-- ~~`TEMPO_SCALE`~~ Seen: `getCurrentTempo(True)` gives whole BPM; the script reads the float.
-- ~~`SONGPOS_BAR_BASE` / `SONGPOS_STEP_BASE`~~ Gone 2026-11-04. On the MK3, NOTE REPEAT 1/8 always
-  waited and landed on the off-beat while 1/16 looked right: a position a sixteenth off does exactly
-  that. SONG_POS now comes from one read of `getSongPos(SONGLENGTH_ABSTICKS)` and `getRecPPQ()`, so no
-  base matters and the read cannot tear.
-- ~~`STEPS_PER_BEAT`~~ Seen: `getPatternLength` gave 64 for a 4-bar pattern, so it is steps.
-- Colors: FL's own `utils.ColorToRGB` reads colors as `0x--RRGGBB`, the stubs say `0x--BBGGRR`.
-  The script sends them unchanged.
-- `patterns.patternCount` may count only patterns that have content.
-- `general.undoUp` = undo, `undoDown` = redo (FL 21 and later may have flipped the visual order; the
-  SHIFT + pad read-out and UNDO_STATE show what happened, swap them in `run_ui` if they are reversed).
-- UNDO_STATE: what `getUndoHistoryPos` vs `getUndoHistoryCount` vs `getUndoHistoryLast` mean (the
-  stub says Pos behaves like Count and Last is the current position); read the mk3d log after a few
-  undos. Whether `general.saveUndo` should come before or after the edit (the script saves it before).
-- Main volume: that `device.getLinkedValue(REC_MainVol)` reads it as 0–1 and `REC_MIDIController |
-  REC_UpdateControl` with `value × FromMIDI_Max` covers the whole knob, and that it is the toolbar's
-  main volume and not the Master fader.
-- BROWSER presets (all in the NOT VERIFIED header of the script): how `plugins.getName` with
-  `FPN_Patch` / `FPN_Preset` and `getPresetCount` behave for VST, VST3 and FL's own plugins (count 0
-  without programs? is the patch name one of the preset names?), whether `nextPreset` / `prevPreset`
-  wrap, how long reading a bank of up to 1024 names takes in one callback, and that FL changes the
-  patch name right after a step. Found on hardware (Diva): the channel's name is the current preset's
-  name, `FPN_Patch` is not. Still open: PRESET_LOAD's steps (2 per pass) for VSTs whose program change
-  is slow, and whether `getChannelName` follows the program for other plugins. FILE: that `FPT_SaveNew`
-  saves a new version of the project.
-- ARRANGER's pattern overview (PATTERN_GRID, in the script header): that `channels.isGridBitAssigned`
-  tells a piano roll channel from a step channel, and how long 64 `getGridBit` calls per service pass take.
-- SCENE markers (all in the NOT VERIFIED header of the script): that `jumpToMarker(1, False)`
-  from position 0 reaches the first marker and stays on the last one (or wraps) at the end, that marker
-  index order is time order for `getMarkerName(i)`, that an unnamed marker does not end the name list
-  early, how a marker at tick 0 shows up (`jumpToMarker(0, False)`
-  at 0; the scan then disagrees with the names and the times are unknown), the scan in pattern loop mode, that
-  `UF_PLMarker` is the undo flag for `addAutoTimeMarker`, that `OnUpdateBeatIndicator(1)` comes at the
-  start of a bar, and what `ui.horZoom` / `ui.jog` do in the playlist (zoom and scroll units).
-- ~~PAD MODE notes~~ Seen (2026-10-19): `OnNoteOn` on MIDI channel 2, root note 60,
-  `channels.midiNoteOn` with `getChannelIndex` (see "Pad notes for channels").
-- CLONE_PATTERN: that `patterns.clonePattern` takes the 1-based pattern number (the stub only says
-  "index of pattern"), whether FL selects the clone itself (else the script selects `number + 1`,
-  assuming FL inserts the clone after its source), and that `patterns.patternCount` counts it.
-- NEW_PATTERN: that `findFirstNextEmptyPat(FFNEP_DontPromptName)` creates and selects a new
-  pattern when all are used, without prompting for a name.
-- CLEAR_STEPS: how long one `setGridBit` per step takes for a long pattern (a few hundred steps).
-- FL has no call to delete a pattern, so mk3d has no such command. The pattern length (SET_PATTERN_LENGTH, DOUBLE_PATTERN),
-  colour (SET_PATTERN_COLOR) and the song loop (SET_LOOP, LOOP_STATE, FEATURES) use hidden or rarely
-  used functions, see docs/fl-ilmcp.md; NOT VERIFIED in FL until the owner has tried them: read the
-  `← FL probe: setPatternLength …` / `selectionSet …` / `setPatternColor …` lines in mk3d's log for the
-  units (steps or beats, absolute ticks or not, the colour byte order).
-- Quick edit, SHIFT + pads, NAVIGATE and GRID (all in the NOT VERIFIED header of the script):
-  - SET_TEMPO: that `processRECEvent(REC_Tempo, bpm × 1000, REC_UpdateValue | REC_UpdateControl)` sets
-    the tempo and the display (the stub's example uses `REC_Control | REC_UpdateControl`).
-  - Swing: that `device.getLinkedValue(REC_MainShuffle)` reads it as 0–1 and that
-    `REC_MIDIController | REC_UpdateControl` with `value × FromMIDI_Max` covers the swing knob's
-    whole range.
-  - Snap values: the stub lists Bar, Events and Markers (14, 16, 17) with the same numbers as 1/6,
-    1/3 and 1/2 bar; GRID uses 14, 16 and 17 for Bar, Events and Markers.
-  - `quickQuantize`'s `startOnly`: 0 = whole notes, 1 = starts only (the stub says "???").
-  - `ui.cut/copy/paste` act on the focused window; `ui.getFocused(5)` is true for any plugin window.
-  - SHOW_WINDOW on a window that is open behind another one: closed, then opened and focused, because FL raises a
-    window only when it opens it. `ui.showWindow` + `ui.setFocused` alone took about three presses (owner, macOS,
-    2026-11-04), FL's F-keys (`FPT_F5` etc.) two: the first closes it. An Image-Line forum post reports the same for
-    both and closing first as what works. Closing and opening in one call raises it on the first press on macOS
-    (owner's test, 2026-11-04).
-    The browser is not closed first.
+See [fl-api-notes.md](fl-api-notes.md): the FL calls the script relies on, what it assumes and whether that has been seen.
