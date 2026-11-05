@@ -9,6 +9,7 @@ import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
 import { DISPLAY_HEIGHT, DISPLAY_WIDTH } from "../hw/display.js";
+import { drawWaiting } from "../modes/draw.js";
 import { padCellRect } from "../modes/padGrid.js";
 import { shiftActionOf } from "../modes/shiftPads.js";
 import { registerFonts } from "../render/fonts.js";
@@ -39,6 +40,14 @@ const BANK_NAMES = [
 
 async function writeScene(name: string, h: StackHarness): Promise<void> {
   const { left, right } = h.render();
+  await writeScreens(name, left, right);
+}
+
+async function writeScreens(
+  name: string,
+  left: SKRSContext2D,
+  right: SKRSContext2D,
+): Promise<void> {
   const gap = 16;
   const both = createCanvas(DISPLAY_WIDTH * 2 + gap, DISPLAY_HEIGHT);
   const ctx = both.getContext("2d");
@@ -130,6 +139,12 @@ async function main(): Promise<void> {
   for (const file of await readdir(OUT_DIR)) {
     if (/^ui-.*\.png$/.test(file)) await rm(join(OUT_DIR, file));
   }
+
+  // Before FL connects.
+  const waitingLeft = createCanvas(DISPLAY_WIDTH, DISPLAY_HEIGHT).getContext("2d");
+  const waitingRight = createCanvas(DISPLAY_WIDTH, DISPLAY_HEIGHT).getContext("2d");
+  drawWaiting(waitingLeft, waitingRight);
+  await writeScreens("waiting", waitingLeft, waitingRight);
 
   // The main pages, as they open.
   let h = stackHarness({ selected: 2 });

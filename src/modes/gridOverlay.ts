@@ -3,9 +3,9 @@
 // current snap bright, the others dim. Left screen: the current snap's name, big. Right screen: a
 // 4×4 grid of the names that mirrors the pads, the ones that don't quantize dim.
 //
-// Display 2 is INPUT Q. FL has no switch of its own for input quantize: its Global Snap is the switch
-// (FL's manual, recording_scores: Step, Beat or Bar quantize, Line, Cell or None don't). Off sets None
-// and remembers the snap value, on brings it back.
+// Display 2 is SNAP: FL's Global Snap on or off. Maschine calls its setting input quantize; FL has no switch
+// of its own for that, the Global Snap decides (FL's manual, recording_scores: Step, Beat or Bar quantize,
+// Line, Cell or None don't). Off sets None and remembers the snap value, on brings it back.
 //
 // The pads belong to this page even while SHIFT is still held from opening it (`usesShiftPads`):
 // the SHIFT + pad actions of the stack stay out of the way.
@@ -64,7 +64,7 @@ export const quantizes = (mode: number): boolean => mode >= 4 && mode <= 14;
 export class GridOverlay implements Mode {
   readonly name = "grid";
 
-  /** The snap value INPUT Q brings back. */
+  /** The snap value SNAP brings back. */
   private lastQuantize = SNAP_STEP;
 
   readonly persisted = {
@@ -118,15 +118,12 @@ export class GridOverlay implements Mode {
       left,
       { ...FULL, height: TAB_HEIGHT },
       {
-        tabs: ["GRID", "INPUT Q"],
+        tabs: ["GRID", "SNAP"],
         active: [...(mc.pinned ? [0] : []), ...(quantizes(snap) ? [1] : [])],
       },
     );
     left.textAlign = "left";
     left.textBaseline = "top";
-    left.fillStyle = theme.dimText;
-    left.font = font(15);
-    left.fillText("Snap", 24, 64);
     left.fillStyle = theme.accent;
     left.font = font(56, "bold");
     left.fillText(fitText(left, snapName(snap), FULL.width - 40), 22, 84);

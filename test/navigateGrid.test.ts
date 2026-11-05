@@ -172,7 +172,7 @@ describe("NAVIGATE (VARIATION)", () => {
 });
 
 describe("GRID (SHIFT + FOLLOW)", () => {
-  it("saves the snap INPUT Q goes back to as soon as it changes", () => {
+  it("saves the snap SNAP goes back to as soon as it changes", () => {
     const dir = mkdtempSync(join(tmpdir(), "mk3d-grid-"));
     try {
       const pinsPath = join(dir, "pages.json");
@@ -267,7 +267,7 @@ describe("GRID (SHIFT + FOLLOW)", () => {
     expect(h.light("display3")).toBe("off");
   });
 
-  describe("INPUT Q (display 2)", () => {
+  describe("SNAP (display 2)", () => {
     const open = (snap: number) => {
       const h = stackHarness();
       h.ui({ snap });

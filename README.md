@@ -36,7 +36,7 @@ The buttons work as they do in Maschine, mapped to the nearest thing in FL Studi
 | **PAD MODE / KEYBOARD / CHORDS** | Play channels, a scale or chords (harmonizer and chord sets). KEYBOARD keeps its octave per channel. A pad lights up while FL plays its channel (PAD MODE) or its note (KEYBOARD) |
 | **NOTE REPEAT**                  | Straight, dotted and triplet rates, LOCK, HOLD and GATE RESET. In KEYBOARD and CHORDS it can also arpeggiate (types, octaves, presets, rhythms, inversions, key range)  |
 | **NAVIGATE** (VARIATION)         | Press to open: show or hide FL's Playlist, Piano roll, Channel rack, Mixer, Browser and plug-in window from the display buttons                                         |
-| **GRID** (SHIFT + FOLLOW)        | FL's snap on the pads, and input quantize on display 2                                                                                                                  |
+| **GRID** (SHIFT + FOLLOW)        | FL's snap on the pads, and snap on or off on display 2                                                                                                                  |
 | **SELECT / MUTE / SOLO** (hold)  | Per channel, in banks of 16 picked with GROUP A–H                                                                                                                       |
 | **BROWSER**                      | The selected plug-in's presets (scroll, highlight, load). **PLUG-INS** opens FL's plug-in picker to add an instrument as a new channel                                  |
 | **SCENE**, **SHIFT + RESTART**   | Jump between playlist markers, set the song loop                                                                                                                        |
@@ -87,7 +87,7 @@ still takes the computer (see [Limits](#limits)).
 - PLUG-IN's fix for parameters that jump on the first turn ([bug 6](docs/bugs.md)). FL can't report such a
   parameter's position until it has been set once, so its knob shows the value without a position until you
   first turn it, and while FL records, it doesn't move at all.
-- KEYBOARD's octave per channel, and whether GRID's input quantize changes what you record as FL's manual says.
+- KEYBOARD's octave per channel, and whether GRID's snap changes what you record as FL's manual says.
 - NOTE REPEAT's LOCK and HOLD, holding a step to edit it, and touching a knob twice to reset it.
 - The LOOP overlay (holding SHIFT + RESTART to move the loop's ends), and touch strip PERFORM picking the
   plug-in's cutoff by name.

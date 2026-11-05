@@ -831,9 +831,9 @@ opening it. LEDs: the current snap bright white, the others dim white. Left scre
 snap's name big; right screen: a 4×4 grid of the names that mirrors the pads, the current one
 outlined, the ones that don't quantize dim.
 
-Display 2 is `INPUT Q` (bright and underlined while on): input quantize, Maschine's setting in FL's terms.
-FL has no switch of its own: the Global Snap decides (its manual: Step, Beat or Bar quantize notes as they
-are recorded, Line, Cell or None don't). Off sets None and remembers the snap value (`pages.json`), on brings
+Display 2 is `SNAP` (bright and underlined while on): FL's Global Snap on or off. This is what Maschine calls
+input quantize. FL has no switch of its own for that: the Global Snap decides (its manual: Step, Beat or Bar quantize
+notes as they are recorded, Line, Cell or None don't). Off sets None and remembers the snap value (`pages.json`), on brings
 it back, Step if there is none. So it also changes the snap of whatever edits with the Global Snap, and it
 applies to recording, not to what the pads sound like. On counts 1/6 step to Bar; the fractions and Events
 and Markers are not named in the manual and were not tried in FL. Which of a note's start and end FL

@@ -22,7 +22,7 @@ import { MixerMode } from "./modes/mixerMode.js";
 import { PluginMode } from "./modes/pluginMode.js";
 import { NksPageSource } from "./nks/nksPages.js";
 import { startNksIndex } from "./nks/index.js";
-import { FULL, HEADER_HEIGHT } from "./modes/draw.js";
+import { drawWaiting } from "./modes/draw.js";
 import { GridOverlay } from "./modes/gridOverlay.js";
 import { ChordsPage } from "./modes/chordsPage.js";
 import { KeyboardPage } from "./modes/keyboardPage.js";
@@ -48,7 +48,7 @@ import { SoloOverlay } from "./modes/soloOverlay.js";
 import { StepPage } from "./modes/stepPage.js";
 import { FALLBACK_FAMILY, registerFonts } from "./render/fonts.js";
 import { RedrawQueue, Screens } from "./render/screens.js";
-import { clear, drawHeader, font, theme } from "./render/widgets.js";
+import { clear } from "./render/widgets.js";
 import { StripControl } from "./strip.js";
 
 const REQUEST_STATE_EVERY_MS = 1000;
@@ -204,20 +204,6 @@ function updateLeds(): void {
 
 // ── Screens ──────────────────────────────────────────────────────────────────
 
-function drawWaiting(): void {
-  const left = screens.left.ctx;
-  clear(left, FULL);
-  clear(screens.right.ctx, FULL);
-  drawHeader(left, { ...FULL, height: HEADER_HEIGHT }, { title: "MK3 Bridge" });
-  left.textAlign = "center";
-  left.textBaseline = "middle";
-  left.fillStyle = theme.dimText;
-  left.font = font(24, "bold");
-  left.fillText("Waiting for FL Studio…", DISPLAY_WIDTH / 2, 130);
-  left.font = font(14);
-  left.fillText(`Enable "${PORT_TO_FL}" in FL's MIDI Settings`, DISPLAY_WIDTH / 2, 165);
-}
-
 const faults = new FaultReporter(log, undefined, () => updateScreens());
 
 // Coalesced: song position alone arrives every 50 ms while playing.
@@ -228,7 +214,7 @@ const redraw = new RedrawQueue(
       "screen",
       () => {
         if (flState.connected) stack.render(screens.left.ctx, screens.right.ctx, modeContext);
-        else drawWaiting();
+        else drawWaiting(screens.left.ctx, screens.right.ctx);
       },
       undefined,
     );

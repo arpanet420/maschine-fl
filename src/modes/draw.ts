@@ -2,9 +2,10 @@
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import { DISPLAY_HEIGHT, DISPLAY_WIDTH, type Rect } from "../hw/display.js";
 import type { FlState } from "../fl/flState.js";
+import { PORT_TO_FL } from "../fl/protocol.js";
 import type { LedState } from "../hw/leds.js";
 import { LED_OFF, paletteColor } from "../hw/palette.js";
-import { drawTransport, fitText, font, theme } from "../render/widgets.js";
+import { clear, drawHeader, drawTransport, fitText, font, theme } from "../render/widgets.js";
 import type { KnobProps } from "../render/widgets.js";
 
 export const FULL: Rect = { x: 0, y: 0, width: DISPLAY_WIDTH, height: DISPLAY_HEIGHT };
@@ -17,6 +18,20 @@ export const TRANSPORT_RECT: Rect = {
   width: DISPLAY_WIDTH,
   height: TRANSPORT_HEIGHT,
 };
+
+/** The screens while FL isn't there. */
+export function drawWaiting(left: SKRSContext2D, right: SKRSContext2D): void {
+  clear(left, FULL);
+  clear(right, FULL);
+  drawHeader(left, { ...FULL, height: HEADER_HEIGHT }, { title: "MK3 Bridge" });
+  left.textAlign = "center";
+  left.textBaseline = "middle";
+  left.fillStyle = theme.dimText;
+  left.font = font(24, "bold");
+  left.fillText("Waiting for FL Studio…", DISPLAY_WIDTH / 2, 130);
+  left.font = font(14);
+  left.fillText(`Enable "${PORT_TO_FL}" in FL's MIDI Settings`, DISPLAY_WIDTH / 2, 165);
+}
 
 /** A 4D arrow that does something on this page: dim orange. */
 export const NAV_LIT = paletteColor(1, "dim");

@@ -274,7 +274,7 @@ run at 150+ fps. mk3d therefore sends only the changed bounding box.
 
 ### Display command `0x01`: repeat a pixel pair
 
-**Status: reference (Deckard, `docs/mk3-usb.md`), in use since 2026-11-04, not yet confirmed here.** `Mk3Display`
+**Status: verified (found in Deckard, `docs/mk3-usb.md`; in daily use on our unit since 2026-11-04, and the screens draw right).** `Mk3Display`
 sends long runs of one colour as command `01` + count + the pixel pair instead of raw pixels
 (`src/hw/display.ts`). A bad transfer can need a power cycle (above), so `MK3D_DISPLAY_RAW=1` goes back to raw pixels.
 
