@@ -1,10 +1,18 @@
 // One-line descriptions of FL state changes, for the daemon's log.
 import type { FlSection, FlState } from "./fl/flState.js";
+import type { FlCommand } from "./fl/sysex.js";
 import { FOCUS_NONE, FOCUS_PLUGIN, PROTOCOL_VERSION, UI_WINDOWS } from "./fl/protocol.js";
 import { panText, pct } from "./modes/format.js";
 
 /** The log line for one PROBE message (something the script wants in the log, docs/sysex.md). */
 export const describeProbe = (text: string): string => `← FL probe: ${text}`;
+
+/** The log line for one command sent to FL (`--log-fl`). */
+export function describeCommand(command: FlCommand): string {
+  const { type, ...fields } = command;
+  const values = Object.entries(fields).map(([key, value]) => `${key}=${JSON.stringify(value)}`);
+  return ["→ FL", type, ...values].join(" ");
+}
 
 export function describeSection(fl: FlState, section: FlSection): string | undefined {
   if (!fl.connected && section !== "connection") return undefined; // all empty

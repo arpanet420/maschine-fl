@@ -186,6 +186,7 @@ FEATURE_MISSING_LOOP = 0x02
 UI_KEYS = ("up", "down", "left", "right", "enter", "escape")  # UI_KEY: FL's Plugin picker
 PATTERN_GRID_CHUNKS_PER_PASS = 4  # chunks (of 16 steps of one channel) read and queued per service pass
 PARAM_SCAN_PER_PASS = 1000  # getParamName calls per service pass; FL reports 4240 for every VST
+FOCUS_DURING_SCAN_SECONDS = 0.25  # a focus change this soon after a slice of names counts as during the scan
 
 FULL_REREAD_SECONDS = 0.1
 SONG_POS_SECONDS = 0.05
@@ -958,6 +959,7 @@ class Bridge(object):
         # "names": [...], "done": bool}. Read in slices of PARAM_SCAN_PER_PASS per service pass.
         self.scan = None
         self.names_pending = False  # send the names (again) once the scan is done
+        self.pme_logged = False  # note_pme_flags has said its line
         # The selected channel's presets, read while VIEW has the presets flag: {"key": (channel,
         # plugin name, count), "names": [...] or None (banks over PRESET_SCAN_LIMIT), "current": index
         # or None}. The names are read once per key; only the patch name is read on every pass.
@@ -1094,10 +1096,34 @@ class Bridge(object):
             self.batching -= 1
             self.mark("grid", "undo_state")
 
+    def note_pme_flags(self, event):
+        """Image-Line's Akai Fire script triggers clips only with PME_System_Safe set, and we make system
+        changes from OnSysEx without looking. No failure has been seen, so this only tells mk3d's log,
+        once per script load, if the flag is ever missing."""
+        safe = getattr(midi, "PME_System_Safe", None)
+        flags = getattr(event, "pmeFlags", None)
+        if self.pme_logged or safe is None or flags is None or flags & safe:
+            return
+        self.pme_logged = True
+        self.queue_probe("OnSysEx without PME_System_Safe: pmeFlags 0x%x" % flags)
+
+    def note_focus_during_scan(self):
+        """NI's script says getParamName can focus a plug-in's window, which would feed the bookkeeping of
+        note_focus. Says so in mk3d's log, once per scan, if the focus moves while one runs."""
+        scan = self.scan
+        if scan is None or scan.get("logged") or scan.get("last") is None:
+            return
+        if self.clock() - scan["last"] > FOCUS_DURING_SCAN_SECONDS:
+            return
+        scan["logged"] = True
+        read = len(scan["names"])
+        self.queue_probe("focus moved during a parameter scan: channel %d, %d names read" % (scan["key"][0], read))
+
     def mark_refresh(self, flags):
         """Map OnRefresh flags (midi.HW_Dirty_*) to what has to be read again."""
         try:
             if flags & midi.HW_Dirty_FocusedWindow:
+                self.note_focus_during_scan()
                 self.note_focus()
         except Exception as error:
             _log_once("note_focus", error)
@@ -1568,6 +1594,7 @@ class Bridge(object):
         stop = min(count, len(names) + PARAM_SCAN_PER_PASS)
         for param in range(len(names), stop):
             names.append(str(_safe("", plugins.getParamName, param, index)).strip())
+        scan["last"] = self.clock()
         if len(names) < count:
             self.mark("plugin")  # carry on in the next service pass
             return 0
@@ -3101,6 +3128,7 @@ def OnSysEx(event):
         if not data.startswith(SYSEX_HEADER):
             return
         event.handled = True
+        _bridge.note_pme_flags(event)
         message = decode(data)
         if message is None:
             return

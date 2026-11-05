@@ -4753,6 +4753,50 @@ class TouchStripTests(BridgeTestCase):
         self.script.OnDeInit()
         self.assertEqual(self.param(0, 3), 0.25)
 
+class WatchLogTests(BridgeTestCase):
+    """Two things nobody has seen go wrong yet, which mk3d's log should say if they ever do."""
+
+    def probes(self, frames):
+        return [bytes(f[5:-2]).decode("ascii") for f in self.frames_with(frames, 0x17)]
+
+    def event(self, flags):
+        event = Event(sysex=self.script.frame(0x4F, b""))
+        event.pmeFlags = flags
+        return event
+
+    def test_a_missing_system_safe_flag_is_logged_once(self):
+        self.start()
+        safe = self.script.midi.PME_System_Safe
+        self.script.OnSysEx(self.event(safe))
+        self.assertEqual(self.probes(self.drain()), [])
+        self.script.OnSysEx(self.event(2))
+        self.script.OnSysEx(self.event(2))
+        self.assertEqual(self.probes(self.drain()), ["OnSysEx without PME_System_Safe: pmeFlags 0x2"])
+
+    def test_an_event_without_flags_is_left_alone(self):
+        self.start()
+        self.script.OnSysEx(Event(sysex=self.script.frame(0x4F, b"")))
+        self.assertEqual(self.probes(self.drain()), [])
+
+    def test_a_focus_change_during_a_parameter_scan_is_logged_once_per_scan(self):
+        self.fl.channels[0]["plugin"]["params"] = [dict(name="p", value=0.0, text="") for _ in range(4240)]
+        self.script.OnInit()
+        self.assertFalse(self.bridge.scan["done"])
+        focus = self.fl.script_midi.HW_Dirty_FocusedWindow
+        self.script.OnRefresh(focus)
+        self.script.OnRefresh(focus)
+        lines = [line for line in self.probes(self.drain()) if line.startswith("focus moved")]
+        self.assertEqual(len(lines), 1)
+        self.assertRegex(lines[0], r"focus moved during a parameter scan: channel 0, \d+ names read")
+
+    def test_a_focus_change_long_after_the_scan_says_nothing(self):
+        self.start()
+        self.drain()
+        self.clock.advance(5)
+        self.script.OnRefresh(self.fl.script_midi.HW_Dirty_FocusedWindow)
+        self.assertEqual(self.probes(self.drain()), [])
+
+
 class PluginPickerTests(BridgeTestCase):
     """PLUGIN_PICKER (67) and UI_KEY (68): FL's Plugin picker."""
 

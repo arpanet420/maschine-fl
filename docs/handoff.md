@@ -15,7 +15,7 @@ Read CLAUDE.md, then PLAN.md (the master plan with checkpoint results), then thi
 
 ## How to run things
 
-- Daemon: `npm run mk3d` (`--log-pads`, `--log-buttons`, `--png <dir>`). The owner runs it in a terminal of their
+- Daemon: `npm run mk3d` (`--log-pads`, `--log-buttons`, `--log-fl`, `--png <dir>`). The owner runs it in a terminal of their
   own, so don't start a second copy. A change to the TypeScript needs a restart of mk3d.
 - FL Studio **2026** (2025 is installed too, but isn't set up). After a change to the FL script, the owner reloads
   it in FL: View → Script output → tab MK3 Bridge → Reload script. mk3d's log then shows `FL script unloaded` and

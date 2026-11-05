@@ -13,7 +13,7 @@ import { LedSender, LedState } from "./hw/leds.js";
 import { FlState, type FlSection } from "./fl/flState.js";
 import { FlPorts, midiBytes } from "./fl/midiPorts.js";
 import { CC, PORT_FROM_FL, PORT_TO_FL } from "./fl/protocol.js";
-import { describeProbe, describeSection } from "./flLog.js";
+import { describeCommand, describeProbe, describeSection } from "./flLog.js";
 import { ChannelMode } from "./modes/channelMode.js";
 import { ArrangerPage } from "./modes/arrangerPage.js";
 import { BrowserPage } from "./modes/browserPage.js";
@@ -61,6 +61,7 @@ const SHUTDOWN_LIMIT_MS = 3000;
 //   --velocity-curve <exponent>   below 1 makes soft hits louder
 //   --log-pads                    print each hit's velocity
 //   --log-buttons                 print each button press
+//   --log-fl                      print each command sent to FL
 //   --png <dir>                   also write the screens as PNG files after each update
 const args = process.argv.slice(2);
 const numberArg = (name: string) => {
@@ -70,6 +71,7 @@ const numberArg = (name: string) => {
 };
 const LOG_PADS = args.includes("--log-pads");
 const LOG_BUTTONS = args.includes("--log-buttons");
+const LOG_FL = args.includes("--log-fl");
 const padPeaks = new PadPeakLog((line) => log(line));
 const pngIndex = args.indexOf("--png");
 const PNG_DIR = pngIndex >= 0 ? (args[pngIndex + 1] ?? "out") : undefined;
@@ -152,11 +154,7 @@ const stack = new PageStack({
 const modeContext: ModeContext = {
   fl: flState,
   send: (command) => {
-    if (command.type === "triggerLiveClip") {
-      log(
-        `→ FL trigger scene: block ${command.block ?? "none (stop)"}${command.release ? ", release" : ""}`,
-      );
-    }
+    if (LOG_FL) log(describeCommand(command));
     fl.sendCommand(command);
   },
   get shift() {

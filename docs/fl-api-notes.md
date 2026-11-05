@@ -51,6 +51,9 @@ All channel indexes are group-local (`useGlobalIndex` stays False), except where
 SELECT_CHANNEL while a generator's window has the focus. The owner wasn't sure about this on 2026-10-18
 ("not sure about follow"), so all of it counts as open.
 
+If the focus moves during a parameter name scan, mk3d's log says so once per scan (`focus moved during a parameter
+scan`), which would show whether `getParamName` is what confuses this.
+
 | Call                                                     | What we assume                                                                                                                                                                            | Status |
 | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
 | `ui.getFocused(midi.widPluginGenerator)`, `ui.getFocusedFormID()` | True for a generator window, and the form id is its channel rack index                                                                                                            | Stubs  |
@@ -197,7 +200,7 @@ a new channel. Seen 2026-10-19 ([fl-ilmcp.md](fl-ilmcp.md)).
   script calls it for its overview mode: 0 empty, 1 has clips, 2 playing. It could give LIVE a cheap zoomed-out
   overview of a large playlist. Our own guessed calls were removed with the probe (2026-11-05).
 - **`PME_System_Safe`:** the Fire triggers clips only when `event.pmeFlags & PME_System_Safe` is set. Our script
-  makes system changes from `OnSysEx` without looking. No failure seen; `PLAN.md` and the review of 2026-10-21 have
-  the background.
+  makes system changes from `OnSysEx` without looking. No failure seen. It tells mk3d's log once per load if the
+  flag is ever missing (`OnSysEx without PME_System_Safe`).
 - Image-Line's Fire also uses `playlist.liveDisplayZone` / `OnDisplayZone` (FL outlines what the controller covers),
   `getTrackActivityLevel`, `channels.showGraphEditor` + `getStepParam` and `ui.setHintMsg`.

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { FlState } from "../src/fl/flState.js";
 import { FROM_FL, MARKER_TICKS_UNKNOWN, TO_FL, VIEW_FLAGS } from "../src/fl/protocol.js";
-import { describeProbe } from "../src/flLog.js";
+import { describeCommand, describeProbe } from "../src/flLog.js";
 import {
   decodeCommand,
   decodeSysex,
@@ -334,6 +334,10 @@ describe("PROBE", () => {
     fl.apply({ type: "probe", text: "perf=0 tracks=2" });
     expect(sections).toEqual([]);
     expect(describeProbe("perf=0 tracks=2")).toBe("← FL probe: perf=0 tracks=2");
+    expect(describeCommand({ type: "selectChannel", index: 3 })).toBe("→ FL selectChannel index=3");
+    expect(describeCommand({ type: "triggerLiveClip", block: null, release: false })).toBe(
+      "→ FL triggerLiveClip block=null release=false",
+    );
   });
 });
 
