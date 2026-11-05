@@ -191,6 +191,7 @@ FEATURE_MISSING_LOOP = 0x02
 UI_KEYS = ("up", "down", "left", "right", "enter", "escape")  # UI_KEY: FL's Plugin picker
 PATTERN_GRID_CHUNKS_PER_PASS = 4  # chunks (of 16 steps of one channel) read and queued per service pass
 PARAM_SCAN_PER_PASS = 1000  # getParamName calls per service pass; FL reports 4240 for every VST
+TIMED_FULL_PASSES = 600  # about a minute of full re-reads, then one line in mk3d's log per script load
 FOCUS_DURING_SCAN_SECONDS = 0.25  # a focus change this soon after a slice of names counts as during the scan
 
 FULL_REREAD_SECONDS = 0.1
@@ -972,6 +973,7 @@ class Bridge(object):
         self.names_pending = False  # send the names (again) once the scan is done
         self.pme_logged = False  # note_pme_flags has said its line
         self.used_patterns_seen = None  # (patternCount, the highest pattern in use) of the last scan
+        self.pass_timing = {"since": None, "busy": 0.0, "full": 0, "full_time": 0.0, "worst": 0.0}  # see service
         # The selected channel's presets, read while VIEW has the presets flag: {"key": (channel,
         # plugin name, count), "names": [...] or None (banks over PRESET_SCAN_LIMIT), "current": index
         # or None}. The names are read once per key; only the patch name is read on every pass.
@@ -1189,6 +1191,36 @@ class Bridge(object):
             self.mark(*PATTERN_READERS)
 
     def service(self):
+        """One pass, timed for a while: a full re-read is about 300 FL calls on FL's UI thread, and whether
+        that matters can only be measured in FL (docs/fl-api-notes.md)."""
+        timing = self.pass_timing
+        if timing is None:
+            return self.service_pass()
+        before = self.last_full
+        started = time.perf_counter()
+        sent = self.service_pass()
+        ended = time.perf_counter()
+        if timing["since"] is None:
+            timing["since"] = started
+        timing["busy"] += ended - started
+        if self.last_full != before:
+            timing["full"] += 1
+            timing["full_time"] += ended - started
+            timing["worst"] = max(timing["worst"], ended - started)
+            if timing["full"] >= TIMED_FULL_PASSES:
+                self.pass_timing = None
+                self.queue_probe(
+                    "script took %.1f%% of FL's thread over %.0f s; a full re-read %.1f ms on average, %.1f ms at most"
+                    % (
+                        100.0 * timing["busy"] / max(ended - timing["since"], 0.001),
+                        ended - timing["since"],
+                        1000.0 * timing["full_time"] / timing["full"],
+                        1000.0 * timing["worst"],
+                    )
+                )
+        return sent
+
+    def service_pass(self):
         """Read what is dirty (everything every 100 ms), queue what changed, send up to 8 frames."""
         if self.batching:
             return 0  # FL called us from inside a batch of edits: the grid is half done, wait
@@ -1971,7 +2003,7 @@ class Bridge(object):
         self.submit("PLAYED_NOTES", {"type": "playedNotes", "channel": channel, "notes": notes})
 
     def played_notes(self, channel):
-        """PLAYED_NOTES: the notes of the selected channel starting about now, for KEYBOARD's pads. No
+        """PLAYED_NOTES: the notes of the selected channel starting about now, for KEYBOARD's and CHORDS' pads. No
         call tells which note a channel plays, but the step reads see recorded notes too (measured,
         docs/sysex.md): a step's pitch, and in param 7 where it starts. So the song position says
         which steps to look at. The step before counts too: a note just before its beat is in it."""

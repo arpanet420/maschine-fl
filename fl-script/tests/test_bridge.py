@@ -4811,6 +4811,20 @@ class WatchLogTests(BridgeTestCase):
         self.script.OnSysEx(Event(sysex=self.script.frame(0x4F, b"")))
         self.assertEqual(self.probes(self.drain()), [])
 
+    def test_the_full_re_reads_are_timed_once_per_load(self):
+        self.script.TIMED_FULL_PASSES = 3
+        self.start()
+        self.drain()
+        lines = []
+        for _ in range(8):
+            lines += self.probes(self.settle())
+        self.assertEqual(len(lines), 1)
+        self.assertRegex(
+            lines[0],
+            r"script took \d+\.\d% of FL's thread over \d+ s; a full re-read \d+\.\d ms on average, \d+\.\d ms at most",
+        )
+        self.assertIsNone(self.bridge.pass_timing)
+
     def test_a_focus_change_during_a_parameter_scan_is_logged_once_per_scan(self):
         self.fl.channels[0]["plugin"]["params"] = [dict(name="p", value=0.0, text="") for _ in range(4240)]
         self.script.OnInit()

@@ -120,9 +120,10 @@ page lights its button only while it is open, except GRID: FOLLOW is dim while i
     its pad pressed too, so the pads flash with the pattern like Maschine's. Colors come from the
     channel window FL reports (VIEW `channelOffset`); pages that show the pads patch it to the
     current bank, and entries FL reported earlier stay cached. A `keyboard` pad also lights pressed
-    when FL plays its note on the selected channel (PLAYED_NOTES, docs/sysex.md). `chords` pads do not
-    flash with playback, and neither do the MUTE, SELECT and SOLO pages' pads, which light their own
-    state. The PAD MODE page uses these LEDs, so its pads flash.
+    when FL plays its note on the selected channel, and a `chords` pad when FL plays the lowest note of its
+    chord (PLAYED_NOTES, docs/sysex.md; what FL reports for a recorded chord is NOT VERIFIED). The MUTE, SELECT and
+    SOLO pages' pads don't flash with playback, since they light their own state. The PAD MODE page uses these LEDs,
+    so its pads flash.
 - **Channel banks** (Maschine's groups A–H): 16 channels each, A = 1–16, B = 17–32, … The current
   bank is the one of the selected channel. **GROUP A–H** select the channel that was last selected
   in that bank (remembered per bank while mk3d runs), else the bank's first channel; a bank without

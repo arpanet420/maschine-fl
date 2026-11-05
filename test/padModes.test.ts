@@ -465,12 +465,27 @@ describe("pad LEDs outside overlays and tool pages", () => {
     expect(ledState().padLeds).toEqual(before);
   });
 
-  it("chords: a played note lights no pad", () => {
+  it("chords: the pad of the chord built on a played note lights", () => {
     const { ledState, fl, pads } = harness({ selected: 2 });
     pads.mode = "chords";
-    const before = ledState().padLeds.slice();
-    fl.apply({ type: "playedNotes", channel: 2, notes: [36, 38] });
-    expect(ledState().padLeds).toEqual(before);
+    fl.apply({ type: "playedNotes", channel: 2, notes: [38] }); // pad 3's chord starts on it
+    expect(ledState().padLeds[padByte(2)]).toBe(flColorToPalette(GREEN, "pressed"));
+    expect(ledState().padLeds[padByte(0)]).toBe(flColorToPalette(GREEN, "bright"));
+    expect(ledState().padLeds[padByte(1)]).toBe(flColorToPalette(GREEN, "dim"));
+    fl.apply({ type: "playedNotes", channel: 2, notes: [] });
+    expect(ledState().padLeds[padByte(2)]).toBe(flColorToPalette(GREEN, "dim"));
+  });
+
+  it("chords: an inverted chord counts by its lowest note", () => {
+    const { ledState, fl, pads } = harness({ selected: 2 });
+    pads.mode = "chords";
+    pads.harmony.position = 1;
+    const lowest = pads.chordAt(0).notes[0] as number;
+    expect(lowest).not.toBe(36);
+    fl.apply({ type: "playedNotes", channel: 2, notes: [lowest] });
+    expect(ledState().padLeds[padByte(0)]).toBe(flColorToPalette(GREEN, "pressed"));
+    fl.apply({ type: "playedNotes", channel: 2, notes: [36] });
+    expect(ledState().padLeds[padByte(0)]).not.toBe(flColorToPalette(GREEN, "pressed"));
   });
 
   it("are off while FL is not connected", () => {

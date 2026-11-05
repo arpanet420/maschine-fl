@@ -17,6 +17,9 @@ The status of each row:
 Every call in the script is wrapped in try/except, and hidden or newer functions go through `getattr`. A wrong
 assumption gives a wrong value, not a crash.
 
+A full re-read is about 300 FL calls every 100 ms on FL's UI thread, counted against the fake FL. What that costs in
+FL: mk3d's log says once per script load, about a minute after it (`script took … of FL's thread`).
+
 ## Position, tempo and basics
 
 | Call                                                           | What we assume                                                                                                                                                                                  | Status                 |
