@@ -9,8 +9,11 @@ import type { PluginPage } from "./pluginPages.js";
 export const MAIN_PAGE_NAME = "Main";
 /** Fewer knobs found than this: no page one (a guess that thin helps no one). */
 const MIN_FOUND = 3;
-/** An envelope's stages lie at most this far after its attack. */
-const STAGE_SPAN = 16;
+/**
+ * An envelope's stages lie at most this far after its attack. OB-1 has 15 modulation parameters after each
+ * stage ("VCF Attack" 402, "VCF Decay" 417, "VCF Sustain" 432, "VCF Release" 447).
+ */
+const STAGE_SPAN = 64;
 
 interface Param {
   index: number;
@@ -125,8 +128,9 @@ const STAGE_FILLER = ["time", "level", "rate"];
 /** Which stage a parameter is (0–3), and the rest of its name, to pair it with its envelope's other stages. */
 function stage(param: Param): { stage: number; stem: string } | undefined {
   if (!plain(param) || has(param, "mod", "depth", "amount", "fold", "jaws")) return undefined;
-  const at = STAGES.findIndex((words) => has(param, ...words));
-  if (at < 0) return undefined;
+  const matching = STAGES.flatMap((words, index) => (has(param, ...words) ? [index] : []));
+  if (matching.length !== 1) return undefined; // none, or a stage's own envelope ("VCA Attack Env Decay")
+  const at = matching[0] ?? 0;
   if (at !== 2 && has(param, "level")) return undefined; // "Attack Level" beside "Attack Time"
   const stageWords: readonly string[] = STAGES[at] ?? [];
   const stem = param.words

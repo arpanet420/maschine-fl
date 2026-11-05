@@ -43,18 +43,21 @@ export function paramLabel(page: PluginPage, name: string): string {
 
 /**
  * FL's parameter list as pages: page one by name (filter and envelope, `mainPage`) when the names
- * have them, then the named parameters in index order, 8 per page. A page is named after the prefix
- * all its names share ("Filter: Cutoff" → "Filter"), else "Page n".
+ * have them, then the other named parameters in index order, 8 per page (the ones on page one left
+ * out). A page is named after the prefix all its names share ("Filter: Cutoff" → "Filter"), else
+ * "Page n", n counting page one.
  */
 export class FlParamPages implements PageSource {
   pages(fl: FlState): PluginPage[] {
     const main = mainPage(fl.paramNames);
-    return main ? [main, ...this.listPages(fl)] : this.listPages(fl);
+    if (!main) return this.listPages(fl, new Set(), 1);
+    const onMain = new Set(main.params.filter((param) => param !== undefined));
+    return [main, ...this.listPages(fl, onMain, 2)];
   }
 
-  private listPages(fl: FlState): PluginPage[] {
+  private listPages(fl: FlState, skip: ReadonlySet<number>, firstNumber: number): PluginPage[] {
     const named = [...fl.paramNames]
-      .filter(([, name]) => name.trim() !== "")
+      .filter(([index, name]) => name.trim() !== "" && !skip.has(index))
       .sort(([a], [b]) => a - b);
     const pages: PluginPage[] = [];
     for (let first = 0; first < named.length; first += PAGE_SIZE) {
@@ -65,7 +68,7 @@ export class FlParamPages implements PageSource {
       });
       const common = prefixes[0] !== undefined && prefixes.every((p) => p === prefixes[0]);
       pages.push({
-        name: common ? (prefixes[0] as string) : `Page ${pages.length + 1}`,
+        name: common ? (prefixes[0] as string) : `Page ${pages.length + firstNumber}`,
         params: Array.from({ length: PAGE_SIZE }, (_, i) => entries[i]?.[0]),
         ...(common ? { prefix: prefixes[0] } : {}),
       });

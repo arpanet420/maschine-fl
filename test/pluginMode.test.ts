@@ -194,16 +194,27 @@ describe("FlParamPages", () => {
     ]);
   });
 
-  it("puts a page one by name first when the names have a filter and an envelope", () => {
+  it("puts a page one by name first, and the other parameters after it", () => {
     const fl = new FlState();
     fl.apply({ type: "plugin", channel: 0, valid: true, paramCount: 20, name: "TAL-Pha" });
     const list = ["Volume", "VCF Cutoff", "VCF Resonance", "VCF ENV Mod", "VCF Key Follow"];
     list.push("Attack Time", "Decay Time", "Sustain Level", "Release Time");
+    list.push("Chorus Rate", "LFO Rate");
     fl.apply({ type: "paramNames", offset: 0, names: list });
     const pages = new FlParamPages().pages(fl);
-    expect(pages.map((page) => page.name)).toEqual(["Main", "Page 1", "Page 2"]);
+    expect(pages.map((page) => page.name)).toEqual(["Main", "Page 2"]);
     expect(pages[0]?.params).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
-    expect(pages[1]?.params).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    // The rest, without what page one has.
+    expect(pages[1]?.params).toEqual([
+      0,
+      9,
+      10,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    ]);
   });
 
   it("names a page after the prefix its parameters share, else Page n", () => {

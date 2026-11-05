@@ -615,8 +615,8 @@ Sustain, Release), the layout the vendors' own NKS page one has for Diva, Repro-
 envelope is the filter's when a name says so (`Filter - Attack`, `FEnv/Attack`), else the first complete
 one. A high-pass filter, an envelope's levels beside its times and FL's `MIDI CC #n` stand-ins are left out,
 a knob with no match stays empty, and with fewer than 3 matches there is no `Main`. Checked against the
-names FL reported for Atomika, TAL-Pha, Repro-1, Repro-5 and Diva (2026-11-05); for Repro-1 and Repro-5 it
-picks the vendors' NKS page one exactly. Tried on the MK3 by the owner with Atomika and TAL-Pha (2026-11-05). The list pages follow.
+names FL reported for Atomika, TAL-Pha, OB-1, Repro-1, Repro-5 and Diva (2026-11-05); for Repro-1 and Repro-5 it
+picks the vendors' NKS page one exactly. Tried on the MK3 by the owner with Atomika and TAL-Pha (2026-11-05). OB-1 first showed only the filter: its envelope stages lie 15 parameters apart, each followed by its own modulation, so an envelope's stages may now lie up to 64 after its attack. Nepheton 2 (only `Parameter n`) and Synplant (no filter) get no `Main`. The list pages follow, without the parameters `Main` has; their _Page n_ counts `Main`.
 
 Left screen (display buttons 1–4 above, knobs 1–4 below):
 

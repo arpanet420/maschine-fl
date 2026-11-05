@@ -107,6 +107,29 @@ const DIVA = names({
   176: "Scope1: Frequency",
 });
 
+// Each knob is followed by its own LFO and envelope (15 parameters), so the stages lie 15 apart.
+const OB_1 = names({
+  264: "Keyboard Tracking",
+  265: "VCF Frequency",
+  273: "VCF Frequency Env Attack",
+  274: "VCF Frequency Env Decay",
+  277: "VCF Frequency Env Release",
+  295: "VCF Resonance",
+  310: "VCF Env Mod",
+  342: "VCA Attack",
+  350: "VCA Attack Env Attack",
+  351: "VCA Attack Env Decay",
+  354: "VCA Attack Env Release",
+  357: "VCA Decay",
+  372: "VCA Sustain",
+  387: "VCA Release",
+  402: "VCF Attack",
+  417: "VCF Decay",
+  432: "VCF Sustain",
+  447: "VCF Release",
+  748: "HPF Frequency",
+});
+
 describe("mainPage", () => {
   it("puts Atomika's filter and its envelope on page one", () => {
     const page = mainPage(ATOMIKA);
@@ -142,6 +165,11 @@ describe("mainPage", () => {
   it("finds what the vendors' NKS page one has, in flat and grouped names", () => {
     expect(mainPage(REPRO_5)?.params).toEqual([60, 61, 63, 62, 22, 23, 24, 25]);
     expect(mainPage(REPRO_1)?.params).toEqual([248, 249, 251, 250, 209, 210, 211, 212]);
+  });
+
+  it("finds an envelope whose stages lie far apart, and not a stage's own envelope", () => {
+    expect(mainPage(OB_1)?.params).toEqual([265, 295, 310, 264, 402, 417, 432, 447]);
+    expect(mainPage(OB_1)?.sections?.[4]).toBe("Filter Env");
   });
 
   it("leaves a knob empty when nothing fits", () => {
