@@ -609,6 +609,15 @@ empty name are skipped, page _n_ is the next 8 named parameters. A page is named
 before `": "` that all its names share (VST3 names look like `Filter: Cutoff`), else _Page n_;
 knob labels drop that prefix. Without a prefix in common the knob shows its full name.
 
+Without NKS pages, page one is `Main` when the names have enough of it (`src/modes/mainPage.ts`): the
+filter on the left screen (Cutoff, Reso, Env Amt, Key Amt) and an envelope on the right (Attack, Decay,
+Sustain, Release), the layout the vendors' own NKS page one has for Diva, Repro-1 and Repro-5. The
+envelope is the filter's when a name says so (`Filter - Attack`, `FEnv/Attack`), else the first complete
+one. A high-pass filter, an envelope's levels beside its times and FL's `MIDI CC #n` stand-ins are left out,
+a knob with no match stays empty, and with fewer than 3 matches there is no `Main`. Checked against the
+names FL reported for Atomika, TAL-Pha, Repro-1, Repro-5 and Diva (2026-11-05); for Repro-1 and Repro-5 it
+picks the vendors' NKS page one exactly. Tried on the MK3 by the owner with Atomika and TAL-Pha (2026-11-05). The list pages follow.
+
 Left screen (display buttons 1–4 above, knobs 1–4 below):
 
 - Tab over display 3: `Editor`, the plug-in's window.
@@ -653,6 +662,8 @@ Notes:
 - The page resets to 1 when the plug-in (channel or name) changes. FL sends the names of all
   parameters in PARAM_NAMES (`docs/sysex.md`) when the plug-in changes; until they have arrived the
   pages are incomplete.
+- **`MK3D_PARAM_DUMP=1`** writes each plug-in's named parameters to `out/params/<plug-in>.txt` (`index<TAB>name`),
+  once no name has come for 2 s, and logs where. It is for working out a page one by parameter name.
 
 ## Mixer page (MIXER)
 

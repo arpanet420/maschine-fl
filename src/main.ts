@@ -3,6 +3,7 @@
 // controls (shift, transport, touch strip, pads as a fallback); the page stack in
 // src/modes/pageStack.ts owns the page buttons, the page events, the screens and the LEDs, and
 // src/modes/padState.ts holds the pad mode (keyboard notes or channels) the fallback plays.
+import { join } from "node:path";
 import { Mk3Device } from "./hw/device.js";
 import { DISPLAY_HEIGHT, DISPLAY_WIDTH, Mk3Display } from "./hw/display.js";
 import type { HwEvent } from "./hw/events.js";
@@ -12,6 +13,7 @@ import { DEFAULT_PAD_CONFIG } from "./hw/pads.js";
 import { LedSender, LedState } from "./hw/leds.js";
 import { AuRanges, auParamHelper } from "./fl/auParams.js";
 import { FlState, type FlSection } from "./fl/flState.js";
+import { ParamDump } from "./fl/paramDump.js";
 import { FlPorts, midiBytes } from "./fl/midiPorts.js";
 import { CC, PORT_FROM_FL, PORT_TO_FL } from "./fl/protocol.js";
 import { describeCommand, describeProbe, describeSection } from "./flLog.js";
@@ -121,6 +123,11 @@ const pluginMode = new PluginMode(
   new NksPageSource(nksIndex, undefined, (line) => log(line)),
   new AuRanges(auParamHelper(), (line) => log(line)),
 );
+// MK3D_PARAM_DUMP=1: each plugin's parameter names to out/params, for working out PLUG-IN's page one.
+const paramDump =
+  process.env.MK3D_PARAM_DUMP === "1"
+    ? new ParamDump({ fl: flState, folder: join("out", "params"), log: (line) => log(line) })
+    : undefined;
 // SCENE's FOLLOW: one song's channels at a time. It hears every FL change, whatever page is up.
 const songFollow = new SongFollow({
   fl: flState,
@@ -375,6 +382,7 @@ flState.on("change", (section) => {
     `FL ${section}`,
     () => {
       songFollow.onFlChange(section);
+      paramDump?.onFlChange(section);
       if (section === "connection" && !flState.connected) stack.releasePads();
       if (section === "connection" && flState.connected) stack.enter(modeContext);
       else if (flState.connected) stack.onFlChange(section, modeContext);

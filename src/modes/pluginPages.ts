@@ -1,6 +1,7 @@
 // Where Plugin mode gets its pages from: FL's own parameter list (FlParamPages), or NKS pages
 // (src/nks/nksPages.ts) that implement the same interface.
 import type { FlState } from "../fl/flState.js";
+import { mainPage } from "./mainPage.js";
 
 export const PAGE_SIZE = 8;
 
@@ -41,11 +42,17 @@ export function paramLabel(page: PluginPage, name: string): string {
 }
 
 /**
- * FL's parameter list as pages: the named parameters in index order, 8 per page. A page is named
- * after the prefix all its names share ("Filter: Cutoff" → "Filter"), else "Page n".
+ * FL's parameter list as pages: page one by name (filter and envelope, `mainPage`) when the names
+ * have them, then the named parameters in index order, 8 per page. A page is named after the prefix
+ * all its names share ("Filter: Cutoff" → "Filter"), else "Page n".
  */
 export class FlParamPages implements PageSource {
   pages(fl: FlState): PluginPage[] {
+    const main = mainPage(fl.paramNames);
+    return main ? [main, ...this.listPages(fl)] : this.listPages(fl);
+  }
+
+  private listPages(fl: FlState): PluginPage[] {
     const named = [...fl.paramNames]
       .filter(([, name]) => name.trim() !== "")
       .sort(([a], [b]) => a - b);
