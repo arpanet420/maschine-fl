@@ -108,6 +108,8 @@ const CHROMATIC_CHORDS: readonly ChordType[] = [
   semitones("Dim 7", 0, 3, 6, 9),
   semitones("Maj 9", 0, 4, 7, 11, 14),
   semitones("Dom 9", 0, 4, 7, 10, 14),
+  semitones("Quartal", 0, 5, 10, 15),
+  semitones("Trichord", 0, 5, 11),
 ];
 
 /** The chord types the knob steps through with this scale. */

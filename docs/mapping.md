@@ -183,7 +183,8 @@ takes no pad: the pads play chords through `PadState`.
     4 scale steps up. So a `1-5` in a pentatonic scale is no perfect fifth (C gives C and A), as in Maschine.
   - **Chromatic**: real intervals and chords in semitones, from the pad's note: `Octave`, `Perf 4`, `Perf 5`,
     `Major` (default), `Minor`, `Sus 4`, `Dim`, `Aug`, `Maj 7`, `Min 7`, `Dom 7`, `Min 7b5`, `Dim 7`, `Maj 9`,
-    `Dom 9`. Maschine also has Quartal and Trichord here; `Dim`, `Aug` and `Maj 9` are ours.
+    `Dom 9`, `Quartal` (three fourths, 0 5 10 15), `Trichord` (0 5 11). `Dim` and `Maj 9` are ours, as is `1-3-5-7-9`
+    on the scales' list.
 - **Chord set**: pads 1–7 the diatonic triads I…vii of the scale from the base note (Major when the
   scale is Chromatic, pentatonic or Blues, else the selected scale), pad 8 = I an octave up, pads
   9–15 the diatonic sevenths, pad 16 = I7 an octave up.

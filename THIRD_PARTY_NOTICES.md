@@ -50,7 +50,8 @@ open-source Maschine clone with its own MK3 driver: the screen backlight's featu
 repeat command and that the knobs need a flicker filter. Its code is not included and was not ported.
 How NOTE REPEAT's page is laid out, knob reset by two touches, the 0.4 s hold on a step and how the
 Harmonizer's chord types work (named by scale degree and counted in scale steps with a scale, real intervals
-with Chromatic, a type kept for each) follow what its documentation says about Maschine's behaviour.
+with Chromatic, a type kept for each, and the notes of Maschine's Quartal and Trichord) follow what it says about
+Maschine's behaviour.
 
 ## Projects that were only read
 

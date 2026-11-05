@@ -141,6 +141,8 @@ describe("harmonizer", () => {
     expect(at("Maj 7")).toEqual([36, 40, 43, 47]);
     expect(at("Dom 7")).toEqual([36, 40, 43, 46]);
     expect(at("Dom 9")).toEqual([36, 40, 43, 46, 50]);
+    expect(at("Quartal")).toEqual([36, 41, 46, 51]);
+    expect(at("Trichord")).toEqual([36, 41, 47]);
   });
 
   it("inversions move the lowest notes up an octave, clamped to the chord's notes − 1", () => {
@@ -181,6 +183,9 @@ describe("harmonizer", () => {
     expect(chromatic("Dim")).toBe("C°");
     expect(chromatic("Aug")).toBe("C+");
     expect(chromatic("Sus 4")).toBe("Csus4");
+    // no chord name for these two: their notes
+    expect(chromatic("Quartal")).toBe("C F Bb Eb");
+    expect(chromatic("Trichord")).toBe("C F B");
     expect(chordName([60, 64, 68])).toBe("C+");
     expect(chordName([60, 63, 66, 69])).toBe("C°7");
     // no name for the stack: its notes
