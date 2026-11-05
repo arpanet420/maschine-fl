@@ -69,7 +69,7 @@ export function stackHarness(
     duplicate: new DuplicateOverlay(),
     padMode: new PadModePage(pads),
     mute: new MuteOverlay(pads),
-    select: new SelectOverlay(pads),
+    select: new SelectOverlay(pads, time.clock),
     solo: new SoloOverlay(pads),
     keyboard: new KeyboardPage(pads, { timers: time.timers }),
     chords: new ChordsPage(pads, { timers: time.timers }),

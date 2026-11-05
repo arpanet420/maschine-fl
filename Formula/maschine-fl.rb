@@ -24,7 +24,7 @@ class MaschineFl < Formula
     system "npm", "run", "build"
     system "npm", "prune", "--omit=dev"
 
-    libexec.install "bin", "dist", "docs", "fl-script", "node_modules", "package.json", "scripts"
+    libexec.install "bin", "dist", "docs", "fl-script", "native", "node_modules", "package.json", "scripts"
     bin.install_symlink libexec/"bin/mk3d"
   end
 

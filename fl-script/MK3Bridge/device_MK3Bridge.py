@@ -25,6 +25,11 @@ import math
 import time
 from collections import OrderedDict
 
+try:
+    import _thread
+except ImportError:
+    _thread = None
+
 import arrangement
 import channels
 import device
@@ -115,6 +120,11 @@ CMD_TRIGGER_LIVE_CLIP = 0x6A
 CMD_REQUEST_STEP_PARAMS = 0x6B
 CMD_SET_STEP_PARAM = 0x6C
 CMD_NUDGE_PARAM = 0x6D
+CMD_SET_CHANNEL_COLOR = 0x6E
+CMD_SET_TRACK_COLOR = 0x6F
+CMD_CLOSE_ALL_WINDOWS = 0x70
+CMD_RAISE_WINDOW = 0x71
+CMD_CLOSE_WINDOW = 0x72
 
 CONTROL_CHANNEL = 15  # MIDI channel 16, zero-based
 CHANNEL_NOTE_CHANNEL = 1  # MIDI channel 2, zero-based: PAD MODE hits, note = group-local channel index
@@ -136,6 +146,7 @@ MAX_STRING = 32
 MAX_PROBE_TEXT = 100  # characters per PROBE frame
 MAX_LIST_ENTRIES = 4  # entries per frame
 MAX_FRAMES_PER_CALLBACK = 8
+MAX_HELD_FRAMES = 256  # frames from a side thread waiting for OnIdle; the oldest goes first
 
 CHANNEL_WINDOW = 16
 MIXER_WINDOW = 8
@@ -193,6 +204,7 @@ PATTERN_GRID_CHUNKS_PER_PASS = 4  # chunks (of 16 steps of one channel) read and
 PARAM_SCAN_PER_PASS = 1000  # getParamName calls per service pass; FL reports 4240 for every VST
 TIMED_FULL_PASSES = 600  # about a minute of full re-reads, then one line in mk3d's log per script load
 FOCUS_DURING_SCAN_SECONDS = 0.25  # a focus change this soon after a slice of names counts as during the scan
+FOCUS_SETTLE_SECONDS = 1.0  # after the script moved the focus: what FL reports until then isn't the user's doing
 
 FULL_REREAD_SECONDS = 0.1
 SONG_POS_SECONDS = 0.05
@@ -359,6 +371,20 @@ PARAM_SEARCH_LATE_TRIES = 3
 PARAM_ANCHOR_WAIT = "wait"
 # Parameters looked at to tell a plugin that reports its own units (plugin_reports_units).
 PARAM_UNITS_SCAN = 128
+
+
+def audio_unit_value_text(text):
+    """Could FL have written this value text for an Audio Unit? It has nothing else to show for one:
+    Format('%f') of the value, then a space and an empty label (docs/fl-api-notes.md)."""
+    if not text.endswith(" "):
+        return False
+    body = text[:-1].replace(",", ".")
+    try:
+        value = float(body)
+    except ValueError:
+        return False
+    decimals = body.partition(".")[2]
+    return not math.isfinite(value) or (len(decimals) == 2 and decimals.isdigit())
 
 
 def param_number(text):
@@ -794,6 +820,12 @@ def decode(data):
             return {"type": "strip", "kind": STRIP_KINDS[kind], "value": r.u14(), "release": r.u7() != 0}
         if command == CMD_TRANSPOSE:
             return {"type": "transpose", "channel": r.u14(), "semitones": r.s7()}
+        if command == CMD_CLOSE_ALL_WINDOWS:
+            return {"type": "closeAllWindows"}
+        if command == CMD_RAISE_WINDOW:
+            return {"type": "raiseWindow", "window": r.u7()}
+        if command == CMD_CLOSE_WINDOW:
+            return {"type": "closeWindow", "window": r.u7()}
         if command == CMD_PLUGIN_PICKER:
             return {"type": "pluginPicker"}
         if command == CMD_UI_KEY:
@@ -814,6 +846,13 @@ def decode(data):
             return {
                 "type": "setPatternColor",
                 "pattern": pattern,
+                "color": (r.u7() << 21) | (r.u7() << 14) | (r.u7() << 7) | r.u7(),
+            }
+        if command in (CMD_SET_CHANNEL_COLOR, CMD_SET_TRACK_COLOR):
+            index = r.u14()
+            return {
+                "type": "setChannelColor" if command == CMD_SET_CHANNEL_COLOR else "setTrackColor",
+                "index": index,
                 "color": (r.u7() << 21) | (r.u7() << 14) | (r.u7() << 7) | r.u7(),
             }
         if command == CMD_DOUBLE_PATTERN:
@@ -1037,11 +1076,13 @@ class Bridge(object):
         # plugin name, count), "names": [...] or None (banks over PRESET_SCAN_LIMIT), "current": index
         # or None}. The names are read once per key; only the patch name is read on every pass.
         self.presets = None
-        # Editor follows selection. follow_opened: channels whose editor this script opened while
-        # following; seen_open: channels whose generator window was seen focused for other reasons
-        # (or opened by the user through SHOW_EDITOR). Both reset when the channel count changes.
-        self.follow_opened = set()
+        # seen_open: channels whose plug-in window the user brought up (seen focused, or opened through
+        # SHOW_EDITOR). Selecting one brings its window up again; selecting any other opens nothing (docs/bugs.md
+        # #12). FL can't say which windows are open, so this is learnt from the focus. last_generator: the channel
+        # whose window had the focus last. Both reset when the channel count changes.
         self.seen_open = set()
+        self.last_generator = None
+        self.focus_settles_at = 0.0
         self.known_channel_count = None
         # Step edits (clear, paste, cut) run as one batch: service() waits until it is over.
         self.batching = 0
@@ -1077,6 +1118,11 @@ class Bridge(object):
         self.pitch_index = None  # the channel the strip's pitch is bent on, while a touch is on
         self.strip_params = {}
         self.param_units = {}  # plugin_reports_units
+        self.preset_names_safe = {}  # preset_count
+        self.idle_thread = None  # note_sysex_thread
+        self.sysex_thread_logged = False
+        self.held_frames = []  # hold_frame
+        self.held_running = False
         self.params_anchored = set()  # param_is_known: parameters FL gives as 0-1 because we set them
         self.param_search_late = {}  # find_param_norm: (text wanted, tries) while FL lags behind
         self.probe_count = 0
@@ -1122,8 +1168,17 @@ class Bridge(object):
         self.queue.clear()
 
     def reset_follow(self):
-        self.follow_opened.clear()
         self.seen_open.clear()
+        self.last_generator = None
+
+    def forget_editor(self, index):
+        if index in self.seen_open:
+            self.seen_open.discard(index)
+            self.queue_probe("plug-in window of channel %d closed" % (index + 1))
+
+    def moving_focus(self):
+        """The script is about to move the focus: focus changes for a moment are not the user's doing."""
+        self.focus_settles_at = self.clock() + FOCUS_SETTLE_SECONDS
 
     # -- dirty flags and servicing -----------------------------------------------------------
 
@@ -1151,10 +1206,17 @@ class Bridge(object):
             return None
 
     def note_focus(self):
-        """A generator window got the focus: if we did not open it, the user had it open."""
+        """A generator window has the focus: it is open. The focus leaving it for no plug-in window, when the script
+        didn't move it, counts as the user closing it (or clicking another window: FL can't say which)."""
         index = self.focused_generator()
-        if index is not None and index not in self.follow_opened:
-            self.seen_open.add(index)
+        last, self.last_generator = self.last_generator, index
+        if index is not None:
+            if index not in self.seen_open:
+                self.seen_open.add(index)
+                self.queue_probe("plug-in window of channel %d is up: selecting the channel brings it up" % (index + 1))
+            return
+        if last is not None and self.clock() >= self.focus_settles_at:
+            self.forget_editor(last)
 
     @contextlib.contextmanager
     def batch(self, undo_name):
@@ -1193,6 +1255,47 @@ class Bridge(object):
         api = _optional(None, general, "getVersion")
         if version is not None or api is not None:
             self.queue_probe("FL %s, scripting API %s" % (version, api))
+
+    def sysex_off_thread(self):
+        """Is this OnSysEx on another thread than OnIdle? FL does that at times (seen 2026-11-05), and a crash
+        on a BROWSER press was on a side thread (docs/bugs.md #8). Say so once per script load."""
+        if self.idle_thread is None or _thread is None or _thread.get_ident() == self.idle_thread:
+            return False
+        if not self.sysex_thread_logged:
+            self.sysex_thread_logged = True
+            self.queue_probe("OnSysEx runs on another thread than OnIdle")
+        return True
+
+    def hold_frame(self, message):
+        """A frame from a side thread waits for OnIdle: its FL calls are made on FL's own thread. FL posts what it
+        gets from a side thread to its main thread, where a record press crashed it (docs/bugs.md #10). Played
+        notes aren't frames, so they aren't held."""
+        if len(self.held_frames) >= MAX_HELD_FRAMES:
+            del self.held_frames[0]
+        self.held_frames.append((self.clock(), message))
+
+    def run_held_frames(self):
+        """The held frames, oldest first. FL may call OnIdle from inside a step edit or a held frame's own FL call
+        (docs/sysex.md), so those wait for the next one."""
+        if self.held_running or self.batching:
+            return
+        self.held_running = True
+        try:
+            while self.held_frames:
+                held_at, message = self.held_frames.pop(0)
+                waited = self.clock() - held_at
+                started = time.perf_counter()
+                try:
+                    self.handle(message)
+                except Exception as error:
+                    _log_once("held frame", error)
+                if message.get("type") in ("showWindow", "raiseWindow", "closeWindow"):
+                    self.queue_probe(
+                        "window %d: %.0f ms waiting for OnIdle, %.1f ms in FL's calls"
+                        % (message["window"], waited * 1000.0, (time.perf_counter() - started) * 1000.0)
+                    )
+        finally:
+            self.held_running = False
 
     def note_focus_during_scan(self):
         """NI's script says getParamName can focus a plug-in's window, which would feed the bookkeeping of
@@ -1555,6 +1658,24 @@ class Bridge(object):
         )
         self.send_param_names()
 
+    def preset_count(self, index):
+        """The presets we may touch on channel `index`'s plugin: none if it may be an Audio Unit. FL counts
+        its own preset files too, and asking for any of their names ends in FL's Audio Unit wrapper, which
+        crashes FL when the plugin has no factory presets. Python can't catch that (docs/bugs.md #8)."""
+        count = int(_safe(0, plugins.getPresetCount, index))
+        if count <= 0:
+            return 0
+        key = self.param_instance(index)
+        if key not in self.preset_names_safe:
+            params = min(int(_safe(0, plugins.getParamCount, index)), PARAM_UNITS_SCAN)
+            texts = (str(_safe("", plugins.getParamValueString, param, index)) for param in range(params))
+            self.preset_names_safe[key] = any(text and not audio_unit_value_text(text) for text in texts)
+            if not self.preset_names_safe[key]:
+                self.queue_probe(
+                    'presets: channel %d "%s" may be an Audio Unit: not reading its %d' % (index + 1, key[2], count)
+                )
+        return count if self.preset_names_safe[key] else 0
+
     def preset_name(self, index, preset):
         """FL's name of preset `preset` of the plugin on channel `index`."""
         return str(_safe("", plugins.getName, index, -1, getattr(midi, "FPN_Preset", 6), preset)).strip()
@@ -1567,7 +1688,7 @@ class Bridge(object):
             return
         index = self.selected_channel_index()
         valid = index is not None and bool(_safe(False, plugins.isValid, index))
-        count = int(_safe(0, plugins.getPresetCount, index)) if valid else 0
+        count = self.preset_count(index) if valid else 0
         if count <= 0:
             self.presets = None
             self.submit("PRESETS", {"type": "presets", "count": 0, "current": None, "offset": 0, "names": []})
@@ -1646,7 +1767,7 @@ class Bridge(object):
         index = self.selected_channel_index()
         if index is None or not _safe(False, plugins.isValid, index):
             return None
-        count = int(_safe(0, plugins.getPresetCount, index))
+        count = self.preset_count(index)
         if count <= 0:
             return None
         return index, count
@@ -2250,6 +2371,24 @@ class Bridge(object):
                 except Exception as error:
                     _log_once("step parameter %d" % param, error)
 
+    def set_channel_color(self, index, color):
+        """SET_CHANNEL_COLOR. FL's function takes 0xRRGGBB and sets the top byte itself (docs/fl-api-notes.md)."""
+        color = int(color) & 0xFFFFFF
+        try:
+            channels.setChannelColor(index, color)
+        except Exception as error:
+            _log_once("channels.setChannelColor", error)
+            self.queue_probe("setChannelColor(%d, 0x%06x) -> error: %s" % (index, color, error))
+
+    def set_track_color(self, index, color):
+        """SET_TRACK_COLOR. Takes 0xRRGGBB, as set_channel_color."""
+        color = int(color) & 0xFFFFFF
+        try:
+            mixer.setTrackColor(index, color)
+        except Exception as error:
+            _log_once("mixer.setTrackColor", error)
+            self.queue_probe("setTrackColor(%d, 0x%06x) -> error: %s" % (index, color, error))
+
     def set_pattern_color(self, number, color):
         """SET_PATTERN_COLOR: patterns.setPatternColor(number, color)."""
         function = getattr(patterns, "setPatternColor", None)
@@ -2456,10 +2595,10 @@ class Bridge(object):
         elif kind == "selectChannel":
             index = message["index"]
             if 0 <= index < self.channel_total():
-                old = self.follow_source(index)
+                self.moving_focus()  # FL reports a focus change with every selection
                 channels.selectOneChannel(index)
-                if old is not None:
-                    self.follow_editor(old, index)
+                if index in self.seen_open:
+                    self.bring_up_editor(index)
             self.mark(*CHANNEL_READERS)
         elif kind == "setChannel":
             self.set_channel(message["index"], message["what"], message["value"])
@@ -2470,8 +2609,7 @@ class Bridge(object):
             self.mark("channel_detail")
         elif kind == "showEditor":
             if 0 <= message["index"] < self.channel_total():
-                channels.showEditor(message["index"])
-                self.seen_open.add(message["index"])  # the user's explicit open
+                self.show_editor(message["index"])
         elif kind == "setStep":
             if 0 <= message["channel"] < self.channel_total():
                 channels.setGridBit(message["channel"], message["step"], bool(message["on"]))
@@ -2517,6 +2655,12 @@ class Bridge(object):
         elif kind == "showWindow":
             self.show_window(message["window"])
             self.mark("ui_state")
+        elif kind == "raiseWindow":
+            self.raise_window(message["window"])
+            self.mark("ui_state")
+        elif kind == "closeWindow":
+            self.close_window(message["window"])
+            self.mark("ui_state")
         elif kind == "setSnap":
             self.set_snap(message["mode"])
             self.mark("ui_state")
@@ -2538,6 +2682,14 @@ class Bridge(object):
             self.request_markers()
         elif kind == "setPatternLength":
             self.set_pattern_length(message["pattern"], message["length"])
+        elif kind == "setChannelColor":
+            if 0 <= message["index"] < self.channel_total():
+                self.set_channel_color(message["index"], message["color"])
+            self.mark("channels", "selected_channel", "channel_detail")
+        elif kind == "setTrackColor":
+            if 0 <= message["index"] < self.mixer_total():
+                self.set_track_color(message["index"], message["color"])
+            self.mark(*MIXER_READERS)
         elif kind == "setPatternColor":
             self.set_pattern_color(message["pattern"], message["color"])
         elif kind == "doublePattern":
@@ -2559,6 +2711,9 @@ class Bridge(object):
         elif kind == "transpose":
             self.transpose(message["channel"], message["semitones"])
             self.mark("grid", "undo_state")
+        elif kind == "closeAllWindows":
+            self.close_all_windows()
+            self.mark("ui_state")
         elif kind == "pluginPicker":
             self.plugin_picker()
         elif kind == "uiKey":
@@ -2722,39 +2877,30 @@ class Bridge(object):
         self.copy_steps()
         self.clear_steps(index, "MK3: cut steps")
 
-    def follow_source(self, new):
-        """The currently selected channel when the editor should follow the selection to `new`:
-        a generator window is focused and it belongs to that channel. None otherwise or on error."""
-        try:
-            old = self.selected_channel_index()
-            if old is None or old == new:
-                return None
-            if self.focused_generator() != old:
-                return None
-            return old
-        except Exception as error:
-            _log_once("follow check", error)
-            return None
+    def show_editor(self, index):
+        """The channel's window closes if it has the focus. Otherwise it opens, or comes up from behind others."""
+        self.moving_focus()
+        if self.focused_generator() == index:
+            channels.showEditor(index, 0)
+            self.forget_editor(index)
+            return
+        channels.showEditor(index, 1)
+        channels.focusEditor(index)
+        self.seen_open.add(index)  # the user's explicit open
 
-    def follow_editor(self, old, new):
-        """Open and focus the editor of `new` (just selected), close `old` if we opened it."""
+    def bring_up_editor(self, index):
+        """A channel whose plug-in window the user brought up was selected: it comes to the front again. FL
+        raises a window only when it opens it, so it is closed and reopened (docs/bugs.md #5, #13)."""
+        if self.focused_generator() == index:
+            return
         try:
-            claimed = new not in self.seen_open and new not in self.follow_opened
-            if claimed:
-                self.follow_opened.add(new)  # before the focus change arrives in OnRefresh
-            try:
-                channels.showEditor(new, 1)
-                channels.focusEditor(new)
-            except Exception:
-                if claimed:
-                    self.follow_opened.discard(new)
-                raise
-            if old in self.follow_opened:
-                channels.showEditor(old, 0)
-                self.follow_opened.discard(old)
-            _log("editor follows: channel %d -> %d" % (old, new))
+            channels.showEditor(index, 0)
+            channels.showEditor(index, 1)
+            channels.focusEditor(index)
         except Exception as error:
-            _log_once("editor follow", error)
+            _log_once("bring up editor", error)
+            return
+        self.queue_probe("plug-in window of channel %d brought up again" % (index + 1))
 
     def apply_view(self, message):
         old = self.view
@@ -2970,22 +3116,58 @@ class Bridge(object):
             _log_once("set main volume", error)
 
     def show_window(self, window):
-        """A focused window is hidden. Any other comes up with the focus. FL only raises a window it opens,
-        so one that is open behind another is closed first (the F-keys and setFocused don't raise it)."""
+        """SHOW_WINDOW, NAVIGATE's toggle: a focused window is hidden, any other comes up."""
         if not 0 <= window < UI_WINDOW_COUNT:
             return
+        self.moving_focus()
         try:
             if ui.getFocused(window):
                 ui.hideWindow(window)
             else:
-                if window != BROWSER_WINDOW and ui.getVisible(window):
-                    ui.hideWindow(window)
-                ui.showWindow(window)
-                ui.setFocused(window)
+                self.bring_up_window(window)
         except Exception as error:
             _log_once("show window", error)
 
+    def raise_window(self, window):
+        """RAISE_WINDOW, a page button: a focused window stays as it is, any other comes up. FL decides here,
+        not mk3d: its copy of the focus is about 200 ms old (docs/bugs.md #11)."""
+        if not 0 <= window < UI_WINDOW_COUNT:
+            return
+        self.moving_focus()
+        try:
+            if not ui.getFocused(window):
+                self.bring_up_window(window)
+        except Exception as error:
+            _log_once("raise window", error)
+
+    def close_window(self, window):
+        """CLOSE_WINDOW, a page button pressed again."""
+        if not 0 <= window < UI_WINDOW_COUNT:
+            return
+        self.moving_focus()
+        try:
+            ui.hideWindow(window)
+        except Exception as error:
+            _log_once("close window", error)
+
+    def bring_up_window(self, window):
+        """The window comes up with the focus. FL only raises a window it opens, so one that is open behind
+        another is closed first (the F-keys and setFocused don't raise it)."""
+        if window != BROWSER_WINDOW and ui.getVisible(window):
+            ui.hideWindow(window)
+        ui.showWindow(window)
+        ui.setFocused(window)
+
     # -- FL's Plugin picker --------------------------------------------------------------------
+
+    def close_all_windows(self):
+        """CLOSE_ALL_WINDOWS: FL's View menu, F12 (midi.FPT_F12 = 71). No plug-in window is left open to follow."""
+        try:
+            transport.globalTransport(getattr(midi, "FPT_F12", 71), 1)
+        except Exception as error:
+            _log_once("close all windows", error)
+            return
+        self.reset_follow()
 
     def plugin_picker(self):
         """PLUGIN_PICKER: the toolbar's plug button (midi.FPT_F8 = 67), a toggle. Picking a generator in it
@@ -3312,9 +3494,14 @@ def OnSysEx(event):
             return
         event.handled = True
         _bridge.note_pme_flags(event)
+        off_thread = _bridge.sysex_off_thread()
         message = decode(data)
         if message is None:
             return
+        if off_thread:
+            _bridge.hold_frame(message)
+            return
+        _bridge.run_held_frames()
         _bridge.handle(message)
         _bridge.service()
     except Exception as error:
@@ -3368,6 +3555,9 @@ def OnProjectLoad(status):
 
 def OnIdle():
     try:
+        if _thread is not None:
+            _bridge.idle_thread = _thread.get_ident()
+        _bridge.run_held_frames()
         _bridge.service()
     except Exception as error:
         _log_once("OnIdle", error)

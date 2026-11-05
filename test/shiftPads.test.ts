@@ -94,6 +94,7 @@ describe("SHIFT + pad: the action row", () => {
   it("the action takes the pad before a page that uses the pads (STEP, PATTERN)", () => {
     const h = stackHarness();
     h.tap("step");
+    h.sent.length = 0; // RAISE_WINDOW
     h.state.shift = true;
     h.pad(0);
     expect(h.sentOf("setStep")).toEqual([]);

@@ -174,7 +174,7 @@ export abstract class ChannelPadPage implements Mode {
   }
 
   /** The pad LEDs: the channel's color, `padLevel` bright, off past the last channel. */
-  protected padLeds(leds: LedState, mc: ModeContext): void {
+  padLeds(leds: LedState, mc: ModeContext): void {
     for (let pad = 0; pad < BANK_SIZE; pad++) {
       const channel = this.channelAt(pad, mc.fl);
       leds.setPad(

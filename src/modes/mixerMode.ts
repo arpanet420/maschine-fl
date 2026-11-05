@@ -2,7 +2,8 @@
 // strip per column (4 per screen): display buttons 1–8 and GROUP A–H select a track, knobs 1–8
 // are the volume (or the pan) of the track in the column below them. MUTE or SOLO held turns the
 // display and group buttons into mute or solo toggles (the page claims both buttons, so no overlay
-// opens). Pads are not used here.
+// opens). A GROUP button held makes its strip's knob the track's COLOR. This page uses no pads: with MUTE or SOLO held they mute or solo channels, as everywhere
+// (the stack gives them to that overlay).
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import type { FlSection, FlState } from "../fl/flState.js";
 import type { MixerEntry } from "../fl/sysex.js";
@@ -22,6 +23,7 @@ import { SCREEN_COLUMNS, TAB_HEIGHT, clear, theme } from "../render/widgets.js";
 import { FULL, NAV_LIT } from "./draw.js";
 import { flColorToCss, isDefaultColor, flColorToPalette, panText, pct } from "./format.js";
 import { RenderSoon, clamp, isLive, knobStep } from "./knob.js";
+import { COLOR_DETENT_COUNTS, colorKnob, nextNamedColor } from "./namedColors.js";
 import { GROUP_BUTTONS } from "./channelBank.js";
 import { pageStart } from "./channelMode.js";
 import { DISPLAY_BUTTONS } from "./channelPadPage.js";
@@ -61,6 +63,10 @@ export class MixerMode implements Mode {
   /** Knobs and the 4D encoder edit the pan instead of the volume. */
   private panMode = false;
   private readonly held = new Set<Held>();
+  /** The strip whose GROUP button is held: its knob is the track's COLOR. */
+  private colorStrip: number | undefined;
+  private colorTurned = 0;
+  private readonly pendingColors = new Map<number, Pending>();
   /** Values we set ourselves, for a moment after a turn or a toggle: `${track}:${prop}`. */
   private readonly pending = new Map<string, Pending>();
   private select: Pending | undefined;
@@ -76,6 +82,7 @@ export class MixerMode implements Mode {
     this.pending.clear();
     this.select = undefined;
     this.held.clear();
+    this.colorStrip = undefined;
     this.holds.clear();
     this.lastSelected = mc.fl.selectedTrack;
     this.offset = bankStart(this.lastSelected);
@@ -85,6 +92,7 @@ export class MixerMode implements Mode {
 
   /** An overlay closed: resend the VIEW and keep everything else. */
   resume(mc: ModeContext): void {
+    this.colorStrip = undefined; // the release may have gone to the page on top
     this.lastView = undefined;
     this.sendView(mc);
   }
@@ -140,6 +148,10 @@ export class MixerMode implements Mode {
     switch (event.type) {
       case "encoder":
         if (event.index >= BANK) return false;
+        if (this.colorStrip !== undefined) {
+          if (event.index === this.colorStrip) this.turnColor(event.delta, mc);
+          return true;
+        }
         this.turn(this.offset + event.index, event.delta, mc);
         return true;
       case "nav":
@@ -181,6 +193,7 @@ export class MixerMode implements Mode {
       else this.held.delete(id);
       return true;
     }
+    this.holdGroup(id, pressed, mc);
     // display buttons 1–8 and GROUP A–H are the same 8 strips
     const strip = Math.max(
       DISPLAY_BUTTONS.findIndex((button) => button === id),
@@ -195,6 +208,35 @@ export class MixerMode implements Mode {
       return true;
     }
     return false;
+  }
+
+  /** A GROUP button down, with no MUTE or SOLO held, makes its strip's knob the COLOR until it comes up. */
+  private holdGroup(id: ButtonId, pressed: boolean, mc: ModeContext): void {
+    const strip = GROUP_BUTTONS.findIndex((group) => group === id);
+    if (strip < 0) return;
+    if (pressed && this.held.size === 0) this.colorStrip = strip;
+    else if (!pressed && this.colorStrip === strip) this.colorStrip = undefined;
+    else return;
+    this.colorTurned = 0;
+    mc.requestRender();
+  }
+
+  private turnColor(delta: number, mc: ModeContext): void {
+    const track = this.offset + (this.colorStrip ?? 0);
+    const total = this.colorTurned + delta;
+    const detents = Math.trunc(total / COLOR_DETENT_COUNTS);
+    this.colorTurned = total - detents * COLOR_DETENT_COUNTS;
+    if (detents === 0 || track >= mc.fl.mixerTotal) return;
+    const color = nextNamedColor(this.colorOf(track, mc.fl), detents);
+    this.pendingColors.set(track, { value: color, at: this.now() });
+    mc.send({ type: "setTrackColor", index: track, color });
+    this.redraw.request(mc);
+  }
+
+  /** The track's colour shown: ours for a moment after a turn, else FL's. */
+  private colorOf(track: number, fl: FlState): number {
+    const pending = this.pendingColors.get(track);
+    return pending && this.live(pending) ? pending.value : (fl.mixer.get(track)?.color ?? 0);
   }
 
   /** Select the strip's track; with MUTE or SOLO held, toggle its mute or solo instead. */
@@ -228,7 +270,7 @@ export class MixerMode implements Mode {
 
   /** Two touches of a knob: the track's volume back to FL's default, or its pan to the middle. */
   resetKnob(knob: number, mc: ModeContext): boolean {
-    if (knob >= BANK) return false;
+    if (knob >= BANK || this.colorStrip !== undefined) return false;
     const track = this.offset + knob;
     if (track >= mc.fl.mixerTotal) return false;
     const prop = this.prop();
@@ -388,10 +430,12 @@ export class MixerMode implements Mode {
     const norm = this.valueOf(track, prop, fl) ?? 0;
     const peak = fl.meters.get(track);
     const holds = this.holds.get(track);
+    const color = this.colorOf(track, fl);
+    const coloring = knob === this.colorStrip ? colorKnob(color, false) : undefined;
     drawMixerStrip(ctx, cell, {
       name: entry?.name || (track === 0 ? "Master" : `Insert ${track}`),
-      color: flColorToCss(entry?.color ?? 0),
-      uncolored: isDefaultColor(entry?.color ?? 0),
+      color: flColorToCss(color),
+      uncolored: isDefaultColor(color),
       selected: track === selected,
       muted: this.flag(track, "mute", fl),
       solo: this.flag(track, "solo", fl),
@@ -403,10 +447,10 @@ export class MixerMode implements Mode {
         holds?.[1] ? this.holdHeight(holds[1]) : 0,
       ],
       scale: track === 0,
-      knobLabel: prop === "pan" ? "PAN" : "VOL",
-      valueText: prop === "pan" ? panText(norm * 2 - 1) : pct(norm),
+      knobLabel: coloring?.label ?? (prop === "pan" ? "PAN" : "VOL"),
+      valueText: coloring?.valueText ?? (prop === "pan" ? panText(norm * 2 - 1) : pct(norm)),
       touched: mc.touchedKnobs.has(knob),
-      touchedName: prop === "pan" ? "Pan" : "Volume",
+      touchedName: coloring ? "Color" : prop === "pan" ? "Pan" : "Volume",
     });
   }
 
@@ -423,10 +467,9 @@ export class MixerMode implements Mode {
       const group = GROUP_BUTTONS[strip];
       if (display) leds.setLight(display, !exists ? "off" : bright ? "bright" : "dim");
       if (group) {
-        const entry = exists ? fl.mixer.get(track) : undefined;
         leds.setButtonColor(
           group,
-          exists ? flColorToPalette(entry?.color ?? 0, bright ? "bright" : "dim") : LED_OFF,
+          exists ? flColorToPalette(this.colorOf(track, fl), bright ? "bright" : "dim") : LED_OFF,
         );
       }
     }

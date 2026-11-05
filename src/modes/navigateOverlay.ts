@@ -1,13 +1,14 @@
-// NAVIGATE (VARIATION: one press opens it, the next closes it). Maschine's
+// NAVIGATE (hold VARIATION; display button 1 is its pin tab). Maschine's
 // view switcher, for FL's windows, in the order of FL's toolbar: display 2–5 toggle the Playlist, Piano
 // roll, Channel rack and Mixer, display 6 the Browser (a focused window is hidden, any other is shown and
-// focused; SHOW_WINDOW), display 7 opens the selected channel's plug-in window (SHOW_EDITOR). The 4D
+// focused; SHOW_WINDOW), display 7 opens the selected channel's plug-in window (SHOW_EDITOR), display 8
+// closes all of FL's windows (CLOSE_ALL_WINDOWS). The 4D
 // encoder works this page: turning it or tilting it left and right moves a cursor between the tiles, its
 // push does what the tile's display button does.
 //
 // LEDs from UI_STATE: bright = that window has the focus, dim = it is shown, off = hidden; PLUGIN is
 // bright while a plug-in window has the focus. Screens: tabs and a tile for each window under its
-// own display button (left: Playlist, Piano roll, Rack; right: Mixer, Browser, Plug-in) with an icon in
+// own display button (left: Playlist, Piano roll, Rack; right: Mixer, Browser, Plug-in, Close all) with an icon in
 // the manner of FL's toolbar (focused: orange outline, shown: bright, hidden: dark, the cursor: a white
 // ring), and on the left, in the first column, which window is focused.
 import type { SKRSContext2D } from "@napi-rs/canvas";
@@ -22,7 +23,7 @@ import { LED_OFF } from "../hw/palette.js";
 import { FULL, NAV_LIT } from "./draw.js";
 import type { Mode, ModeContext } from "./mode.js";
 
-type WindowKind = "mixer" | "rack" | "playlist" | "piano" | "browser" | "plugin";
+type WindowKind = "mixer" | "rack" | "playlist" | "piano" | "browser" | "plugin" | "closeAll";
 type WindowState = "focused" | "shown" | "hidden";
 
 interface WindowDef {
@@ -37,7 +38,7 @@ interface WindowDef {
   window?: number;
 }
 
-/** In order of the display buttons 2–7: FL's toolbar, left to right. */
+/** In order of the display buttons 2–8: FL's toolbar, left to right, then Close all. */
 export const WINDOWS: readonly WindowDef[] = [
   { kind: "playlist", tab: "PLAYLIST", name: "Playlist", display: 1, window: 2 },
   { kind: "piano", tab: "PIANO", name: "Piano roll", display: 2, window: 3 },
@@ -45,15 +46,17 @@ export const WINDOWS: readonly WindowDef[] = [
   { kind: "mixer", tab: "MIXER", name: "Mixer", display: 4, window: 0 },
   { kind: "browser", tab: "BROWSER", name: "Browser", display: 5, window: 4 },
   { kind: "plugin", tab: "PLUGIN", name: "Plug-in", display: 6 },
+  { kind: "closeAll", tab: "CLOSE ALL", name: "Close all", display: 7 },
 ];
 
 const TITLE_TAB = "NAVIGATE";
 const TILE_TOP = TAB_HEIGHT + 36;
 const TILE_HEIGHT = 118;
 
-/** How a window shows now. PLUGIN is `shown` unless it has the focus (FL can't say if it is open). */
+/** How a window shows now. PLUGIN is `shown` unless it has the focus (FL can't say if it is open). Close all is no window. */
 export function windowState(def: WindowDef, mc: ModeContext): WindowState {
   const { visible, focused } = mc.fl.uiState;
+  if (def.kind === "closeAll") return "shown";
   if (def.window === undefined) {
     if (focused === FOCUS_PLUGIN) return "focused";
     return mc.fl.selectedChannel.index === null ? "hidden" : "shown";
@@ -65,7 +68,7 @@ export function windowState(def: WindowDef, mc: ModeContext): WindowState {
 /** The window that has the focus, undefined if none of the six has. */
 function focusedWindow(fl: FlState): WindowDef | undefined {
   const { focused } = fl.uiState;
-  if (focused === FOCUS_PLUGIN) return WINDOWS.find((def) => def.window === undefined);
+  if (focused === FOCUS_PLUGIN) return WINDOWS.find((def) => def.kind === "plugin");
   return WINDOWS.find((def) => def.window === focused);
 }
 
@@ -111,7 +114,9 @@ export class NavigateOverlay implements Mode {
 
   private toggle(def: WindowDef | undefined, mc: ModeContext): void {
     if (!def) return;
-    if (def.window === undefined) {
+    if (def.kind === "closeAll") {
+      mc.send({ type: "closeAllWindows" });
+    } else if (def.window === undefined) {
       const channel = mc.fl.selectedChannel.index;
       if (channel !== null) mc.send({ type: "showEditor", index: channel });
     } else {
@@ -125,11 +130,11 @@ export class NavigateOverlay implements Mode {
     const screens = [left, right] as const;
     screens.forEach((ctx, screen) => {
       clear(ctx, FULL);
-      // Left: the title and the first three windows; right: the other three.
-      const defs = WINDOWS.slice(screen * 3, screen * 3 + 3);
+      // Left: the title and the first three windows; right: the other three and Close all.
+      const defs = screen === 0 ? WINDOWS.slice(0, 3) : WINDOWS.slice(3);
       const offset = screen === 0 ? 1 : 0; // columns; the title takes the left screen's first
       const tabs: string[] = screen === 0 ? [TITLE_TAB] : [];
-      const active: number[] = [];
+      const active: number[] = screen === 0 && mc.pinned ? [0] : [];
       defs.forEach((def, i) => {
         tabs.push(def.tab);
         if (windowState(def, mc) === "focused") active.push(offset + i);
@@ -192,6 +197,7 @@ function drawTile(
   ctx.fillStyle = state === "hidden" ? theme.dimText : theme.text;
   const x = cell.x + cell.width / 2;
   ctx.fillText(fitText(ctx, def.name, cell.width - 8), x, tile.y + TILE_HEIGHT + 8);
+  if (def.kind === "closeAll") return;
   ctx.font = font(13);
   ctx.fillStyle = state === "focused" ? theme.accent : theme.dimText;
   ctx.fillText(state === "shown" ? "shown" : state, x, tile.y + TILE_HEIGHT + 28);
@@ -294,6 +300,25 @@ function drawGlyph(ctx: SKRSContext2D, kind: WindowKind, r: Rect, color: string)
         ctx.fillRect(r.x + indent + 14, r.y + 8 + line * (r.height / 5), r.width * 0.5 - indent, 4);
         ctx.globalAlpha = 1;
       }
+      break;
+    }
+    case "closeAll": {
+      // a window, crossed out
+      ctx.lineWidth = 2.5;
+      ctx.strokeRect(r.x, r.y + 8, r.width, r.height - 8);
+      ctx.fillRect(r.x, r.y + 8, r.width, 6);
+      const cx = r.x + r.width / 2;
+      const cy = r.y + 14 + (r.height - 14) / 2;
+      const arm = Math.min(r.width, r.height - 14) * 0.26;
+      ctx.lineWidth = 4;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(cx - arm, cy - arm);
+      ctx.lineTo(cx + arm, cy + arm);
+      ctx.moveTo(cx + arm, cy - arm);
+      ctx.lineTo(cx - arm, cy + arm);
+      ctx.stroke();
+      ctx.lineCap = "butt";
       break;
     }
     case "plugin": {

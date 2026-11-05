@@ -40,6 +40,7 @@ import {
 } from "../fl/protocol.js";
 import { DISPLAY_BUTTONS } from "./channelPadPage.js";
 import { FULL } from "./draw.js";
+import { colorKnob, nextNamedColor } from "./namedColors.js";
 import { flColorToCss, flColorToPalette, lengthText } from "./format.js";
 import { isLive, type PendingValue } from "./knob.js";
 import type { Mode, ModeContext, ModeName, ViewCommand } from "./mode.js";
@@ -64,22 +65,6 @@ const DETENT_COUNTS = 120;
 const LENGTH_KNOB = 3;
 const COLOR_KNOB = 0;
 const KNOB_ROW = { ...FULL, y: FULL.height - 100, height: 100 };
-
-/** The colours knob 1 cycles through (`0xRRGGBB`), around FL's own step and channel colours. */
-export const PATTERN_COLORS: ReadonlyArray<{ name: string; color: number }> = [
-  { name: "Red", color: 0xe0505a },
-  { name: "Orange", color: 0xfb9244 },
-  { name: "Yellow", color: 0xeec54e },
-  { name: "Lime", color: 0xa0dc40 },
-  { name: "Mint", color: 0x4ae4a8 },
-  { name: "Cyan", color: 0x4ac8e0 },
-  { name: "Blue", color: 0x5aa9e6 },
-  { name: "Indigo", color: 0x7a7ae6 },
-  { name: "Purple", color: 0xa678de },
-  { name: "Magenta", color: 0xd070c8 },
-  { name: "Pink", color: 0xe0707a },
-  { name: "Grey", color: 0x9aa3aa },
-];
 
 /**
  * The length one detent away: the next common length up (or the previous one down), also from a
@@ -554,12 +539,7 @@ export class PatternOverlay extends PatternBankPage {
   private changeColor(detents: number, mc: ModeContext): void {
     const { number } = mc.fl.pattern;
     if (number <= 0) return;
-    const now = this.color(mc) & 0xffffff;
-    const at = PATTERN_COLORS.findIndex((c) => c.color === now);
-    const size = PATTERN_COLORS.length;
-    // A colour that is not on the list starts the cycle at its first entry.
-    const next = at < 0 ? (detents > 0 ? detents - 1 : size + detents) : at + detents;
-    const color = PATTERN_COLORS[((next % size) + size) % size]?.color ?? now;
+    const color = nextNamedColor(this.color(mc), detents);
     this.pendingColor = { value: color, at: this.clock() };
     mc.send({ type: "setPatternColor", pattern: number, color });
     mc.requestRender();
@@ -567,17 +547,9 @@ export class PatternOverlay extends PatternBankPage {
 
   protected knobRow(mc: ModeContext): ReadonlyArray<KnobProps | undefined> {
     const touched = (knob: number) => mc.touchedKnobs.has(knob);
-    const now = this.color(mc) & 0xffffff;
-    const entry = PATTERN_COLORS.find((c) => c.color === now);
     const length = this.length(mc);
     const knobs: Array<KnobProps | undefined> = [undefined, undefined, undefined, undefined];
-    knobs[COLOR_KNOB] = {
-      label: "COLOR",
-      valueText: entry?.name ?? "Custom",
-      value: entry ? PATTERN_COLORS.indexOf(entry) / (PATTERN_COLORS.length - 1) : 0,
-      color: flColorToCss(now),
-      touched: touched(COLOR_KNOB),
-    };
+    knobs[COLOR_KNOB] = colorKnob(this.color(mc), touched(COLOR_KNOB));
     knobs[LENGTH_KNOB] = {
       label: "LENGTH",
       valueText: mc.fl.missing.patternLength ? "n/a" : lengthText(length, mc.fl.stepsPerBar),

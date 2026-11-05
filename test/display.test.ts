@@ -1,6 +1,7 @@
 import { mkdtemp, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createCanvas } from "@napi-rs/canvas";
 import { describe, expect, it } from "vitest";
 import {
   buildDisplayTransfer,
@@ -13,6 +14,7 @@ import { Screens } from "../src/render/screens.js";
 import {
   drawFader,
   drawHeader,
+  drawKnob,
   drawKnobRow,
   drawList,
   drawTransport,
@@ -239,5 +241,24 @@ describe("Screens", () => {
     const files = await screens.writePngs(dir);
     expect(files).toHaveLength(3);
     for (const file of files) expect((await stat(file)).size).toBeGreaterThan(1000);
+  });
+});
+
+describe("drawKnob", () => {
+  const pixelsOf = (props: Parameters<typeof drawKnob>[2]) => {
+    const ctx = createCanvas(120, 90).getContext("2d");
+    drawKnob(ctx, { x: 0, y: 0, width: 120, height: 90 }, props);
+    return ctx.getImageData(0, 0, 120, 90).data;
+  };
+  const differing = (a: Uint8ClampedArray, b: Uint8ClampedArray) =>
+    a.filter((byte, index) => byte !== b[index]).length;
+
+  it("draws a dial without a value only when asked to, and no arc or pointer on it", () => {
+    const text = { label: "Cutoff", valueText: "47.75" };
+    const bare = pixelsOf(text);
+    const dial = pixelsOf({ ...text, dial: true });
+    expect(differing(bare, pixelsOf(text))).toBe(0);
+    expect(differing(dial, bare)).toBeGreaterThan(0);
+    expect(differing(pixelsOf({ ...text, value: 0.75, dial: true }), dial)).toBeGreaterThan(0);
   });
 });

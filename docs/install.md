@@ -77,7 +77,9 @@ touches NI's files or FL Studio's own files.
 
 Node 22 or newer (`engines` in package.json). The code uses nothing newer than Node 22's standard
 library and ES2023; the owner develops with Node 24. The four native dependencies ship prebuilt
-macOS binaries, so no Xcode command line tools are needed to install:
+macOS binaries, so no Xcode command line tools are needed to install. One optional helper is built from source
+at its first use, if the tools are there: `native/au-params.c`, which lets PLUG-IN show an Audio Unit's knob
+positions before their first turn. Without the tools, those knobs stay empty until turned and the log says why:
 
 | Package           | Prebuilt macOS binary                                                                           |
 | ----------------- | ----------------------------------------------------------------------------------------------- |

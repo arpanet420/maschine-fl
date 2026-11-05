@@ -268,13 +268,13 @@ From `Maschine 3.app/Contents/Resources/Scripts/` (plain Lua): `Shared/Component
 | NKS / Maschine                                                      | mk3d Plugin mode                                                                                              |
 | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | Page = 8 slots                                                      | Same. Slots 1–4 → knobs 1–4 on the left screen, slots 5–8 → knobs 5–8 on the right screen                     |
-| No page names                                                       | Tab name = the first section on the page (any slot), else `Page n`. Repeated names get ` 2`, ` 3`             |
+| No page names                                                       | Page name = the first section on the page (any slot), else `Page n`. Repeated names get ` 2`, ` 3`            |
 | Section label where it starts, spanning the following knobs         | Same, in a section row above the knob labels, spanning columns **on the same screen only**                    |
 | Section continuing from knob 4 to knob 5 shows nothing on the right | Repeat the section label at column 5 (dimmed or marked as continued), so the right screen is readable alone   |
 | Knob name = NICA `name`                                             | Same; FL's full parameter name on touch                                                                       |
 | Value text                                                          | FL's value text (`PLUGIN_PARAMS`); NKS has none                                                               |
 | Unassigned slot                                                     | Empty column, knob does nothing                                                                               |
-| Page ◀ ▶ steps pages                                                | Arrow left/right step pages; display buttons pick pages (Plugin mode's existing tab bank)                     |
+| Page ◀ ▶ steps pages                                                | Arrow left/right step pages                                                                                   |
 | Logo, color                                                         | `MST_logo.png` in the left screen's header area; `NKS2_Control_Color` (else `VB_bgcolor`) as the accent color |
 
 ## Proposed `src/nks/`

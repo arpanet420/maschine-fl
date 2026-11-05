@@ -83,7 +83,7 @@ export class PadState {
   private chosen: PendingValue<number> | undefined;
   /** How many held pads and arpeggiator steps have each note on (two chords can share a note). */
   private readonly noteUsers = new Map<number, number>();
-  /** Scale, chord mode, chord type and position (KEYBOARD and CHORDS; saved by the CHORDS page). */
+  /** Scale, chord mode, chord type and position (KEYBOARD and CHORDS; all but the scale saved by CHORDS). */
   readonly harmony = new HarmonySettings();
 
   constructor(

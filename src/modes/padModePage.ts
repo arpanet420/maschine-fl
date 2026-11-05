@@ -31,7 +31,7 @@ export class PadModePage extends ChannelPadPage {
     if (display === NEXT) this.pads.selectBank(this.bank(mc) + 1, mc);
   }
 
-  protected padLeds(): void {
+  padLeds(): void {
     // The global fallback lights the pads (held ones pressed).
   }
 

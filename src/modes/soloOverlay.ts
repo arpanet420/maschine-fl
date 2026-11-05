@@ -1,7 +1,7 @@
 // SOLO overlay (hold SOLO; display button 1 is its pin tab). Pads 1–16 are the 16 channels of the
 // current bank; a pad press toggles that channel's solo (SET_CHANNEL solo, from FL's own solo flag).
 // Soloed channels are bright on the pads and outlined on the grid. GROUP A–H pick the bank. The
-// Mixer page claims the SOLO button and keeps its own solo (mixer tracks).
+// Mixer page claims the SOLO button for its strips (mixer tracks); the pads still work from here.
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import { font, theme } from "../render/widgets.js";
 import { ChannelPadPage, type PadChannel } from "./channelPadPage.js";

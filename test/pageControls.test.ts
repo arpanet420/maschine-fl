@@ -113,6 +113,110 @@ describe("a page on top", () => {
   });
 });
 
+describe("MUTE and SOLO with MIXER as the main page", () => {
+  const onMixer = (options: Parameters<typeof stackHarness>[0] = {}): Harness => {
+    const h = stackHarness({ selected: 2, channels: 24, ...options });
+    h.tap("mixer");
+    h.sent.length = 0;
+    return h;
+  };
+  const setPadMode = (h: Harness, button: "padMode" | "keyboard" | "chords") => {
+    h.state.shift = true;
+    h.tap(button);
+    h.state.shift = false;
+  };
+
+  for (const what of ["mute", "solo"] as const) {
+    for (const mode of ["padMode", "keyboard", "chords"] as const) {
+      it(`${what} + pad toggles the channel and plays nothing, with ${mode}'s pads`, () => {
+        const h = onMixer({ [what === "mute" ? "muted" : "solo"]: [6] });
+        setPadMode(h, mode);
+        h.press(what);
+        expect(h.stack.top).toBeUndefined(); // the Mixer stays on the screens
+        h.pad(5);
+        expect(h.sent.at(-1)).toEqual({ type: "setChannel", index: 5, what, value: 1 });
+        h.pad(5, "up");
+        h.pad(6);
+        expect(h.sent.at(-1)).toEqual({ type: "setChannel", index: 6, what, value: 0 });
+        h.pad(6, "up");
+        expect(h.midi).toEqual([]);
+        h.release(what);
+        h.pad(7);
+        expect(h.midi).not.toEqual([]); // let go, the pads play again
+        h.pad(7, "up");
+      });
+    }
+  }
+
+  it("ends a note that was started before MUTE was pressed", () => {
+    const h = onMixer();
+    setPadMode(h, "keyboard");
+    h.pad(3);
+    h.press("mute");
+    h.pad(3, "up");
+    expect(h.midi.at(0)?.[0]).toBe(0x90);
+    expect(h.midi.at(-1)?.[0]).toBe(0x80);
+    expect(h.sent).toEqual([]);
+  });
+
+  it("lights the pads as the MUTE page does while held, and as before when let go", () => {
+    const page = stackHarness({ selected: 2, channels: 24, muted: [5] });
+    page.press("mute");
+    const h = onMixer({ muted: [5] });
+    const lights = (harness: Harness) => Array.from({ length: 16 }, (_, i) => harness.padLed(i));
+    const before = lights(h);
+    h.press("mute");
+    expect(lights(h)).toEqual(lights(page));
+    expect(h.padLed(5)).not.toBe(h.padLed(4));
+    h.release("mute");
+    expect(lights(h)).toEqual(before);
+  });
+
+  it("keeps the strips: MUTE + display button or GROUP still mutes a mixer track", () => {
+    const h = onMixer();
+    h.press("mute");
+    h.tap("display2");
+    expect(h.sent.at(-1)).toMatchObject({ type: "setTrack", index: 1, what: "mute" });
+    h.tap("groupC");
+    expect(h.sent.at(-1)).toMatchObject({ type: "setTrack", index: 2, what: "mute" });
+    h.release("mute");
+  });
+
+  for (const tool of ON_TOP.filter((def) => def.kind === "tool")) {
+    it(`opens the MUTE page over ${tool.label} and goes back to it, and the strips hear nothing`, () => {
+      const h = onMixer();
+      open(h, tool);
+      if (h.stack.top?.page !== tool) throw new Error(`${tool.label} did not open`);
+      h.sent.length = 0;
+      h.press("mute");
+      expect(h.stack.top?.page.id).toBe("mute");
+      expect(h.light("mute")).toBe("bright");
+      h.pad(5);
+      expect(h.sent.at(-1)).toEqual({ type: "setChannel", index: 5, what: "mute", value: 1 });
+      h.pad(5, "up");
+      h.tap("display3");
+      expect(h.sent.filter((command) => command.type === "setTrack")).toEqual([]);
+      h.release("mute");
+      expect(h.stack.top?.page).toBe(tool);
+      expect(h.stack.main).toBe("mixer");
+      expect(h.light("mute")).toBe("dim");
+      expect(h.views.at(-1)).toMatchObject({ meters: true });
+    });
+  }
+
+  it("leaves STEP on its page when an overlay was held over it", () => {
+    const h = stackHarness({ selected: 2, channels: 24, patternLength: 64 });
+    h.tap("step");
+    h.tap("arrowRight");
+    const before = h.views.at(-1)?.stepOffset;
+    expect(before).toBeGreaterThan(0);
+    h.press("select");
+    h.release("select");
+    expect(h.stack.top?.page.id).toBe("step");
+    expect(h.views.at(-1)?.stepOffset).toBe(before);
+  });
+});
+
 describe("the 4D's arrows", () => {
   const cases: Array<[string, (h: Harness) => void]> = BUILT.map((def) => [
     def.label,

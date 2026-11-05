@@ -685,6 +685,24 @@
     "hex": "f07d4d335203f7"
   },
   {
+    "name": "raiseWindow",
+    "direction": "toFl",
+    "message": {
+      "type": "raiseWindow",
+      "window": 3
+    },
+    "hex": "f07d4d337103f7"
+  },
+  {
+    "name": "closeWindow",
+    "direction": "toFl",
+    "message": {
+      "type": "closeWindow",
+      "window": 3
+    },
+    "hex": "f07d4d337203f7"
+  },
+  {
     "name": "setSnap",
     "direction": "toFl",
     "message": {
@@ -1056,6 +1074,26 @@
     "hex": "f07d4d3361f7"
   },
   {
+    "name": "setChannelColor",
+    "direction": "toFl",
+    "message": {
+      "type": "setChannelColor",
+      "index": 5,
+      "color": 4908200
+    },
+    "hex": "f07d4d336e0005022b4928f7"
+  },
+  {
+    "name": "setTrackColor",
+    "direction": "toFl",
+    "message": {
+      "type": "setTrackColor",
+      "index": 3,
+      "color": 14700634
+    },
+    "hex": "f07d4d336f00030701205af7"
+  },
+  {
     "name": "setPatternColor",
     "direction": "toFl",
     "message": {
@@ -1125,6 +1163,14 @@
       "semitones": -12
     },
     "hex": "f07d4d3366010234f7"
+  },
+  {
+    "name": "closeAllWindows",
+    "direction": "toFl",
+    "message": {
+      "type": "closeAllWindows"
+    },
+    "hex": "f07d4d3370f7"
   },
   {
     "name": "pluginPicker",

@@ -1,13 +1,14 @@
 // Plugin mode: the knobs drive the selected channel's own plugin (u-he Diva, ...), so its GUI
-// knobs move. Pages of 8 parameters come from a PageSource (FL's parameter list for now). Each
-// screen owns the controls above and below it: display buttons 1–4 and knobs 1–4 belong to the
-// left screen, 5–8 to the right one; the tabs are the pages of the current bank of 8.
+// knobs move. Pages of 8 parameters come from a PageSource (FL's parameter list for now); the arrows
+// step through them. Each screen owns the controls above and below it: display buttons 1–4 and knobs
+// 1–4 belong to the left screen, 5–8 to the right one. Display 3 is the plug-in's window, as on CHANNEL.
 import { loadImage } from "@napi-rs/canvas";
 import type { Image, SKRSContext2D } from "@napi-rs/canvas";
 import type { HwEvent } from "../hw/events.js";
 import type { ButtonId } from "../hw/ids.js";
 import type { LedState } from "../hw/leds.js";
 import type { Rect } from "../hw/display.js";
+import { auPosition, auTextValue, type AuRanges } from "../fl/auParams.js";
 import type { FlSection, FlState } from "../fl/flState.js";
 import {
   SCREEN_COLUMNS,
@@ -28,8 +29,11 @@ import { RenderSoon, clamp, isLive, knobStep } from "./knob.js";
 import type { PendingValue } from "./knob.js";
 import { DISPLAY_BUTTONS } from "./channelPadPage.js";
 import type { Mode, ModeContext, ViewCommand } from "./mode.js";
-import { FlParamPages, PAGE_SIZE, paramLabel } from "./pluginPages.js";
+import { FlParamPages, paramLabel } from "./pluginPages.js";
 import type { PageSource, PluginPage } from "./pluginPages.js";
+
+// Over display buttons 1–4, the window's where CHANNEL has it.
+const LEFT_TABS = ["", "", "Editor", ""];
 
 const TABS_RECT: Rect = { ...FULL, height: TAB_HEIGHT };
 const KNOB_ROW: Rect = { ...FULL, y: FULL.height - 110, height: 110 };
@@ -68,6 +72,7 @@ export class PluginMode implements Mode {
   constructor(
     private readonly now: () => number = Date.now,
     private readonly source: PageSource = new FlParamPages(),
+    private readonly auRanges?: AuRanges,
   ) {}
 
   enter(mc: ModeContext): void {
@@ -177,21 +182,17 @@ export class PluginMode implements Mode {
   // ── Input ──────────────────────────────────────────────────────────────────
 
   private onButton(id: ButtonId, pressed: boolean, mc: ModeContext): boolean {
-    const slot = DISPLAY_BUTTONS.findIndex((button) => button === id);
-    if (slot >= 0) {
-      if (pressed) this.setPage(this.bank() * PAGE_SIZE + slot, mc);
+    if (id === "display3") {
+      const target = this.target(mc.fl);
+      if (pressed && target) mc.send({ type: "showEditor", index: target.channel });
       return true;
     }
+    if (DISPLAY_BUTTONS.some((button) => button === id)) return true;
     if (id === "arrowLeft" || id === "arrowRight") {
       if (pressed) this.setPage(this.page + (id === "arrowLeft" ? -1 : 1), mc);
       return true;
     }
     return false;
-  }
-
-  /** The bank of 8 pages the tabs show. */
-  private bank(): number {
-    return Math.floor(this.page / PAGE_SIZE);
   }
 
   private turnKnob(knob: number, delta: number, mc: ModeContext): boolean {
@@ -223,6 +224,15 @@ export class PluginMode implements Mode {
     return info?.known ? info.value : undefined;
   }
 
+  /** A parameter FL has no 0–1 position for yet: from its text, if it's an Audio Unit's. */
+  private auValue(param: number, mc: ModeContext): number | undefined {
+    const info = mc.fl.pluginParams.get(param);
+    const plugin = this.target(mc.fl)?.name;
+    if (!info || !plugin || auTextValue(info.valueText) === undefined) return undefined;
+    const params = this.auRanges?.params(plugin, () => mc.requestRender());
+    return auPosition(info, params?.[param]);
+  }
+
   // ── Output ─────────────────────────────────────────────────────────────────
 
   render(left: SKRSContext2D, right: SKRSContext2D, mc: ModeContext): void {
@@ -245,14 +255,7 @@ export class PluginMode implements Mode {
 
     const pages = this.pages(fl);
     const page = pages[this.page];
-    const bank = this.bank() * PAGE_SIZE;
-    const tabs = Array.from({ length: PAGE_SIZE }, (_, i) => pages[bank + i]?.name ?? "");
-    const active = [this.page - bank];
-    drawTabs(left, TABS_RECT, { tabs: tabs.slice(0, SCREEN_COLUMNS), active });
-    drawTabs(right, TABS_RECT, {
-      tabs: tabs.slice(SCREEN_COLUMNS),
-      active: active.map((i) => i - SCREEN_COLUMNS),
-    });
+    drawTabs(left, TABS_RECT, { tabs: LEFT_TABS });
 
     const header = this.source.header?.(fl);
     // the product's color marks its section row; everything else is FL's orange and mint
@@ -317,13 +320,14 @@ export class PluginMode implements Mode {
       if (param === undefined) return undefined;
       const info = fl.pluginParams.get(param);
       const name = info?.name || fl.paramNames.get(param) || `Parameter ${param + 1}`;
-      const value = this.valueOf(param, fl);
+      const value = this.valueOf(param, fl) ?? this.auValue(param, mc);
       return {
         name,
         props: {
           label: page.labels?.[index] ?? paramLabel(page, name),
           valueText: info ? info.valueText || pct(info.value) : "…",
           value,
+          dial: true,
         },
       };
     });
@@ -350,24 +354,33 @@ export class PluginMode implements Mode {
     ctx.fillStyle = color;
     ctx.font = font(17);
     ctx.fillText(fitText(ctx, fl.selectedChannel.name, textWidth), rect.x + 14, rect.y + 44);
-    // The tabs show the pages; only more of them than the tabs can hold needs saying.
-    const count = this.pages(fl).length;
-    if (count > 0 && count <= PAGE_SIZE) return;
-    ctx.fillStyle = theme.dimText;
+    const text = this.pageText(fl);
+    if (text === undefined) return;
+    ctx.fillStyle = theme.text;
+    ctx.font = font(20);
     ctx.fillText(
-      count === 0 ? "No parameters" : `page ${this.page + 1} / ${count}`,
+      fitText(ctx, text, textWidth),
       rect.x + 14,
-      rect.y + Math.min(68, rect.height - 22),
+      rect.y + Math.min(68, rect.height - 24),
     );
+  }
+
+  /** The current page and how many there are. A lone page without a name of its own needs no line. */
+  private pageText(fl: FlState): string | undefined {
+    const pages = this.pages(fl);
+    const name = pages[this.page]?.name;
+    if (name === undefined) return "No parameters";
+    const number = `Page ${this.page + 1}`;
+    if (pages.length === 1) return name === number ? undefined : name;
+    const place = `${this.page + 1} / ${pages.length}`;
+    return name === number ? `Page ${place}` : `${name}  ${place}`;
   }
 
   leds(leds: LedState, mc: ModeContext): void {
     const pages = this.pages(mc.fl).length;
-    const bank = this.bank() * PAGE_SIZE;
-    DISPLAY_BUTTONS.forEach((id, slot) => {
-      const index = bank + slot;
-      leds.setLight(id, index >= pages ? "off" : index === this.page ? "bright" : "dim");
-    });
+    for (const id of DISPLAY_BUTTONS) {
+      leds.setLight(id, id === "display3" && this.target(mc.fl) ? "dim" : "off");
+    }
     leds.setLight("arrowLeft", this.page > 0 ? "dim" : "off");
     leds.setLight("arrowRight", this.page + 1 < pages ? "dim" : "off");
   }

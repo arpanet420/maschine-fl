@@ -314,6 +314,10 @@ export type FlCommand =
   /** `value` is the raw 0–1 `norm`, also for pan ((pan + 1) / 2). */
   | { type: "setChannel"; index: number; what: ChannelProp; value: number }
   | { type: "setChannelTrack"; index: number; track: number }
+  /** Set mixer track `index`'s color (`0xRRGGBB`, FL fills in the rest). */
+  | { type: "setTrackColor"; index: number; color: number }
+  /** Set channel `index`'s color (`0xRRGGBB`, FL fills in the rest). */
+  | { type: "setChannelColor"; index: number; color: number }
   | { type: "showEditor"; index: number }
   | { type: "setStep"; channel: number; step: number; on: boolean }
   | { type: "selectTrack"; index: number }
@@ -338,6 +342,8 @@ export type FlCommand =
   | { type: "presetStep"; dir: "prev" | "next" }
   /** Show window `window` (0–4, see `UI_WINDOWS`), or hide it if it has the focus. */
   | { type: "showWindow"; window: number }
+  | { type: "raiseWindow"; window: number }
+  | { type: "closeWindow"; window: number }
   /** Set FL's snap mode (`midi.Snap_*`). */
   | { type: "setSnap"; mode: number }
   | { type: "ui"; action: UiAction }
@@ -376,6 +382,8 @@ export type FlCommand =
   | { type: "transpose"; channel: number; semitones: number }
   /** Open or close FL's Plugin picker (a toggle). */
   | { type: "pluginPicker" }
+  /** FL's "Close all windows" (F12). */
+  | { type: "closeAllWindows" }
   /** A plain FL key for what has the focus: browses FL's Plugin picker. */
   | { type: "uiKey"; key: UiKey }
   /**
@@ -1126,6 +1134,8 @@ export function encodeCommand(command: FlCommand): number[] {
       w.norm(command.value);
       break;
     case "showWindow":
+    case "raiseWindow":
+    case "closeWindow":
       w.u7(command.window);
       break;
     case "presetStep":
@@ -1147,6 +1157,7 @@ export function encodeCommand(command: FlCommand): number[] {
       w.u7(command.index).flag(command.quantized);
       break;
     case "requestMarkers":
+    case "closeAllWindows":
     case "pluginPicker":
       break;
     case "setLoopMode":
@@ -1180,6 +1191,10 @@ export function encodeCommand(command: FlCommand): number[] {
       break;
     case "setPatternColor":
       w.u14(command.pattern).color(command.color);
+      break;
+    case "setChannelColor":
+    case "setTrackColor":
+      w.u14(command.index).color(command.color);
       break;
     case "doublePattern":
       w.u7(command.pattern);
@@ -1271,6 +1286,10 @@ function readCommand(command: number, r: Reader): FlCommand | undefined {
       return { type: "setMainVolume", value: r.norm() };
     case TO_FL.showWindow:
       return { type: "showWindow", window: r.u7() };
+    case TO_FL.raiseWindow:
+      return { type: "raiseWindow", window: r.u7() };
+    case TO_FL.closeWindow:
+      return { type: "closeWindow", window: r.u7() };
     case TO_FL.presetStep:
       return { type: "presetStep", dir: r.u7() === 0 ? "prev" : "next" };
     case TO_FL.setSnap:
@@ -1305,6 +1324,10 @@ function readCommand(command: number, r: Reader): FlCommand | undefined {
       };
     case TO_FL.setPatternColor:
       return { type: "setPatternColor", pattern: r.u14(), color: r.color() };
+    case TO_FL.setTrackColor:
+      return { type: "setTrackColor", index: r.u14(), color: r.color() };
+    case TO_FL.setChannelColor:
+      return { type: "setChannelColor", index: r.u14(), color: r.color() };
     case TO_FL.doublePattern:
       return { type: "doublePattern", pattern: r.u7() };
     case TO_FL.createPattern:
@@ -1320,6 +1343,8 @@ function readCommand(command: number, r: Reader): FlCommand | undefined {
       return { type: "transpose", channel: r.u14(), semitones: r.s7() };
     case TO_FL.pluginPicker:
       return { type: "pluginPicker" };
+    case TO_FL.closeAllWindows:
+      return { type: "closeAllWindows" };
     case TO_FL.uiKey:
       return { type: "uiKey", key: nameOf(UI_KEYS, r.u7()) };
     case TO_FL.triggerLiveClip:

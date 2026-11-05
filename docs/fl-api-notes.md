@@ -54,10 +54,10 @@ All channel indexes are group-local (`useGlobalIndex` stays False), except where
 | `midiNoteOn(indexGlobal, note, velocity)`, `getChannelIndex(i)`                         | PAD MODE: notes on MIDI channel 2 reach `OnNoteOn`, the converted index plays the right channel, velocity 0 = note off, root note 60 sounds right                                | Seen 2026-10-19                         |
 | `getActivityLevel(i)`                                                                   | `> 0` while a channel sounds, per hit, no threshold needed                                                                                                                       | Seen 2026-10-21                         |
 
-### The plug-in window follows the selection
+### Plug-in windows and the selection
 
-SELECT_CHANNEL while a generator's window has the focus. The owner wasn't sure about this on 2026-10-18
-("not sure about follow"), so all of it counts as open.
+SELECT_CHANNEL brings up a plug-in window the user brought up, and no other. Until 2026-11-05 the window
+followed the selection; the owner didn't want windows they hadn't opened (docs/bugs.md #12).
 
 If the focus moves during a parameter name scan, mk3d's log says so once per scan (`focus moved during a parameter
 scan`), which would show whether `getParamName` is what confuses this.
@@ -67,8 +67,10 @@ scan`), which would show whether `getParamName` is what confuses this.
 | `ui.getFocused(midi.widPluginGenerator)`, `ui.getFocusedFormID()` | True for a generator window, and the form id is its channel rack index (−1 for an invalid plug-in; an effect's id is `(track << 6 + slot) << 16`). Whether the index is group-local isn't said | Manual |
 | `OnRefresh` with `HW_Dirty_FocusedWindow`                | Delivered when the focus moves (the manual's table calls this flag "channel selection changed", which looks like a slip). `plugins.getParamName` may also fire it (NI's script says so), which would feed the bookkeeping below | Open   |
 | `showEditor(i, 1)`, `showEditor(i, 0)`                   | 1 shows, 0 hides (API 3). That 1 on an open window does nothing is our reading                                                                                                             | Manual |
-| `channels.focusEditor(i)`                                | Brings that window to the front                                                                                                                                                            | Manual |
-| `follow_opened`, `seen_open` (ours)                      | They learn only from focus changes and SHOW_EDITOR, so a window closed with the mouse stays in the set: a later follow may skip closing it, or close one opened by hand. Accepted            | —      |
+| `channels.focusEditor(i)`                                | Gives that window the focus. It doesn't bring a window that is behind others to the front (with `showEditor(i, 1)`), so it is closed and reopened first, as the main windows are (bug 5) | Seen 2026-11-05 (bug 13) |
+| FL selects the channel of a plug-in window that gets the focus | A selection changed with no SELECT_CHANNEL right after a plug-in window got the focus, about 1 s after a follow had opened another one (19:35, 2026-11-05). What moved the focus isn't known | Seen in mk3d's log |
+| `HW_Dirty_FocusedWindow` with every selection             | The log has a focus flag right after each SELECT_CHANNEL, with the channel rack focused too | Seen in mk3d's log |
+| `seen_open` (ours)                                       | Learnt only from focus changes and SHOW_EDITOR, so a window closed with the mouse while another plug-in has the focus stays in the set and comes up again. Accepted | —      |
 
 ## Patterns
 
@@ -88,7 +90,7 @@ FL has no call to delete a pattern, so mk3d has no such command. `patterns.clear
 
 | Call                                                                | What we assume                                                                                                                                                                                                               | Status                                |
 | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| `channels.setGridBit(channel, step, value)`                         | Doesn't write piano roll notes, though `getGridBit` shows them as on. What ERASE and STEP should do on recorded channels is still open                                                                                         | Seen 2026-10-18                       |
+| `channels.setGridBit(channel, step, value)`                         | Doesn't write piano roll notes, though `getGridBit` shows them as on. Owner, 2026-11-05: setting a step to off does remove recorded notes (ERASE + pad emptied the channel's pattern, a lit step on STEP went), which this row used to say it couldn't. Setting one on: see the test list                                                                                         | Seen 2026-10-18                       |
 | `channels.getGridBit`, `getCurrentStepParam`                        | Also see recorded notes: pitch and tick. KEYBOARD's flashing pads depend on it (PLAYED_NOTES). Only one note per step has been checked; chords are open                                                                        | Seen 2026-11-04                       |
 | `setStepParameterByIndex(channel, pattern, step, param, value)`     | TRANSPOSE writes `pPitch` of every step that is on, one undo point (`UF_PR`), and never calls `setGridBit`. **Known bug** (owner, 2026-10-19): piano roll notes count as grid bits, so it moves one note per step position and can split chords. The API can't select or move piano roll notes | Seen 2026-10-19                       |
 | CLEAR_STEPS, one `setGridBit` per step in one callback              | Fast enough for a pattern of a few hundred steps; nobody has timed it                                                                                                                                                          | Seen 2026-10-19 (works); timing: Open |
@@ -132,6 +134,11 @@ name. The others are marked Used.
 | `plugins.getPresetCount`, `nextPreset`, `prevPreset`                     | Whether the count is 0 for plug-ins without programs, and whether next and previous wrap (the script assumes they do when it guesses the index after a step), is open for VST, VST3 and FL's own plug-ins | Open                              |
 | `plugins.getName(i, -1, FPN_Patch)`, `FPN_Preset`                        | **Found on hardware (Diva):** for a VST, `FPN_Patch` doesn't match the preset names, but FL names the channel after the current program. The current preset is the one named like `FPN_Patch`, else like the channel, else the last guess | Seen 2026-10-18                   |
 | `plugins.getName(i, -1, FPN_Preset, GPN_GetCurrentPreset)`               | The name of the current preset, per the manual. Tried third, after the patch name and the channel name, so what works on Diva can't get worse; a plug-in where those two say nothing gets the right highlight | Manual; in FL: Open               |
+| `plugins.getPresetCount` on an Audio Unit | Plug-in programs plus FL's own preset files. **Found in FL's binaries (26.1.5) and crash log:** asking for such a name (`getName(i, k, FPN_Preset)`) reaches FL's Audio Unit wrapper, which reads the factory preset array unchecked, and crashes FL when the plug-in has none. FL's own UI doesn't go there, so only a script can. See `docs/bugs.md` #8 |
+| Value text of an Audio Unit parameter | **Found in FL's binaries (26.1.5):** always `Format('%f')` of the value, a space and an empty label: `90.00 `. The script's only sign of the format, so a later FL may change it. Another format whose every value text looks like that loses its preset list on BROWSER, nothing worse |
+| An Audio Unit's 0–1 value | **Found in FL's binaries (26.1.5):** FL's parameter index is the place in `kAudioUnitProperty_ParameterList` (global scope, unfiltered), and it sets `min + value × (max − min)` from `ParameterInfo`. So the position is `(text − min) / (max − min)`, which `src/fl/auParams.ts` uses. Seen on 2026-11-05 in `native/au-params.c` on Repro-1, Synplant, Microtonic Multi, D-50, MAP and Diva. D-50 lists its parameters only after `AudioUnitInitialize`. The script API has no range |
+| `channels.setChannelColor`, `mixer.setTrackColor`, `patterns.setPatternColor` | **Found in FL's binaries (26.1.5):** each takes `0x--RRGGBB`, swaps red and blue for FL's own order and forces the top byte to `FF`, so the wire's `0xRRGGBB` is right as it is |
+| Which thread `OnSysEx` runs on | **Seen 2026-11-05 (FL 26.1.5):** at times not `OnIdle`'s: the script's log line came on a BROWSER press. How often, and what decides it, is unknown. From a side thread FL adds `PME_FromMIDI` to the flags and posts a transport command (all but play and stop) to its main thread as a window message (FL 26.1.5's binary, `FLEngine` `0x5eb560`, `0x5ecb20`, `0x3146e0`). Such a frame now waits for `OnIdle` (`hold_frame`, bug #10). Played notes aren't frames, so they aren't delayed |
 | `channels.getChannelName(i)` after a preset step                         | Follows the program for other plug-ins than Diva                                                                                                                                                     | Open                              |
 | Reading a bank of up to `PRESET_SCAN_LIMIT` (1024) names                 | Whole, once, in one callback, cached until the channel, plug-in or count changes. Bigger banks are read only around the known index. How long it takes is open                                         | Open                              |
 | `FPN_Patch` right after `nextPreset` / `prevPreset`                      | FL may rename late, so the script keeps its own index for `PRESET_SETTLE_SECONDS` after a step or load                                                                                                | Used                              |
@@ -220,6 +227,18 @@ window is open. Our script makes changes from `OnSysEx` without looking: what FL
 it. No failure seen. mk3d's log says once per load if either ever says no (`OnSysEx while FL says it isn't safe`).
 
 The manual spells the event's property `pmeflags`; every script of FL's reads `pmeFlags`, so ours does too.
+
+## Notes of other patterns
+
+Status: Stubs. A script can read the steps and notes of the selected pattern only: `channels.getGridBit`,
+`getCurrentStepParam` and `getStepParam` take no pattern, and the one step call that does,
+`setStepParameterByIndex`, writes. No call lists the playlist's clips outside performance mode, so a script can't
+tell which pattern the song is playing either. `channels.getActivityLevel` says that a channel sounds, not which
+note, and `general.dumpScoreLog` writes recent MIDI into the selected pattern, so it changes the project.
+
+So KEYBOARD's and CHORDS' pads (PLAYED_NOTES) can't show notes from a pattern that isn't selected. PAD MODE's pads use
+`getActivityLevel`, which the stubs don't tie to a pattern; that hasn't been checked in song mode with another
+pattern selected. The saved `.flp` has both the patterns and the clips, at the price of showing what was last saved.
 
 ## Time signature
 

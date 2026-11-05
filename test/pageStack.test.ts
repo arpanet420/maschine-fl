@@ -136,7 +136,7 @@ describe("PageStack: main pages", () => {
     expect([light("channel"), light("plugIn")]).toEqual(["bright", "dim"]);
   });
 
-  it("a main button shows that page and enters it; the same button again does nothing", () => {
+  it("a main button shows that page and enters it; the same button again keeps the page", () => {
     const { stack, pages, press, release, light } = setup();
     press("plugIn");
     release("plugIn");
@@ -280,6 +280,77 @@ describe("PageStack: buttons claimed by the main page", () => {
     press("mixer");
     release("mixer");
     expect(light("mute")).toBe("bright");
+  });
+
+  it("does not claim with a page on top: that page owns the button, and the overlay opens", () => {
+    const mixer = claiming();
+    const step = new FakePage("step");
+    const { stack, pages, press, release, light } = setup({ mixer, step });
+    press("mixer");
+    release("mixer");
+    press("step");
+    release("step");
+    mixer.leds = (leds?: LedState) => leds?.setLight("mute", "off");
+    expect(light("mute")).toBe("dim"); // the stack's, not the page's behind
+    press("mute");
+    expect(stack.top?.page.id).toBe("mute");
+    expect(pages.mute.enters).toBe(1);
+    expect(light("mute")).toBe("bright");
+    release("mute");
+    expect(buttons(mixer)).toEqual([]);
+  });
+
+  it("leaves the pads to the overlay while its claimed button is held, and only then", () => {
+    const mixer = claiming();
+    const mute = new FakePage("mute", { handles: (event) => event.type === "pad" });
+    const { stack, press, release, pad } = setup({ mixer, mute });
+    press("mixer");
+    release("mixer");
+    expect(pad(3, "down")).toBe(false);
+    pad(3, "up");
+    press("mute");
+    expect(stack.top).toBeUndefined();
+    expect(pad(4, "down")).toBe(true);
+    release("mute"); // the pad's release still goes where its press went
+    expect(pad(4, "up")).toBe(true);
+    expect(mute.events.map((e) => (e.type === "pad" ? `${e.pad}:${e.phase}` : e.type))).toEqual([
+      "4:down",
+      "4:up",
+    ]);
+    expect(pad(5, "down")).toBe(false);
+    // The Mixer was only asked about the pads no overlay had: it takes none.
+    const asked = mixer.events.flatMap((e) => (e.type === "pad" ? [e.pad] : []));
+    expect(asked).toEqual([3, 5]);
+  });
+
+  it("gives the pads to MUTE when MUTE and SOLO are both held, as the strips do", () => {
+    const mixer = claiming();
+    const padsOnly = (event: HwEvent) => event.type === "pad";
+    const mute = new FakePage("mute", { handles: padsOnly });
+    const solo = new FakePage("solo", { handles: padsOnly });
+    const { press, release, pad } = setup({ mixer, mute, solo });
+    press("mixer");
+    release("mixer");
+    press("solo");
+    pad(0, "down");
+    press("mute");
+    pad(1, "down");
+    release("mute");
+    pad(2, "down");
+    const pads = (page: FakePage) => page.events.flatMap((e) => (e.type === "pad" ? [e.pad] : []));
+    expect(pads(solo)).toEqual([0, 2]);
+    expect(pads(mute)).toEqual([1]);
+  });
+
+  it("forgets a held claimed button when the device goes away: no release will come", () => {
+    const mixer = claiming();
+    const mute = new FakePage("mute", { handles: (event) => event.type === "pad" });
+    const { stack, press, release, pad } = setup({ mixer, mute });
+    press("mixer");
+    release("mixer");
+    press("mute");
+    stack.releasePads();
+    expect(pad(0, "down")).toBe(false);
   });
 
   it("does not claim while FL is not connected", () => {
@@ -443,17 +514,134 @@ describe("PageStack: tool pages", () => {
     expect(pages.channel.resumes).toBe(1);
   });
 
-  it("closes when another page button is pressed, and has no pin tab", () => {
+  it("has no pin tab", () => {
     const step = new FakePage("step");
-    const { stack, press, release } = setup({ step });
+    const { press, release } = setup({ step });
     press("step");
     release("step");
     expect(press("display1")).toBe(false);
     release("display1");
-    press("pattern");
-    expect(stack.top?.page.id).toBe("pattern");
-    release("pattern");
-    expect(stack.top).toBeUndefined();
+  });
+
+  describe("under an overlay", () => {
+    const open = () => {
+      const step = new FakePage("step");
+      const context = setup({ step });
+      context.press("step");
+      context.release("step");
+      return { step, ...context };
+    };
+
+    it("comes back when the overlay's button is let go", () => {
+      const { step, stack, pages, press, release, light } = open();
+      expect(step.enters).toBe(1);
+      press("pattern");
+      expect(stack.top?.page.id).toBe("pattern");
+      expect([light("step"), light("pattern")]).toEqual(["dim", "bright"]);
+      release("pattern");
+      expect(stack.top).toMatchObject({ page: { id: "step" }, held: false, pinned: false });
+      expect(step.enters).toBe(2);
+      expect(light("step")).toBe("bright");
+      // PATTERN changed the main page's VIEW and STEP here doesn't: the main page sends it again.
+      expect(pages.channel.resumes).toBe(1);
+      // Still latched: its own button closes it, and only then the main page is back.
+      press("step");
+      release("step");
+      expect(stack.top).toBeUndefined();
+    });
+
+    it("comes back after a pinned overlay, when that closes", () => {
+      const { stack, press, release } = open();
+      press("mute");
+      press("display1");
+      release("display1");
+      release("mute");
+      expect(stack.top?.page.id).toBe("mute");
+      press("mute");
+      release("mute");
+      expect(stack.top?.page.id).toBe("step");
+    });
+
+    it("comes back when unpinning closes the overlay", () => {
+      const { stack, press, release } = open();
+      press("mute");
+      press("display1");
+      release("display1");
+      release("mute");
+      press("display1");
+      expect(stack.top?.page.id).toBe("step");
+    });
+
+    it("stays under when one overlay replaces another", () => {
+      const { stack, press, release } = open();
+      press("pattern");
+      press("mute");
+      release("pattern");
+      expect(stack.top?.page.id).toBe("mute");
+      release("mute");
+      expect(stack.top?.page.id).toBe("step");
+    });
+
+    it("is closed by a main page's button, and doesn't come back", () => {
+      const { step, stack, press, release } = open();
+      press("mute");
+      press("plugIn");
+      expect(stack.main).toBe("plugin");
+      expect(stack.top).toBeUndefined();
+      release("mute");
+      release("plugIn");
+      expect(stack.top).toBeUndefined();
+      expect(step.enters).toBe(1);
+    });
+
+    it("is closed by another tool page, and doesn't come back", () => {
+      const file = new FakePage("file");
+      const step = new FakePage("step");
+      const { stack, press, release } = setup({ step, file });
+      press("step");
+      release("step");
+      press("mute");
+      press("file");
+      expect(stack.top?.page.id).toBe("file");
+      release("mute");
+      release("file");
+      press("file");
+      release("file");
+      expect(stack.top).toBeUndefined();
+      expect(step.enters).toBe(1);
+    });
+
+    it("opens again from its own button, in place of the overlay", () => {
+      const { stack, press, release } = open();
+      press("mute");
+      press("display1"); // pinned
+      release("display1");
+      release("mute");
+      press("step");
+      release("step");
+      expect(stack.top).toMatchObject({ page: { id: "step" }, closeOnRelease: false });
+      press("step");
+      release("step");
+      expect(stack.top).toBeUndefined();
+    });
+
+    it("doesn't come back if it was being closed when the overlay opened", () => {
+      const { stack, press, release } = open();
+      press("step"); // the release would close it
+      press("mute");
+      release("step");
+      release("mute");
+      expect(stack.top).toBeUndefined();
+    });
+
+    it("doesn't start again until FL is back", () => {
+      const { step, fl, stack, press, release } = open();
+      press("mute");
+      fl.reset();
+      release("mute");
+      expect(stack.top?.page.id).toBe("step");
+      expect(step.enters).toBe(1);
+    });
   });
 });
 
@@ -490,12 +678,19 @@ describe("PageStack: pages that are not built", () => {
     expect(log).toHaveLength(1);
   });
 
-  it("draws the SAMPLING LED (a color LED) off", () => {
-    const { stack, mc } = setup();
-    const leds = new LedState();
-    leds.setButtonColor("sampling", paletteWhite("bright"));
-    stack.leds(leds, mc);
-    expect(leds.buttonLeds[COLOR_LEDS.sampling]).toBe(0);
+  it("draws the SAMPLING LED (a color LED) dim, and off with FL gone", () => {
+    const { stack, mc, fl } = setup();
+    const lit = new LedState();
+    stack.leds(lit, mc);
+    const dim = new LedState();
+    dim.setButtonColor("sampling", paletteWhite("dim"));
+    expect(lit.buttonLeds[COLOR_LEDS.sampling]).toBe(dim.buttonLeds[COLOR_LEDS.sampling]);
+    expect(lit.buttonLeds[COLOR_LEDS.sampling]).not.toBe(0);
+    fl.reset();
+    const off = new LedState();
+    off.setButtonColor("sampling", paletteWhite("bright"));
+    stack.leds(off, mc);
+    expect(off.buttonLeds[COLOR_LEDS.sampling]).toBe(0);
   });
 
   it("turns every page LED off while FL is not connected", () => {

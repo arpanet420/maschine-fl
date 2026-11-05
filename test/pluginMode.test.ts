@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
 import { describe, expect, it, vi } from "vitest";
+import { AuRanges } from "../src/fl/auParams.js";
 import { FlState } from "../src/fl/flState.js";
 import type { FlCommand, FlMessage } from "../src/fl/sysex.js";
 import { DISPLAY_HEIGHT, DISPLAY_WIDTH } from "../src/hw/display.js";
@@ -66,7 +67,11 @@ const report = (...indexes: number[]): FlMessage => ({
   })),
 });
 
-function setup({ withPlugin = true, source }: { withPlugin?: boolean; source?: PageSource } = {}) {
+function setup({
+  withPlugin = true,
+  source,
+  auRanges,
+}: { withPlugin?: boolean; source?: PageSource; auRanges?: AuRanges } = {}) {
   const fl = new FlState();
   const sent: FlCommand[] = [];
   const state = { shift: false, time: 1000, renders: 0 };
@@ -80,7 +85,7 @@ function setup({ withPlugin = true, source }: { withPlugin?: boolean; source?: P
     touchedKnobs,
     requestRender: () => state.renders++,
   };
-  const mode = new PluginMode(() => state.time, source);
+  const mode = new PluginMode(() => state.time, source, auRanges);
   const feed = (...messages: FlMessage[]) => {
     for (const message of messages) {
       fl.apply(message);
@@ -229,39 +234,44 @@ describe("PluginMode pages and VIEW", () => {
     expect(sent).toHaveLength(1);
   });
 
-  it("jumps to a page with display 1–8 within the bank", () => {
-    const { press, sent } = setup();
-    press("display2");
-    expect(sent).toEqual([view(PAGE2)]);
-    press("display2"); // already there
-    expect(sent).toHaveLength(1);
-    press("display1");
-    expect(sent[1]).toEqual(view(PAGE1));
+  it("opens the plug-in's window with display 3 and swallows the other display buttons", () => {
+    const { mode, mc, press, sent } = setup();
+    for (const id of [1, 2, 4, 5, 6, 7, 8]) {
+      expect(press(`display${id}` as ButtonId)).toBe(true);
+    }
+    expect(sent).toEqual([]);
     press("display3");
-    expect(sent[2]).toEqual(view([200, 201, 202, 203, 300, 301, 302, 303]));
-    press("display8"); // page 8
-    expect(sent[3]).toEqual(view([336, 337, 338, 339, 340, 341, 342, 343]));
+    expect(sent).toEqual([{ type: "showEditor", index: 2 }]);
+    mode.onEvent({ type: "button", id: "display3", pressed: false }, mc);
+    expect(sent).toHaveLength(1);
   });
 
-  it("pages with the arrows and the bank follows", () => {
-    const { press, sent, displayLeds } = setup();
+  it("does nothing on display 3 without a plug-in", () => {
+    const { press, sent } = setup({ withPlugin: false });
+    expect(press("display3")).toBe(true);
+    expect(sent).toEqual([]);
+  });
+
+  it("pages with the arrows, stopping at both ends", () => {
+    const { press, sent } = setup();
     press("arrowLeft"); // already on page 1
     expect(sent).toEqual([]);
-    for (let i = 0; i < 8; i++) press("arrowRight"); // page 9 = bank 2, slot 1
+    for (let i = 0; i < 8; i++) press("arrowRight"); // page 9
     expect(sent).toHaveLength(8);
+    expect(sent[0]).toEqual(view(PAGE2));
     expect(sent[7]).toEqual(view([344, 345, 346, 347, 348, 349, 350, 351]));
-    expect(displayLeds()).toEqual([63, 16, 16, 0, 0, 0, 0, 0]);
-    press("display3"); // page 11
-    expect(sent[8]).toEqual(view([360, 361, 362, 363]));
     press("arrowRight");
-    expect(sent).toHaveLength(9);
+    press("arrowRight"); // page 11
+    expect(sent[9]).toEqual(view([360, 361, 362, 363]));
+    press("arrowRight");
+    expect(sent).toHaveLength(10);
     press("arrowLeft");
-    expect(sent[9]).toEqual(view([352, 353, 354, 355, 356, 357, 358, 359]));
+    expect(sent[10]).toEqual(view([352, 353, 354, 355, 356, 357, 358, 359]));
   });
 
   it("goes back to page 1 when the plugin name or the channel changes", () => {
     const { press, feed, sent, fl } = setup();
-    press("display2");
+    press("arrowRight");
     sent.length = 0;
     feed(plugin(2, "Diva")); // same plugin: stay
     expect(sent).toEqual([]);
@@ -284,13 +294,14 @@ describe("PluginMode pages and VIEW", () => {
   });
 
   it("resets to page 1 when the plugin changes, not when it merely reports again", () => {
-    const { press, feed, sent, displayLeds } = setup();
-    press("display2");
+    const { press, feed, sent, draw } = setup();
+    press("arrowRight");
     feed(plugin(2, "Diva"), report(...PAGE2));
-    expect(displayLeds()[1]).toBe(63);
+    expect(sent.at(-1)).toEqual(view(PAGE2));
+    expect(draw().texts.left).toContain("VCC  2 / 11");
     feed(plugin(2, "Hive"), ...nameMessages(NAMES));
-    expect(displayLeds()[0]).toBe(63);
     expect(sent.at(-1)).toEqual(view(PAGE1));
+    expect(draw().texts.left).toContain("main  1 / 11");
   });
 
   it("follows the names as they arrive", () => {
@@ -360,6 +371,48 @@ describe("PluginMode knobs", () => {
     expect(setParam(sent[2])?.value).toBeCloseTo(0.4, 6);
   });
 
+  it("places an Audio Unit's untouched knob from its text and range, and still moves it relatively", async () => {
+    const reads: string[] = [];
+    const auRanges = new AuRanges((plugin) => {
+      reads.push(plugin);
+      return Promise.resolve([{ name: "main: Param 0", min: 0, max: 200 }]);
+    });
+    const { feed, turn, sent, draw, state } = setup({ auRanges });
+    const param = (valueText: string) => ({
+      type: "pluginParams" as const,
+      params: [{ index: 0, value: 47, name: "main: Param 0", valueText, known: false }],
+    });
+    const pixels = () => draw().left.getImageData(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT).data;
+    feed(param("50.00 "));
+    const reading = pixels();
+    const renders = state.renders;
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(reads).toEqual(["Diva"]);
+    expect(state.renders).toBe(renders + 1);
+    const low = pixels();
+    expect(low).not.toEqual(reading);
+    feed(param("150.00 "));
+    expect(pixels()).not.toEqual(low);
+    expect(draw().texts.left).toContain("150.00 ");
+    turn(0, 120);
+    expect(sent).toEqual([{ type: "nudgeParam", param: 0, step: 0.1 }]);
+  });
+
+  it("asks for no ranges when the text isn't FL's form for an Audio Unit", () => {
+    const reads: string[] = [];
+    const auRanges = new AuRanges((plugin) => {
+      reads.push(plugin);
+      return Promise.resolve([]);
+    });
+    const { feed, draw } = setup({ auRanges });
+    feed({
+      type: "pluginParams",
+      params: [{ index: 0, value: 47, name: "main: Param 0", valueText: "47.75", known: false }],
+    });
+    draw();
+    expect(reads).toEqual([]);
+  });
+
   it("a parameter FL gives no 0–1 position for shows no position and is moved relatively", () => {
     const { feed, turn, sent, draw } = setup();
     feed({
@@ -380,7 +433,7 @@ describe("PluginMode knobs", () => {
 
   it("drops a turn until FL has reported the parameter", () => {
     const { turn, sent, press } = setup();
-    press("display2"); // page 2: FL has not sent its values
+    press("arrowRight"); // page 2: FL has not sent its values
     expect(turn(0, 100)).toBe(true);
     expect(sent.filter((c) => c.type === "setParam")).toEqual([]);
   });
@@ -406,15 +459,11 @@ describe("PluginMode knobs", () => {
 });
 
 describe("PluginMode LEDs", () => {
-  it("dims the display buttons that have a page and lights the current one", () => {
+  it("lights only display 3, whichever page it is on", () => {
     const { displayLeds, press } = setup();
-    expect(displayLeds()).toEqual([63, 16, 16, 16, 16, 16, 16, 16]);
-    press("display2");
-    expect(displayLeds()).toEqual([16, 63, 16, 16, 16, 16, 16, 16]);
+    expect(displayLeds()).toEqual([0, 0, 16, 0, 0, 0, 0, 0]);
     press("arrowRight");
-    press("arrowRight");
-    press("display8");
-    expect(displayLeds()).toEqual([16, 16, 16, 16, 16, 16, 16, 63]);
+    expect(displayLeds()).toEqual([0, 0, 16, 0, 0, 0, 0, 0]);
   });
 
   it("lights the arrows when there is a page in that direction", () => {
@@ -454,11 +503,12 @@ describe("PluginMode render", () => {
   const lit = (ctx: SKRSContext2D) =>
     ctx.getImageData(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT).data.some((v, i) => i % 4 !== 3 && v > 0);
 
-  it("draws tabs, knob labels without the prefix, values and the page info", () => {
+  it("draws the Editor tab, knob labels without the prefix, values and the page", () => {
     const { draw } = setup();
     const { texts } = draw();
-    expect(texts.left).toEqual(expect.arrayContaining(["main", "VCC", "Page 3", "Page 4"]));
-    expect(texts.right).toEqual(expect.arrayContaining(["Page 5", "Page 8"]));
+    expect(texts.left).toContain("Editor");
+    expect(texts.left).not.toContain("VCC");
+    expect(texts.right).not.toContain("Editor");
     // Knobs 1–4 on the left, 5–8 on the right; labels drop the "main: " prefix.
     expect(texts.left).toEqual(
       expect.arrayContaining(["Param 0", "Param 1", "Param 2", "Param 4"]),
@@ -469,18 +519,24 @@ describe("PluginMode render", () => {
     );
     expect(texts.right).toEqual(expect.arrayContaining(["5 dB", "8 dB"]));
     expect(texts.left).toEqual(expect.arrayContaining(["0 dB", "4 dB"]));
-    expect(texts.left).toEqual(expect.arrayContaining(["Diva", "Lead", "page 1 / 11"]));
-    expect(texts.left).toContain("main"); // the tab says which page; the middle doesn't repeat it
-    expect(texts.right).not.toContain("main");
+    expect(texts.left).toEqual(expect.arrayContaining(["Diva", "Lead", "main  1 / 11"]));
+    expect(texts.right).not.toContain("main  1 / 11");
   });
 
-  it("shows the bank of the current page", () => {
+  it("doesn't say a page's number twice", () => {
     const { draw, press } = setup();
     for (let i = 0; i < 8; i++) press("arrowRight"); // page 9
-    const { texts } = draw();
-    expect(texts.left).toEqual(expect.arrayContaining(["Page 9", "Page 10", "Page 11"]));
-    expect(texts.left).not.toContain("main");
-    expect(texts.left).toContain("page 9 / 11");
+    expect(draw().texts.left).toContain("Page 9 / 11");
+  });
+
+  it("needs no page line for a lone page without a name of its own", () => {
+    const pagesNamed = (name: string): PageSource => ({
+      pages: () => [{ name, params: PAGE1 }],
+    });
+    const named = setup({ source: pagesNamed("Filter") }).draw().texts.left;
+    expect(named).toContain("Filter");
+    const unnamed = setup({ source: pagesNamed("Page 1") }).draw().texts.left;
+    expect(unnamed.some((text) => text.startsWith("Page"))).toBe(false);
   });
 
   it("shows the full name and value large on the screen of the touched knob", () => {
@@ -517,7 +573,8 @@ describe("PluginMode render", () => {
       expect(lit(left)).toBe(true);
       expect(lit(right)).toBe(true);
     }
-    full.press("display3"); // a page with empty columns
+    full.press("arrowRight");
+    full.press("arrowRight"); // a page with empty columns
     expect(() => full.draw()).not.toThrow();
     const bare = setup({ withPlugin: false });
     bare.feed({
@@ -581,7 +638,7 @@ describe("PluginMode with NKS pages", () => {
     expect(entered).toEqual([view(PAGE1)]);
     turn(3, 120);
     expect(sent[0]).toMatchObject({ type: "setParam", param: 4 });
-    press("display2");
+    press("arrowRight");
     expect(sent.at(-1)).toEqual(view(PAGE2));
     feed(report(...PAGE2));
     turn(0, 120);
@@ -591,7 +648,8 @@ describe("PluginMode with NKS pages", () => {
   it("labels knobs with the NKS names and keeps FL's full name on touch", () => {
     const { draw, touchedKnobs } = nksSetup();
     const { texts } = draw();
-    expect(texts.left).toEqual(expect.arrayContaining(["Level A", "Level D", "Main"]));
+    expect(texts.left).toEqual(expect.arrayContaining(["Level A", "Level D"]));
+    expect(texts.left.some((text) => text.startsWith("Main  1 / "))).toBe(true);
     expect(texts.right).toEqual(expect.arrayContaining(["Level E", "Level H"]));
     expect(texts.left).not.toContain("Param 0");
     touchedKnobs.add(1);
@@ -610,7 +668,7 @@ describe("PluginMode with NKS pages", () => {
 
   it("repeats a section that continues onto the right screen, dimmed", () => {
     const { draw, press } = nksSetup();
-    press("display2"); // VCC starts at slot 1 only
+    press("arrowRight"); // VCC starts at slot 1 only
     const { texts, left, right } = draw();
     expect(texts.left).toContain("VCC");
     expect(texts.right).toContain("VCC");
@@ -630,7 +688,7 @@ describe("PluginMode with NKS pages", () => {
     }
   });
 
-  it("uses the product's color for the section row and FL's orange for the active tab", () => {
+  it("uses the product's color for the section row", () => {
     const { draw } = nksSetup({ color: "#00ff00" });
     const { left } = draw();
     const rows = (y: number) => left.getImageData(0, y, 480, 1).data;
@@ -640,9 +698,6 @@ describe("PluginMode with NKS pages", () => {
       );
     // section line: bottom of the section row, right above the knob row (y 162)
     expect(has(rows(162 - 3 + 1), 0, 255, 0)).toBe(true);
-    // the active tab is underlined in FL's orange, not the channel's color (RED)
-    expect(has(rows(18), 0xfb, 0x92, 0x44)).toBe(true);
-    expect(has(rows(18), 0xff, 0, 0)).toBe(false);
   });
 
   it("draws the logo once it has loaded, and never waits or fails without one", async () => {
@@ -687,17 +742,17 @@ describe("PluginMode with NKS pages", () => {
     const { mode, mc, draw } = setup({ source });
     expect(draw().texts.left).toContain("First");
     names = ["First", "Second"];
-    expect(draw().texts.left).not.toContain("Second"); // cached until told
+    expect(draw().texts.left).toContain("First"); // cached until told
     mode.sourceChanged();
     mode.onFlChange?.("plugin", mc);
-    expect(draw().texts.left).toContain("Second");
+    expect(draw().texts.left).toContain("First  1 / 2");
   });
 });
 
 describe("PluginMode.resume", () => {
   it("resends the VIEW it already sent, keeping the page", () => {
     const { mode, mc, sent, entered, press } = setup();
-    press("display2");
+    press("arrowRight");
     sent.length = 0;
     mode.resume(mc);
     expect(sent).toHaveLength(1);

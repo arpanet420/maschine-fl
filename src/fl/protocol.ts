@@ -110,6 +110,10 @@ export const TO_FL = {
   setLoop: 0x60,
   /** Send LOOP_STATE now. */
   requestLoop: 0x61,
+  /** `mixer.setTrackColor(index, color)`. */
+  setTrackColor: 0x6f,
+  /** `channels.setChannelColor(index, color)`. */
+  setChannelColor: 0x6e,
   /** `patterns.setPatternColor(pattern, color)`. */
   setPatternColor: 0x62,
   /** Double the pattern: twice the length, the grid steps (and their parameters) copied into the new half. */
@@ -122,6 +126,12 @@ export const TO_FL = {
   transpose: 0x66,
   /** Open or close FL's Plugin picker (a toggle). */
   pluginPicker: 0x67,
+  /** FL's "Close all windows" (F12). */
+  closeAllWindows: 0x70,
+  /** Bring a window up for a page button. Unlike SHOW_WINDOW it never hides one (docs/bugs.md #11). */
+  raiseWindow: 0x71,
+  /** Close a window: its page's button was pressed again and the page goes. */
+  closeWindow: 0x72,
   /** A plain FL key for what has the focus: browses FL's Plugin picker. */
   uiKey: 0x68,
   /** Fire (or release) LIVE scene `block` via `playlist.triggerLiveClip`, or `block` null to stop. */

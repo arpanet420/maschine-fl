@@ -33,14 +33,18 @@ is not built yet logs `page "<name>" is not built yet` once per press and change
 
 - **FL's windows follow the page buttons** (`src/modes/flWindows.ts`, the owner's wish 2026-10-18):
   opening a page with its button brings up its FL window and gives it the focus: MIXER → mixer,
-  ARRANGER → playlist, STEP and PAD MODE → channel rack, KEYBOARD and CHORDS → piano roll (SHOW_WINDOW),
-  BROWSER → the selected channel's plugin window (SHOW_EDITOR). A window that has the focus already is
-  left alone (both commands toggle in FL's script). Overlays, FILE, SETTINGS and CHANNEL / PLUG-IN
-  (editor follow) bring up nothing.
-- **Main buttons** (CHANNEL, PLUG-IN, MIXER, ARRANGER, BROWSER, later SAMPLING): close the page on
-  top and show that page. Pressing the button of the page already shown does nothing on the
-  control pages and goes back to the last control page on the others.
-- **Overlays** (SCENE, PATTERN, EVENTS, DUPLICATE, SELECT, SOLO, MUTE, NOTE REPEAT;
+  ARRANGER → playlist, CHANNEL, STEP and PAD MODE → channel rack, KEYBOARD and CHORDS → piano roll
+  (RAISE_WINDOW), SAMPLING → piano roll without changing the page (it has no page of its own), BROWSER → the selected channel's plugin window (SHOW_EDITOR). CHANNEL does it also when
+  its page is already shown, and a main page does it when a tool page closes back to it. A window that
+  has the focus already is left alone: FL's script checks that for RAISE_WINDOW, and mk3d for SHOW_EDITOR, which toggles. Overlays, FILE, SETTINGS
+  and PLUG-IN bring up nothing. Pressing the button again closes the window: CHANNEL and
+  SAMPLING stay where they are and toggle it (SHOW_WINDOW; one open behind another comes up instead), MIXER,
+  ARRANGER, STEP, PAD MODE, KEYBOARD and CHORDS leave their page and close it (CLOSE_WINDOW), bringing up
+  no other window, and BROWSER closes the plugin window if a plugin has the focus (SHOW_EDITOR).
+- **Main buttons** (CHANNEL, PLUG-IN, MIXER, ARRANGER, BROWSER): close the page on
+  top and show that page. Pressing the button of the page already shown leaves the control pages
+  where they are and goes back to the last control page on the others; its FL window closes (above).
+- **Overlays** (SCENE, PATTERN, EVENTS, DUPLICATE, SELECT, SOLO, MUTE, NOTE REPEAT, NAVIGATE;
   SHIFT + SCENE = LIVE; SHIFT + FOLLOW = GRID; SHIFT + RESTART = LOOP, a *hold* overlay that
   opens only after 400 ms, a tap runs its own action): hold to peek, closed on release. Display
   button 1 is the pin tab, named after the page: pressing it pins the overlay so it stays after the
@@ -50,9 +54,12 @@ is not built yet logs `page "<name>" is not built yet` once per press and change
 - **Claimed buttons**: a main page can claim an overlay's button (`claimsPageButton(id)` on the
   page). While FL is connected the stack then gives the press and the release to that page (the
   release even if the main page changed in between) and opens no overlay; the page-button LED of
-  a claimed button is the page's own. The Mixer claims MUTE and SOLO.
-- **Tool pages** (STEP, PAD MODE, KEYBOARD, CHORDS, FILE, SETTINGS, MACRO, NAVIGATE): always latched, press to
-  open, press again to close (on the release); another page button closes it first. PAD MODE,
+  a claimed button is the page's own. This holds only while that page is the one shown: with a page on top of
+  it (PAD MODE, KEYBOARD, …) the overlay opens as on any other page. While a claimed button is held its
+  overlay still has the pads, though it isn't shown, and lights them. The Mixer claims MUTE and SOLO.
+- **Tool pages** (STEP, PAD MODE, KEYBOARD, CHORDS, FILE, SETTINGS, MACRO): always latched, press to
+  open, press again to close (on the release). A main page's button or another tool page closes it; an
+  overlay shows over it, and it comes back when the overlay closes (dim while covered). PAD MODE,
   KEYBOARD and CHORDS also set the pad mode when they open ("Pad modes"); SHIFT + any of them sets
   the mode and opens no page. Their LEDs are a radio group (see below).
 - **SHIFT is read at press time**; the release goes to the page the press opened.
@@ -91,7 +98,7 @@ is not built yet logs `page "<name>" is not built yet` once per press and change
 - **FIXED VEL**: toggles fixed velocity (see "SETTINGS and FIXED VEL"); bright while on, dim while
   off, **off while SHIFT is held** (SHIFT + FIXED VEL, 16 velocities, is not built: nothing happens).
 
-Every page button is built except SAMPLING, EVENTS and MACRO, which stay dark and do nothing. A SHIFT + button
+Every page button is built except EVENTS and MACRO, which stay dark and do nothing. SAMPLING is dim and only brings up the piano roll. A SHIFT + button
 page lights its button only while it is open, except GRID: FOLLOW is dim while it is closed.
 
 ## Pad modes and channel banks
@@ -161,7 +168,8 @@ page lights its button only while it is open, except GRID: FOLLOW is dim while i
   (degrees 1, 8, 15 of a 7-note scale) are the bright ones. The knob and its value sit under
   display 1's column on the left screen; the left screen also shows the range (first–last pad's
   note) and the scale as `C Minor`; the grid shows each pad's note name. The other knobs do nothing.
-  The scale is shared with CHORDS and saved (`pages.chords`).
+  The scale is shared with CHORDS and isn't saved: every start of mk3d begins on Chromatic. A scale you pick stays
+  until mk3d stops.
 - **4D encoder**: a turn or a tilt up or down picks the channel, here and on CHORDS and PAD MODE; up and down
   are lit where there is one to go to. Its push and tilt left and right do nothing.
 
@@ -199,8 +207,8 @@ takes no pad: the pads play chords through `PadState`.
   `b` because Barlow has no ♭ glyph), root chords in bold orange with an orange top line, and
   `root C3  MIDI 36`. Pad LEDs: the channel's color, root chords bright (harmonizer: the scale's
   roots, a C in Chromatic; chord set: the I chords, pads 1, 8, 9, 16), the rest dim, held pressed.
-- Settings (scale, mode, type, position) are shared with KEYBOARD and saved as `pages.chords` a
-  moment after the last turn and when the page closes.
+- Settings (scale, mode, type, position) are shared with KEYBOARD. Mode, type and position are saved as
+  `pages.chords` a moment after the last turn and when the page closes; the scale isn't, as on KEYBOARD.
 - Unbuilt: USER CHD, PADS ON, strumming.
 
 ## STEP page (tool page, STEP)
@@ -250,15 +258,17 @@ bright while open; the PAD MODE / KEYBOARD radio pair stays lit as it is.
   (SELECT_CHANNEL). GROUP A–H pick the bank. The selected channel's pad is bright, the others dim,
   off past the last channel.
 - Left screen: pin tab `SELECT`, the selected channel's number, name and the bank. Right screen:
-  the grid with the selected channel outlined. Display 2–8, knobs, arrows and the 4D encoder do nothing.
+  the grid with the selected channel outlined. Display 2–8, knobs 2–8, arrows and the 4D encoder do nothing.
+- **Knob 1 `COLOR`**: the selected channel's colour, the twelve colours PATTERN's `COLOR` has, wrapping
+  (SET_CHANNEL_COLOR, pending for 300 ms). A pad and then the knob colour any channel.
 
 ## Solo overlay (hold SOLO)
 
 - Pads 1–16 are the 16 channels of the current bank; a pad press toggles that channel's solo
   (SET_CHANNEL solo, from FL's own solo flag in CHANNELS). Soloed channels are bright on the pads
   and outlined in red with an `S` on the grid, the others dim. GROUP A–H pick the bank.
-- Left screen: pin tab `SOLO`, the window text and the number of soloed channels. The Mixer page
-  still claims SOLO and solos mixer tracks.
+- Left screen: pin tab `SOLO`, the window text and the number of soloed channels.
+- On MIXER, SOLO opens no page: the Mixer claims it and solos mixer tracks. SOLO + pad still solos the channel.
 
 ## Pattern overlay (hold PATTERN)
 
@@ -385,6 +395,7 @@ Code: `src/modes/duplicateOverlay.ts`, built on the PATTERN overlay's bank (`Pat
 - Left screen: pin tab `MUTE`, the window text `1–16 of 20` and the number of muted channels. Right
   screen: the pad grid with channel names; muted ones are dimmed and struck through.
 - Display 2–8, knobs, arrows and the 4D encoder do nothing.
+- On MIXER, MUTE opens no page: the Mixer claims it and mutes mixer tracks. MUTE + pad still mutes the channel.
 
 ## NOTE REPEAT (hold NOTE REPEAT)
 
@@ -571,12 +582,15 @@ Notes:
 - Mute and Solo (display 1 and 2) read FL's flags in CHANNELS (`isChannelMuted`,
   `isChannelSolo`), so a solo set or cleared in FL shows on the tab and the LED too. Display 2
   sends the opposite of FL's flag.
-- Editor follows selection (FL script): when a generator plug-in window is focused and belongs to
-  the selected channel, selecting another channel (knob 1, 4D encoder) opens and focuses that
-  channel's editor, and closes the old one if the script itself opened it. A window the script saw
-  open (focused earlier, or opened with Editor) is left open. FL cannot report which editors are
-  open, so a window you close with the mouse can stay in the script's list until the channel count
-  changes or mk3d reconnects. Nothing happens while the mixer or another window is focused.
+- Plug-in windows and the selection (FL script, the owner's wish 2026-11-05): selecting a channel (knob 1,
+  4D encoder) brings up its plug-in window only if you brought that window up yourself, and opens none
+  for the others. It comes to the front: FL raises a window only when it opens it, so it is closed and
+  reopened, as with NAVIGATE. Nothing is closed by scrolling. FL cannot report which plug-in windows are open, so the
+  script learns it: a channel's window getting the focus, or Editor opening it, means up; Editor closing
+  it, CLOSE ALL, or the focus leaving it for something else when the script didn't move it means closed.
+  A page button or a selection moving the focus (FOCUS_SETTLE_SECONDS) changes nothing. So clicking another
+  FL window with the mouse counts as closing it, and a window closed with the mouse while another
+  plug-in had the focus is still remembered until the channel count changes or mk3d reconnects.
 - Channel mode sends VIEW with `mixerOffset 0`, `patternOffset 0`, `stepOffset 0`, no meters and
   plug-in params 0–7 (`channelOffset` is the first channel of the window).
 
@@ -592,28 +606,29 @@ knob labels drop that prefix. Without a prefix in common the knob shows its full
 
 Left screen (display buttons 1–4 above, knobs 1–4 below):
 
-- Tabs: the names of pages 1–4 of the current bank of 8 pages; the current page is lit.
-- Middle: the plug-in's name big, the channel's name in its color, and `page x / y` only with more pages than
-  the 8 tabs show (`No parameters` without any).
-- Bottom: knobs 1–4 of the current page: label, arc and FL's value text.
+- Tab over display 3: `Editor`, the plug-in's window.
+- Middle: the plug-in's name big, the channel's name in its color, and the current page with its place, as
+  `Filter  2 / 7` (`Page 2 / 7` for a page without a name of its own; `No parameters` without any).
+- Bottom: knobs 1–4 of the current page: label, arc and FL's value text. A parameter FL has no position for yet
+  shows an empty dial until its first turn. On an Audio Unit it shows the position from the start, from the
+  plug-in's own ranges (`src/fl/auParams.ts`).
 
 Right screen (display buttons 5–8 above, knobs 5–8 below):
 
-- Tabs: the names of pages 5–8 of the current bank; the current page is lit.
-- Top of the middle: the transport bar. Below it the current page's name big.
+- Top of the middle: the transport bar.
 - Bottom: knobs 5–8 of the current page.
 
 A touched knob highlights its column and shows its full parameter name and value large in the
 middle of its own screen. Without a valid plug-in on the selected channel both screens say
 _No plugin on <channel name>_ and the knobs do nothing.
 
-Display button LEDs: dim when the page exists, bright for the current page, off otherwise. Arrow
+Display button LEDs: display 3 dim with a plug-in, the rest off. Arrow
 LEDs: dim when there is a page in that direction. The group buttons are the channel banks (lit by the page stack).
 
 | Control          | Action                                                                    |
 | ---------------- | ------------------------------------------------------------------------- |
-| Display 1–8      | Jump to the page in that tab (page `bank × 8 + n`)                        |
-| Arrow left/right | Previous/next page; the bank of tabs follows                              |
+| Display 3        | The plug-in's window: to the front, or closed if it has the focus         |
+| Arrow left/right | Previous/next page                                                        |
 | Knob 1–8         | Parameter 1–8 of the current page (`setParam`). Unused columns do nothing |
 
 Knob behavior:
@@ -647,6 +662,9 @@ last control page. Pads are not used (they play as the pad mode says).
   move the selection. Arrow LEDs: dim when that bank exists, else off.
 - **Strips**: the 8 columns (4 per screen) are the 8 tracks. Display buttons 1–8 and GROUP A–H
   select track 1–8 of the bank (SELECT_TRACK).
+- **Hold GROUP A–H**: the knob of that strip is the track's `COLOR` (SET_TRACK_COLOR, the twelve colours PATTERN's
+  `COLOR` has, wrapping; pending for 300 ms), and its strip says so. The other knobs do nothing until the
+  button comes up. With MUTE or SOLO held, GROUP A–H stay mute and solo toggles.
 - **Knobs 1–8**: volume of track 1–8 of the bank (SET_TRACK volume), or pan. A **push of the 4D
   encoder** toggles volume and pan for all knobs (`VOL` / `PAN` on the strips). Same step as the
   other pages (`1/1200` of the range per count, Shift a tenth), and the same 300 ms pending
@@ -659,6 +677,9 @@ last control page. Pads are not used (they play as the pad mode says).
   While MUTE (or SOLO) is held, the display and group buttons toggle mute (solo) of that strip
   (SET_TRACK mute/solo) instead of selecting it; MUTE wins if both are held. The toggle reads
   FL's state, or the value we set ourselves for 300 ms, so a quick second press undoes the first.
+  The pads toggle the mute (solo) of the channel under them, not a track, and play nothing, as on the
+  overlays; they light as there while the button is held. With a page on top of the Mixer, MUTE and SOLO open
+  their overlays.
 - **Touching a knob** highlights that strip (raised card, mint outline) and shows the value big
   on the strip, on the screen the knob belongs to, on the half of the body the fader cap is not in.
 
@@ -765,10 +786,11 @@ pad's down; the pressure re-reports while the pad is held do nothing.
 
 ## NAVIGATE (VARIATION)
 
-Code: `src/modes/navigateOverlay.ts`. A tool page: one press opens it and it stays, the next press of
-VARIATION closes it. Display 2–6 toggle the windows in the order of FL's toolbar:
+Code: `src/modes/navigateOverlay.ts`. An overlay: open while VARIATION is held, and display 1 pins it.
+Display 2–6 toggle the windows in the order of FL's toolbar:
 `PLAYLIST`, `PIANO`, `RACK`, `MIXER`, `BROWSER` (SHOW_WINDOW 2, 3, 1, 0, 4: a focused window is hidden, any
 other is shown and focused). Display 7 `PLUGIN` opens the selected channel's plug-in window (SHOW_EDITOR).
+Display 8 `CLOSE ALL` closes all of FL's windows, as F12 does (CLOSE_ALL_WINDOWS).
 The **4D encoder** works the page: turning it or tilting it left and right moves a white ring between the
 tiles, its push does what the tile's display button does; it starts on the focused window. Tilt left and
 right are lit where there is a tile to go to. Pads go to the page underneath; the knobs do nothing.
@@ -863,7 +885,7 @@ Plugin picker** (Generators and Effects, category tabs at the bottom; **verified
 
 Code: `src/modes/browserPage.ts`. Maschine's browser, here the selected channel's **plugin presets**:
 turn to choose, push to load. A **cursor** (the highlighted row) is separate from the **loaded**
-preset.
+preset. An Audio Unit shows `No presets`, whatever it has: asking FL for the names can crash FL (`docs/bugs.md` #8).
 
 - **4D turn** (one detent = one row), **4D tilt up/down** and **knobs 5 and 8** (under the list, one detent
   per 120 counts) move the cursor without loading anything; the list scrolls to keep it visible. The cursor
@@ -945,7 +967,7 @@ Code: `src/modes/arrangerPage.ts`. FL's script cannot see the playlist's clips o
 (the 2026-10-18 playlist probe, docs/workflow.md), so ARRANGER shows what it can read, like Maschine's
 pattern view: **sounds × steps** of the current pattern. The grid comes from PATTERN_GRID (docs/sysex.md,
 "Pattern overview"). ARRANGER is a main page (LED bright when shown; a second press goes home, like MIXER).
-Opening it shows and focuses FL's playlist (SHOW_WINDOW 2, unless it has the focus already; see "FL's windows follow the page buttons"). The
+Opening it shows and focuses FL's playlist (RAISE_WINDOW 2, unless it has the focus already; see "FL's windows follow the page buttons"). The
 clips of FL's performance mode are on the LIVE overlay (below).
 
 - **VIEW**: `patternGrid` on (flag 4, no other page has it), `channelOffset` = the bank of the row
@@ -1076,4 +1098,4 @@ closes sends its release when it is let go.
 ## Later modes
 
 Planned in PLAN.md phase 6 and `docs/workflow.md`: SHIFT + FIXED VEL (16 velocities), CHORDS' USER CHD /
-PADS ON / strumming, and the pages SAMPLING, EVENTS and MACRO. Their buttons are off until then (see "Pages").
+PADS ON / strumming, and the pages EVENTS and MACRO. Their buttons are off until then (see "Pages").

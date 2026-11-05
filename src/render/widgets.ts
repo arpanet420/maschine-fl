@@ -171,6 +171,8 @@ export interface KnobProps {
   valueText: string;
   /** 0–1; undefined draws no arc (e.g. a stepped or text-only parameter) */
   value?: number;
+  /** Draw the dial even without a value: a real knob whose position isn't known yet. No arc, no pointer. */
+  dial?: boolean;
   /** Fill from the middle, for pan-like parameters. */
   bipolar?: boolean;
   /** Arc color; FL's orange unless given (a touched knob is always mint). */
@@ -197,8 +199,7 @@ export function drawKnob(ctx: Ctx, rect: Rect, props: KnobProps): void {
 
   const radius = Math.min(rect.width * 0.3, (rect.height - KNOB_TEXT_SPACE) / 2);
   const cy = rect.y + 22 + radius + 4;
-  if (props.value !== undefined && radius > 6) {
-    const value = Math.min(1, Math.max(0, props.value));
+  if ((props.value !== undefined || props.dial) && radius > 6) {
     // the arc runs on the outside, the body sits inside it
     const arcRadius = radius - ARC_WIDTH / 2;
     ctx.lineWidth = ARC_WIDTH;
@@ -208,8 +209,11 @@ export function drawKnob(ctx: Ctx, rect: Rect, props: KnobProps): void {
     ctx.arc(cx, cy, arcRadius, ARC_START, ARC_START + ARC_SWEEP);
     ctx.stroke();
     const from = props.bipolar ? ARC_START + ARC_SWEEP / 2 : ARC_START;
-    const to = ARC_START + ARC_SWEEP * value;
-    if (Math.abs(to - from) > 0.001) {
+    const to =
+      props.value === undefined
+        ? undefined
+        : ARC_START + ARC_SWEEP * Math.min(1, Math.max(0, props.value));
+    if (to !== undefined && Math.abs(to - from) > 0.001) {
       ctx.strokeStyle = color;
       ctx.beginPath();
       ctx.arc(cx, cy, arcRadius, Math.min(from, to), Math.max(from, to));
@@ -224,14 +228,16 @@ export function drawKnob(ctx: Ctx, rect: Rect, props: KnobProps): void {
       ctx.arc(cx, cy, bodyRadius, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
-      // pointer toward the value
-      ctx.strokeStyle = props.touched ? theme.selected : theme.text;
-      ctx.lineWidth = 2;
-      ctx.lineCap = "round";
-      ctx.beginPath();
-      ctx.moveTo(cx + Math.cos(to) * bodyRadius * 0.3, cy + Math.sin(to) * bodyRadius * 0.3);
-      ctx.lineTo(cx + Math.cos(to) * bodyRadius * 0.85, cy + Math.sin(to) * bodyRadius * 0.85);
-      ctx.stroke();
+      if (to !== undefined) {
+        // pointer toward the value
+        ctx.strokeStyle = props.touched ? theme.selected : theme.text;
+        ctx.lineWidth = 2;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(to) * bodyRadius * 0.3, cy + Math.sin(to) * bodyRadius * 0.3);
+        ctx.lineTo(cx + Math.cos(to) * bodyRadius * 0.85, cy + Math.sin(to) * bodyRadius * 0.85);
+        ctx.stroke();
+      }
     }
   }
 

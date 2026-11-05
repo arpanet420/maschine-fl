@@ -10,17 +10,40 @@ const DIM = paletteWhite("dim");
 const BRIGHT = paletteWhite("bright");
 
 describe("NAVIGATE (VARIATION)", () => {
-  it("one press opens it, the next closes it", () => {
+  it("is open while VARIATION is held", () => {
     const h = stackHarness();
     expect(h.light("variation")).toBe("dim");
     h.press("variation");
     expect(h.stack.top?.page.id).toBe("navigate");
     expect(h.light("variation")).toBe("bright");
     h.release("variation");
-    expect(h.stack.top?.page.id).toBe("navigate"); // it stays
-    h.tap("variation");
     expect(h.stack.top).toBeUndefined();
     expect(h.light("variation")).toBe("dim");
+  });
+
+  it("display 1 pins it, and the next press and release of VARIATION closes it", () => {
+    const h = stackHarness();
+    h.press("variation");
+    h.tap("display1");
+    expect(h.stack.top?.pinned).toBe(true);
+    h.release("variation");
+    expect(h.stack.top?.page.id).toBe("navigate");
+    h.tap("display3");
+    expect(h.sentOf("showWindow")).toHaveLength(1);
+    h.tap("variation");
+    expect(h.stack.top).toBeUndefined();
+  });
+
+  it("display 8 closes all of FL's windows, as does a push on its tile", () => {
+    const h = stackHarness({ selected: 4 });
+    h.press("variation");
+    h.tap("display8");
+    expect(h.sent.at(-1)).toEqual({ type: "closeAllWindows" });
+    h.push();
+    h.push(false);
+    expect(h.sentOf("closeAllWindows")).toHaveLength(2);
+    h.release("variation");
+    expect(h.stack.top).toBeUndefined();
   });
 
   it("SHIFT + VARIATION does nothing", () => {
@@ -47,13 +70,11 @@ describe("NAVIGATE (VARIATION)", () => {
     ]);
   });
 
-  it("display 1 and 8 do nothing, and no display button reaches the page below", () => {
+  it("display 1 sends nothing to FL", () => {
     const h = stackHarness();
     h.press("variation");
     h.tap("display1");
-    h.tap("display8");
     expect(h.sent).toEqual([]);
-    expect(h.light("display1")).toBe("off");
   });
 
   it("PLUGIN does nothing without a selected channel", () => {
@@ -116,13 +137,16 @@ describe("NAVIGATE (VARIATION)", () => {
     h.turn(-99);
     h.push(); // stops at the playlist
     h.turn(99);
-    h.push(); // stops at the plug-in
+    h.push(); // stops at Close all
+    h.turn(-1);
+    h.push(); // the plug-in
     expect(h.sent).toEqual([
       { type: "showWindow", window: 1 },
       { type: "showWindow", window: 0 },
       { type: "showWindow", window: 3 },
       { type: "showWindow", window: 1 },
       { type: "showWindow", window: 2 },
+      { type: "closeAllWindows" },
       { type: "showEditor", index: 2 },
     ]);
     expect(() => h.render()).not.toThrow();

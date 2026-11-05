@@ -313,30 +313,28 @@ describe("harmony settings", () => {
   it("saves, loads and ignores bad values", () => {
     const s = new HarmonySettings();
     const saved = {
-      scale: 4,
       mode: "set",
       scaleType: "1-3-5-7",
       chromaticType: "Perf 5",
       position: 3,
     };
-    s.persisted.load(saved);
+    s.persisted.load({ ...saved, scale: 4 });
+    expect(s.scale).toBe(CHROMATIC);
     expect(s.persisted.save()).toEqual(saved);
     s.persisted.load({
-      scale: 99,
       mode: "strum",
       scaleType: "Triad",
       chromaticType: -1,
       position: "x",
     });
     expect(s.persisted.save()).toEqual({
-      scale: 0,
       mode: "harmonizer",
       scaleType: "1-3-5",
       chromaticType: "Major",
       position: 0,
     });
     s.persisted.load(null);
-    expect(s.persisted.save().scale).toBe(0);
+    expect(s.scale).toBe(CHROMATIC);
   });
 
   it("keeps a chord type for Chromatic and one for the scales", () => {
@@ -471,8 +469,8 @@ describe("CHORDS page", () => {
     step(h, 0, 2);
     step(h, 2, 2); // 1-3-5-7
     step(h, 3, 1);
+    expect(h.pads.harmony.scale).toBe(2);
     expect(h.pads.harmony.persisted.save()).toEqual({
-      scale: 2,
       mode: "harmonizer",
       scaleType: "1-3-5-7",
       chromaticType: "Major",
@@ -668,8 +666,8 @@ describe("CHORDS page", () => {
   });
 });
 
-describe("scale and chord settings are persisted with the page state", () => {
-  it("saves under pages.chords shortly after a turn and loads again", () => {
+describe("chord settings are persisted with the page state, the scale isn't", () => {
+  it("saves under pages.chords shortly after a turn and loads again, on Chromatic", () => {
     const pinsPath = tempPins();
     const first = stackHarness({ pinsPath });
     first.tap("chords");
@@ -679,7 +677,6 @@ describe("scale and chord settings are persisted with the page state", () => {
     first.advance(500);
     const saved = JSON.parse(readFileSync(pinsPath, "utf8")) as { pages: { chords: unknown } };
     expect(saved.pages.chords).toEqual({
-      scale: 5,
       mode: "harmonizer",
       scaleType: "1-3-5-7",
       chromaticType: "Major",
@@ -687,21 +684,31 @@ describe("scale and chord settings are persisted with the page state", () => {
     });
     const second = stackHarness({ pinsPath });
     expect(second.pads.harmony.persisted.save()).toEqual(saved.pages.chords);
-    second.tap("chords");
-    second.pad(0);
-    expect(onNotes(second)).toEqual([39, 43, 46, 48]); // Cm7 of C Dorian, first inversion
+    expect(second.pads.harmony.scale).toBe(CHROMATIC);
   });
 
   it("closing the page writes a turn that was still waiting", () => {
     const pinsPath = tempPins();
     const first = stackHarness({ pinsPath });
-    first.tap("keyboard");
-    step(first, 0, 3);
-    first.tap("keyboard"); // leaves the page
+    first.tap("chords");
+    step(first, 3, 1);
+    first.tap("chords"); // leaves the page
     expect(
-      (JSON.parse(readFileSync(pinsPath, "utf8")) as { pages: { chords: { scale: number } } }).pages
-        .chords.scale,
-    ).toBe(3);
+      (JSON.parse(readFileSync(pinsPath, "utf8")) as { pages: { chords: { position: number } } })
+        .pages.chords.position,
+    ).toBe(1);
+  });
+
+  it("KEYBOARD and CHORDS share a channel's octave", () => {
+    const h = stackHarness();
+    h.tap("keyboard");
+    h.pads.shiftBase(12);
+    const base = h.pads.baseNote;
+    h.tap("chords");
+    expect(h.pads.baseNote).toBe(base);
+    h.pads.shiftBase(-24);
+    h.tap("keyboard");
+    expect(h.pads.baseNote).toBe(base - 24);
   });
 
   it("starts with Chromatic when the saved values are bad", () => {
@@ -711,8 +718,8 @@ describe("scale and chord settings are persisted with the page state", () => {
       JSON.stringify({ pages: { chords: { scale: 40, mode: 7, type: 4, position: 99 } } }),
     );
     const h = stackHarness({ pinsPath });
+    expect(h.pads.harmony.scale).toBe(CHROMATIC);
     expect(h.pads.harmony.persisted.save()).toEqual({
-      scale: 0,
       mode: "harmonizer",
       scaleType: "1-3-5",
       chromaticType: "Major",

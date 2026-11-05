@@ -103,9 +103,14 @@ export interface Mode {
   /**
    * A main page can claim an overlay's button (e.g. the Mixer takes MUTE and SOLO while it is
    * shown): the stack then gives the press and the release to the page instead of opening the
-   * overlay.
+   * overlay. With another page on top of it the button is not the page's: the overlay opens.
    */
   claimsPageButton?(id: ButtonId): boolean;
+  /**
+   * The pad LEDs alone, for an overlay whose pads work while it isn't shown: MUTE or SOLO held on a main
+   * page that claimed the button.
+   */
+  padLeds?(leds: LedState, mc: ModeContext): void;
   /**
    * A page on top that lights a button the stack would otherwise light as a page button (the STEP
    * page owns FOLLOW's LED, which is GRID's button): the stack leaves that LED alone.

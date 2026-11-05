@@ -83,7 +83,11 @@ function harness({
     fl,
     send: (command) => {
       if (command.type === "view") views.push(command);
-      else if (command.type === "showWindow" || command.type === "showEditor")
+      else if (
+        command.type === "raiseWindow" ||
+        command.type === "closeWindow" ||
+        command.type === "showEditor"
+      )
         windowCommands.push(command);
       else sent.push(command);
       if (command.type === "selectChannel") select(command.index); // FL answers at once

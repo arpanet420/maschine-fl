@@ -10,6 +10,7 @@ import type { ButtonId } from "./hw/ids.js";
 import { InputParser } from "./hw/input.js";
 import { DEFAULT_PAD_CONFIG } from "./hw/pads.js";
 import { LedSender, LedState } from "./hw/leds.js";
+import { AuRanges, auParamHelper } from "./fl/auParams.js";
 import { FlState, type FlSection } from "./fl/flState.js";
 import { FlPorts, midiBytes } from "./fl/midiPorts.js";
 import { CC, PORT_FROM_FL, PORT_TO_FL } from "./fl/protocol.js";
@@ -117,6 +118,7 @@ const nksIndex = startNksIndex({ log: (line) => log(line) });
 const pluginMode = new PluginMode(
   Date.now,
   new NksPageSource(nksIndex, undefined, (line) => log(line)),
+  new AuRanges(auParamHelper(), (line) => log(line)),
 );
 const stack = new PageStack({
   pages: {

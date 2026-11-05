@@ -63,7 +63,7 @@ describe("ARRANGER as the pattern overview", () => {
     const h = stackHarness();
     h.tap("arranger");
     expect(h.stack.main).toBe("arranger");
-    expect(h.sentOf("showWindow")).toEqual([{ type: "showWindow", window: 2 }]);
+    expect(h.sentOf("raiseWindow")).toEqual([{ type: "raiseWindow", window: 2 }]);
     expect(h.sentOf("requestMarkers")).toEqual([]);
     expect(lastView(h)).toMatchObject({
       patternGrid: true,
@@ -79,10 +79,11 @@ describe("ARRANGER as the pattern overview", () => {
     expect(lastView(h)?.patternGrid).toBe(false);
   });
 
-  it("does not toggle the playlist away when it has the focus already", () => {
+  it("never sends the toggle, even with the playlist focused", () => {
     const h = stackHarness({ ui: { visible: [false, true, true, false, false], focused: 2 } });
     h.tap("arranger");
     expect(h.sentOf("showWindow")).toEqual([]);
+    expect(h.sentOf("raiseWindow")).toEqual([{ type: "raiseWindow", window: 2 }]);
   });
 
   it("has the patternGrid flag in the VIEW only while ARRANGER is the main page", () => {

@@ -269,7 +269,10 @@ const wholeIn = (value: unknown, count: number): number | undefined =>
     ? value
     : undefined;
 
-/** Scale, chord mode, chord type and position: shared by KEYBOARD and CHORDS, saved with the pages. */
+/**
+ * Scale, chord mode, chord type and position: shared by KEYBOARD and CHORDS. All but the scale are saved with
+ * the pages; every start of mk3d begins on Chromatic (the owner's call, 2026-11-05).
+ */
 export class HarmonySettings {
   scale = CHROMATIC;
   mode: ChordMode = "harmonizer";
@@ -335,7 +338,6 @@ export class HarmonySettings {
   /** Chord types are saved by name: an index would change meaning if a list changes. */
   readonly persisted = {
     save: () => ({
-      scale: this.scale,
       mode: this.mode,
       scaleType: SCALE_CHORDS[this.scaleType]?.name,
       chromaticType: CHROMATIC_CHORDS[this.chromaticType]?.name,
@@ -347,7 +349,7 @@ export class HarmonySettings {
         const index = types.findIndex((type) => type.name === name);
         return index >= 0 ? index : fallback;
       };
-      this.scale = wholeIn(saved?.scale, SCALES.length) ?? CHROMATIC;
+      this.scale = CHROMATIC;
       this.mode = CHORD_MODES.find((mode) => mode === saved?.mode) ?? "harmonizer";
       this.scaleType = named(SCALE_CHORDS, saved?.scaleType, DEFAULT_SCALE_TYPE);
       this.chromaticType = named(CHROMATIC_CHORDS, saved?.chromaticType, DEFAULT_CHROMATIC_TYPE);

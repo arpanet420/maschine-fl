@@ -9,7 +9,8 @@ import { flColorToPalette, lengthText, positionStepsText } from "../src/modes/fo
 import { HOLD_MS } from "../src/modes/pageStack.js";
 import { defaultRange, markerSection, sanitize } from "../src/modes/loopOverlay.js";
 import { MARKER_COLORS } from "../src/modes/markerPage.js";
-import { PATTERN_COLORS, stepCommonLength } from "../src/modes/patternOverlay.js";
+import { NAMED_COLORS } from "../src/modes/namedColors.js";
+import { stepCommonLength } from "../src/modes/patternOverlay.js";
 import { songBeats } from "../src/modes/repeatScheduler.js";
 import { playHeadStep } from "../src/modes/stepPage.js";
 import { stackHarness, type StackHarness } from "../src/tools/stackHarness.js";
@@ -638,21 +639,21 @@ describe("PATTERN: COLOR on page 1, next to LENGTH", () => {
 
   it("knob 1 cycles FL's colours, in both directions, with wrap-around; knob 4 stays the length", () => {
     const h = stackHarness();
-    h.patternInfo({ color: PATTERN_COLORS[2]?.color ?? 0 });
+    h.patternInfo({ color: NAMED_COLORS[2]?.color ?? 0 });
     h.press("pattern");
     h.knob(3, 120);
     expect(h.sentOf("setPatternLength")).toHaveLength(1);
     expect(h.sentOf("setPatternColor")).toEqual([]);
     h.knob(0, 120);
     expect(h.sentOf("setPatternColor")).toEqual([
-      { type: "setPatternColor", pattern: 1, color: PATTERN_COLORS[3]?.color },
+      { type: "setPatternColor", pattern: 1, color: NAMED_COLORS[3]?.color },
     ]);
     h.knob(0, -240); // builds on ours: 3 → 1
-    expect(h.sentOf("setPatternColor").at(-1)?.color).toBe(PATTERN_COLORS[1]?.color);
+    expect(h.sentOf("setPatternColor").at(-1)?.color).toBe(NAMED_COLORS[1]?.color);
     h.advance(1000);
-    h.patternInfo({ color: PATTERN_COLORS[0]?.color ?? 0 });
+    h.patternInfo({ color: NAMED_COLORS[0]?.color ?? 0 });
     h.knob(0, -120);
-    expect(h.sentOf("setPatternColor").at(-1)?.color).toBe(PATTERN_COLORS.at(-1)?.color);
+    expect(h.sentOf("setPatternColor").at(-1)?.color).toBe(NAMED_COLORS.at(-1)?.color);
     expect(drawnText(h).left).toContain("Grey");
   });
 
@@ -662,10 +663,10 @@ describe("PATTERN: COLOR on page 1, next to LENGTH", () => {
     h.press("pattern");
     expect(drawnText(h).left).toContain("Custom");
     h.knob(0, 120);
-    expect(h.sentOf("setPatternColor")[0]?.color).toBe(PATTERN_COLORS[0]?.color);
+    expect(h.sentOf("setPatternColor")[0]?.color).toBe(NAMED_COLORS[0]?.color);
     h.advance(1000);
     h.knob(0, -120);
-    expect(h.sentOf("setPatternColor")[1]?.color).toBe(PATTERN_COLORS.at(-1)?.color);
+    expect(h.sentOf("setPatternColor")[1]?.color).toBe(NAMED_COLORS.at(-1)?.color);
   });
 });
 

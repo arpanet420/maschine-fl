@@ -25,7 +25,7 @@
 //   no pattern delete); DUPLICATE and SHIFT + DUPLICATE clone the pattern as on every page.
 // - SCENE (hold) is the marker overlay and still works over this page.
 //
-// Opening the page shows and focuses FL's playlist (SHOW_WINDOW 2) unless it has the focus already.
+// Opening the page shows and focuses FL's playlist (RAISE_WINDOW 2).
 // A second press of ARRANGER goes home, like MIXER.
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import type { FlSection, FlState } from "../fl/flState.js";

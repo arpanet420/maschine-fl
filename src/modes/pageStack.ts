@@ -7,8 +7,11 @@
 //   page already shown does nothing on the control pages and goes home on the others.
 // - An overlay shows while its button is held. Display button 1 on an overlay is its pin tab:
 //   pinned overlays stay after the release, and their pin state is remembered (and saved).
-// - A tool page is latched: press to open, press again to close.
-// - A main page can claim an overlay's button (Mixer: MUTE and SOLO): the page gets it, no overlay.
+// - A tool page is latched: press to open, press again to close. An overlay shows over it and it comes
+//   back when the overlay closes, as Maschine's held pages go back to what they were shown over. A main
+//   page's button or another tool page closes it.
+// - A main page can claim an overlay's button (Mixer: MUTE and SOLO): while nothing is on top of it, the
+//   page gets the button and no overlay opens. Held, the pads still do what they do on that overlay.
 // - A hold overlay (`hold`: LOOP on SHIFT + RESTART) opens only when its button is held for HOLD_MS; a
 //   tap (released sooner) runs the page's `tap` instead (SHIFT + tap RESTART: loop on/off), or, when the
 //   stack does not handle the press at all (no SHIFT, FL gone, page not built), the caller's own tap
@@ -55,7 +58,7 @@ import { PAD_COUNT } from "../hw/ids.js";
 import { isColorLed, isMonoLed, type LedState, type LightLevel } from "../hw/leds.js";
 import { LED_OFF, paletteWhite } from "../hw/palette.js";
 import { DISPLAY_BUTTONS } from "./channelPadPage.js";
-import { bringUpWindow } from "./flWindows.js";
+import { bringUpWindow, closeWindow, toggleWindow } from "./flWindows.js";
 import { groupBank, setBankLeds } from "./channelBank.js";
 import type { Mode, ModeContext, PageName } from "./mode.js";
 import { isPadMode, type PadMode, type PadState } from "./padState.js";
@@ -86,6 +89,8 @@ export interface PageDef {
   padMode?: PadMode;
   /** Opens only after the button was held for `HOLD_MS`; a tap runs the page's `tap`. */
   hold?: boolean;
+  /** No page: the button only brings up the FL window of `PAGE_WINDOWS`. */
+  windowOnly?: boolean;
 }
 
 const def = (
@@ -93,7 +98,13 @@ const def = (
   label: string,
   kind: PageKind,
   button: ButtonId,
-  extra: { shift?: boolean; control?: boolean; padMode?: PadMode; hold?: boolean } = {},
+  extra: {
+    shift?: boolean;
+    control?: boolean;
+    padMode?: PadMode;
+    hold?: boolean;
+    windowOnly?: boolean;
+  } = {},
 ): PageDef => ({ id, label, kind, button, ...extra });
 
 /** Every page button and what it opens (docs/workflow.md, "Button by button"). */
@@ -103,12 +114,12 @@ export const PAGE_DEFS: readonly PageDef[] = [
   def("mixer", "MIXER", "main", "mixer"),
   def("arranger", "ARRANGER", "main", "arranger"),
   def("browser", "BROWSER", "main", "browser"),
-  def("sampling", "SAMPLING", "main", "sampling"),
+  def("sampling", "SAMPLING", "main", "sampling", { windowOnly: true }),
   def("scene", "SCENE", "overlay", "scene"),
   def("liveClips", "LIVE", "overlay", "scene", { shift: true }),
   def("pattern", "PATTERN", "overlay", "pattern"),
   def("events", "EVENTS", "overlay", "events"),
-  def("navigate", "NAVIGATE", "tool", "variation"),
+  def("navigate", "NAVIGATE", "overlay", "variation"),
   def("duplicate", "DUPLICATE", "overlay", "duplicate"),
   def("select", "SELECT", "overlay", "select"),
   def("solo", "SOLO", "overlay", "solo"),
@@ -192,6 +203,8 @@ export class PageStack {
   private mainDef: PageDef;
   private lastControl: PageDef;
   private topPage: TopPage | undefined;
+  /** The tool page under an overlay: it comes back when the overlay closes. */
+  private covered: TopPage | undefined;
   /** VOLUME, SWING and TEMPO: the 4D encoder as an editor. */
   readonly quickEdit: QuickEdit;
 
@@ -493,6 +506,7 @@ export class PageStack {
   /** The device went away or mk3d is stopping: no pad is held any more. */
   releasePads(): void {
     this.clearHolds();
+    this.claimed.clear();
     this.topMode()?.leave?.();
     this.lockedPage()?.stopPads?.();
     this.padOwner.clear();
@@ -589,7 +603,9 @@ export class PageStack {
       const main = this.mainMode();
       let owner: Mode | null = null;
       const locked = this.lockedPage();
+      const claimed = this.claimedPadPage();
       if (top?.onEvent(event, this.topContext(mc))) owner = top;
+      else if (claimed?.onEvent(event, this.mainContext(mc))) owner = claimed;
       else if (locked && locked !== top && locked.onEvent(event, this.mainContext(mc))) {
         owner = locked;
       } else if (main?.onEvent(event, this.mainContext(mc))) owner = main;
@@ -613,15 +629,25 @@ export class PageStack {
 
   /**
    * The main page takes an overlay's button (`claimsPageButton`): no overlay opens, the page gets
-   * the press now and the release later. Only while FL is connected, like every page event.
+   * the press now and the release later. Only while FL is connected, like every page event, and only
+   * while the page is the one shown: a page on top owns the button, as it owns the other controls.
    */
   private claim(target: PageDef, event: Extract<HwEvent, { type: "button" }>, mc: ModeContext) {
-    if (target.kind !== "overlay" || !mc.fl.connected) return false;
+    if (target.kind !== "overlay" || !mc.fl.connected || this.topPage) return false;
     const main = this.mainMode();
     if (!main?.claimsPageButton?.(event.id)) return false;
     this.claimed.set(event.id, main);
     main.onEvent(event, this.mainContext(mc));
     return true;
+  }
+
+  /**
+   * MUTE or SOLO held on a page that claimed it: that overlay still has the pads, though it isn't shown.
+   * MUTE wins, as on the Mixer's strips.
+   */
+  private claimedPadPage(): Mode | undefined {
+    const button = (["mute", "solo"] as const).find((id) => this.claimed.has(id));
+    return button && this.pages[button];
   }
 
   private lookup(button: ButtonId, shift: boolean): PageDef | undefined {
@@ -632,6 +658,10 @@ export class PageStack {
 
   private press(target: PageDef, button: ButtonId, mc: ModeContext): void {
     this.pressed.set(button, target);
+    if (target.windowOnly) {
+      toggleWindow(target.id, mc);
+      return;
+    }
     if (!this.pages[target.id]) {
       this.log(`page "${target.id}" is not built yet`);
       return;
@@ -660,16 +690,22 @@ export class PageStack {
 
   private pressMain(target: PageDef, mc: ModeContext): void {
     if (target === this.mainDef && !this.topPage) {
-      if (!target.control) this.showMain(this.lastControl, mc);
+      if (target.control) {
+        toggleWindow(target.id, mc);
+      } else {
+        closeWindow(target.id, mc);
+        this.showMain(this.lastControl, mc, false);
+      }
       return;
     }
     this.closeTop(mc, false);
     this.showMain(target, mc);
   }
 
-  private showMain(target: PageDef, mc: ModeContext): void {
+  private showMain(target: PageDef, mc: ModeContext, bringUp = true): void {
     if (target === this.mainDef) {
       this.resumeMain(mc);
+      if (bringUp) bringUpWindow(target.id, mc);
       return;
     }
     this.strip?.silence();
@@ -678,7 +714,7 @@ export class PageStack {
     if (target.control) this.lastControl = target;
     this.log(`page: ${target.id}`);
     if (mc.fl.connected) this.mainMode()?.enter(this.mainContext(mc));
-    bringUpWindow(target.id, mc);
+    if (bringUp) bringUpWindow(target.id, mc);
     mc.requestRender();
   }
 
@@ -702,6 +738,7 @@ export class PageStack {
       top.held = true;
       top.button = button;
       top.closeOnRelease = true;
+      closeWindow(target.id, mc);
       return;
     }
     this.openTop(target, button, false, mc);
@@ -709,26 +746,43 @@ export class PageStack {
 
   private openTop(target: PageDef, button: ButtonId, pinned: boolean, mc: ModeContext): void {
     const before = this.topMode();
+    const top = this.topPage;
     this.strip?.silence();
     if (before && before !== this.pages[target.id]) before.leave?.();
+    if (target.kind !== "overlay") this.covered = undefined;
+    else if (top?.page.kind === "tool" && !top.closeOnRelease)
+      this.covered = { ...top, held: false };
     this.topPage = { page: target, button, held: true, pinned, closeOnRelease: false };
-    const page = this.topMode();
     if (mc.fl.connected) {
-      page?.enter(this.topContext(mc));
-      // Leaving a page that changed the main page's VIEW for one that doesn't.
-      if (before?.viewPatch && !page?.viewPatch) this.resumeMain(mc);
+      this.enterTop(before, mc);
       if (target.kind === "tool") bringUpWindow(target.id, mc);
     }
     mc.requestRender();
   }
 
-  /** Close the page on top; the main page under it picks up again (unless another page opens). */
+  /** The page now on top starts, after `before` left it. */
+  private enterTop(before: Mode | undefined, mc: ModeContext): void {
+    const page = this.topMode();
+    page?.enter(this.topContext(mc));
+    // Leaving a page that changed the main page's VIEW for one that doesn't.
+    if (before?.viewPatch && !page?.viewPatch) this.resumeMain(mc);
+  }
+
+  /**
+   * Close the page on top. A tool page it covered comes back, else the main page under it picks up
+   * again; with `resume` false another page is opening, and neither happens.
+   */
   private closeTop(mc: ModeContext, resume = true): void {
     if (!this.topPage) return;
+    const closed = this.topMode();
+    const covered = resume ? this.covered : undefined;
+    this.covered = undefined;
     this.strip?.silence();
-    this.topMode()?.leave?.();
-    this.topPage = undefined;
-    if (resume) this.resumeMain(mc);
+    closed?.leave?.();
+    this.topPage = covered;
+    if (covered) {
+      if (mc.fl.connected) this.enterTop(closed, mc);
+    } else if (resume) this.resumeMain(mc);
     mc.requestRender();
   }
 
@@ -768,6 +822,7 @@ export class PageStack {
   leds(leds: LedState, mc: ModeContext): void {
     if (this.pads) setBankLeds(leds, mc.fl);
     this.mainMode()?.leds(leds, this.mainContext(mc));
+    this.claimedPadPage()?.padLeds?.(leds, this.mainContext(mc));
     const top = this.topMode();
     if (top) {
       this.darkenMainControls(leds, mc);
@@ -814,14 +869,16 @@ export class PageStack {
     const buttons = new Set(this.defs.filter((d) => !d.hold).map((d) => d.button));
     const main = this.mainMode();
     for (const button of buttons) {
-      // A button the main page claimed keeps the LED the page gave it.
-      if (main?.claimsPageButton?.(button)) continue;
+      // A button the main page claimed keeps the LED the page gave it, while that page is shown.
+      if (!this.topPage && main?.claimsPageButton?.(button)) continue;
       // A button the page on top lights itself (STEP: FOLLOW) too, and so does a main page with
       // nothing over it (ARRANGER: FOLLOW).
       if ((this.topMode() ?? main)?.ownsButtonLed?.(button)) continue;
       let level: LightLevel = "off";
       for (const d of this.defs) {
-        if (d.button !== button || !this.pages[d.id] || !connected) continue;
+        if (d.button !== button || !connected) continue;
+        if (d.windowOnly) level = "dim";
+        if (!this.pages[d.id]) continue;
         // SHIFT + button pages light the button while open, not before: the button alone has its own
         // meaning. GRID is the exception: FOLLOW alone does nothing outside STEP and ARRANGER, and dark it cannot be found.
         if (d.shift && d.id !== "grid" && this.topPage?.page !== d) continue;

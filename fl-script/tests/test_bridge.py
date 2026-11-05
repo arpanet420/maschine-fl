@@ -484,6 +484,7 @@ class FakeFL(object):
             getRecEventId=rec_base,
             getTargetFxTrack=lambda i, g=False: fl.channel(i)["mixer_track"],
             setTargetFxTrack=set_target,
+            setChannelColor=lambda i, color: fl.channel(i).__setitem__("color", color),
             getChannelType=lambda i, g=False: fl.channel(i)["channel_type"],
             showEditor=show_editor,
             focusEditor=focus_editor,
@@ -506,6 +507,7 @@ class FakeFL(object):
             isTrackSolo=lambda i: fl.track(i)["solo"],
             isTrackArmed=lambda i: fl.track(i)["armed"],
             getTrackColor=lambda i: fl.track(i)["color"],
+            setTrackColor=lambda i, color: fl.track(i).__setitem__("color", color),
             getTrackVolume=lambda i, mode=0: fl.track(i)["volume"],
             getTrackPan=lambda i: fl.track(i)["pan"],
             getTrackName=lambda i: fl.track(i)["name"],
@@ -935,7 +937,61 @@ class ChannelDetailTests(BridgeTestCase):
         vector = [v for v in load_vectors() if v["name"] == "showEditor"][0]
         event = self.send(bytes.fromhex(vector["hex"]))
         self.assertTrue(event.handled)
-        self.assertEqual(self.fl.called("channels.showEditor"), [(3,)])
+        self.assertEqual(self.fl.called("channels.showEditor"), [(3, 1)])
+        self.assertEqual(self.fl.called("channels.focusEditor"), [(3,)])
+
+    def test_show_editor_closes_the_window_that_has_the_focus(self):
+        self.start()
+        self.script._bridge.focused_generator = lambda: 3
+        self.send(self.script.frame(0x4C, self.script.enc_u14(3)))
+        self.assertEqual(self.fl.called("channels.showEditor"), [(3, 0)])
+        self.assertEqual(self.fl.called("channels.focusEditor"), [])
+
+    def test_show_editor_brings_up_a_channel_while_another_has_the_focus(self):
+        self.start()
+        self.script._bridge.focused_generator = lambda: 2
+        self.send(self.script.frame(0x4C, self.script.enc_u14(3)))
+        self.assertEqual(self.fl.called("channels.showEditor"), [(3, 1)])
+        self.assertEqual(self.fl.called("channels.focusEditor"), [(3,)])
+
+    def test_set_channel_color_sets_the_color_and_checks_the_index(self):
+        self.start()
+        vector = [v for v in load_vectors() if v["name"] == "setChannelColor"][0]
+        self.send(bytes.fromhex(vector["hex"]))
+        self.assertEqual(self.fl.called("channels.setChannelColor"), [(5, vector["message"]["color"])])
+        self.send(self.script.frame(0x6E, self.script.enc_u14(5000) + bytes([0, 0, 0, 1])))
+        self.assertEqual(len(self.fl.called("channels.setChannelColor")), 1)
+
+    def test_set_track_color_sets_the_color_and_checks_the_index(self):
+        self.start()
+        vector = [v for v in load_vectors() if v["name"] == "setTrackColor"][0]
+        self.send(bytes.fromhex(vector["hex"]))
+        self.assertEqual(self.fl.called("mixer.setTrackColor"), [(3, vector["message"]["color"])])
+        self.send(self.script.frame(0x6F, self.script.enc_u14(5000) + bytes([0, 0, 0, 1])))
+        self.assertEqual(len(self.fl.called("mixer.setTrackColor")), 1)
+
+    def test_set_track_color_catches_errors(self):
+        self.start()
+        self.fl.raise_on["mixer.setTrackColor"] = RuntimeError("boom")
+        self.send(self.script.frame(0x6F, self.script.enc_u14(1) + bytes([0, 0, 0, 1])))
+
+    def test_close_all_windows_is_f12_and_forgets_the_open_editors(self):
+        self.start()
+        self.script._bridge.seen_open.add(3)
+        vector = [v for v in load_vectors() if v["name"] == "closeAllWindows"][0]
+        self.assertTrue(self.send(bytes.fromhex(vector["hex"])).handled)
+        self.assertEqual(self.fl.called("transport.globalTransport")[-1], (71, 1))
+        self.assertEqual(self.script._bridge.seen_open, set())
+
+    def test_close_all_windows_catches_errors(self):
+        self.start()
+        self.fl.raise_on["transport.globalTransport"] = RuntimeError("boom")
+        self.send(self.script.frame(0x70, b""))
+
+    def test_set_channel_color_catches_errors(self):
+        self.start()
+        self.fl.raise_on["channels.setChannelColor"] = RuntimeError("boom")
+        self.send(self.script.frame(0x6E, self.script.enc_u14(1) + bytes([0, 0, 0, 1])))
 
     def test_show_editor_is_range_checked(self):
         self.start()
@@ -1289,7 +1345,7 @@ class ToFlCommandTests(BridgeTestCase):
 
 
 class EditorFollowTests(BridgeTestCase):
-    """Scrolling to another channel brings its editor to the front while a generator window is up."""
+    """Selecting a channel brings up its plug-in window only if the user brought it up (docs/bugs.md #12)."""
 
     def setUp(self):
         super(EditorFollowTests, self).setUp()
@@ -1299,7 +1355,13 @@ class EditorFollowTests(BridgeTestCase):
         self.fl.focused_widget = self.fl.script_midi.widPluginGenerator
         self.fl.focused_form_id = index
         if refresh:
-            self.script.OnRefresh(self.fl.script_midi.HW_Dirty_FocusedWindow)
+            self.refresh_focus()
+
+    def refresh_focus(self):
+        self.script.OnRefresh(self.fl.script_midi.HW_Dirty_FocusedWindow)
+
+    def settle_focus(self):
+        self.clock.advance(self.script.FOCUS_SETTLE_SECONDS + 0.01)
 
     def select(self, index):
         s = self.script
@@ -1311,145 +1373,139 @@ class EditorFollowTests(BridgeTestCase):
     def editor_calls(self):
         return [(n, a) for (n, a) in self.fl.calls if n in ("channels.showEditor", "channels.focusEditor")]
 
-    def test_follows_when_the_selected_channels_generator_window_is_focused(self):
-        self.fl.channels[0]["selected"] = False
-        self.fl.channels[3]["selected"] = True
+    def probes(self):
+        for _ in range(10):
+            self.clock.advance(0.2)
+            self.script.OnIdle()
+        return [bytes(frame) for frame in self.fl.sysex_out if list(frame)[4] == 0x17]
+
+    def test_scrolling_opens_no_window_the_user_did_not_bring_up(self):
+        self.focus_generator(0)  # the user brought up channel 1's window
+        for index in (1, 2, 3, 4):
+            self.select(index)
+        self.assertEqual(self.editor_calls(), [])
+        self.assertEqual(self.selected(), 4)
+
+    def test_a_window_the_user_brought_up_comes_up_again_with_its_channel(self):
+        self.fl.open_editors.add(3)
         self.focus_generator(3)
         self.select(4)
-        self.assertEqual(self.selected(), 4)
+        self.fl.focused_widget = self.fl.script_midi.widChannelRack  # focus taken while the script moved it
+        self.refresh_focus()
+        self.select(3)
         self.assertEqual(
             self.editor_calls(),
-            [("channels.showEditor", (4, 1)), ("channels.focusEditor", (4,))],
+            [("channels.showEditor", (3, 0)), ("channels.showEditor", (3, 1)), ("channels.focusEditor", (3,))],
         )
-        self.assertIn(4, self.fl.open_editors)
-        self.assertEqual(self.fl.focused_form_id, 4)
+        self.assertEqual(self.fl.focused_form_id, 3)
+        self.assertIn(3, self.fl.open_editors)
 
-    def test_closes_the_old_window_only_when_follow_opened_it(self):
-        self.fl.channels[0]["selected"] = False
-        self.fl.channels[3]["selected"] = True
-        self.fl.open_editors.add(3)
-        self.focus_generator(3)  # the user's window
+    def test_nothing_is_closed_when_scrolling_away(self):
+        self.fl.open_editors.update({3, 5})
+        self.focus_generator(5)
+        self.focus_generator(3)
         self.select(4)
-        self.select(5)  # 4 was opened by following: closed now
         self.select(6)
-        self.assertEqual(
-            self.fl.called("channels.showEditor"),
-            [(4, 1), (5, 1), (4, 0), (6, 1), (5, 0)],
-        )
-        self.assertIn(3, self.fl.open_editors)  # never touched
-        self.assertEqual(self.fl.open_editors, {3, 6})
-        self.assertEqual(self.bridge.follow_opened, {6})
+        self.assertEqual(self.fl.called("channels.showEditor"), [])
+        self.assertEqual(self.fl.open_editors, {3, 5})
 
-    def test_does_not_close_a_window_seen_open_before(self):
-        self.fl.channels[0]["selected"] = False
-        self.fl.channels[3]["selected"] = True
-        self.fl.open_editors.add(5)
-        self.focus_generator(5)  # the user focused 5's window earlier: seen open
-        self.assertEqual(self.bridge.seen_open, {5})
+    def test_a_focused_window_is_not_brought_up_again(self):
         self.focus_generator(3)
-        self.select(4)  # follow opens 4
-        self.select(5)  # 4 closes (ours); 5 is not claimed by follow
-        self.select(6)  # 5 stays open
-        self.assertEqual(self.fl.called("channels.showEditor"), [(4, 1), (5, 1), (4, 0), (6, 1)])
-        self.assertNotIn(5, self.bridge.follow_opened)
-        self.assertIn(5, self.fl.open_editors)
-
-    def test_focus_changes_we_caused_do_not_count_as_seen(self):
-        self.fl.channels[0]["selected"] = False
-        self.fl.channels[3]["selected"] = True
-        self.focus_generator(3)
-        self.select(4)
-        self.script.OnRefresh(self.fl.script_midi.HW_Dirty_FocusedWindow)  # FL reports the new focus
-        self.assertNotIn(4, self.bridge.seen_open)
-        self.assertEqual(self.bridge.follow_opened, {4})
-
-    def test_no_follow_without_a_focused_generator_window(self):
-        for widget in (None, self.fl.script_midi.widMixer):
-            self.fl.focused_widget = widget
-            self.fl.focused_form_id = 0
-            self.select(4)
-            self.select(0)
+        self.select(3)
         self.assertEqual(self.editor_calls(), [])
-        self.assertEqual(self.selected(), 0)
 
-    def test_no_follow_when_the_focused_window_belongs_to_another_channel(self):
-        self.focus_generator(7)  # channel 0 is selected
+    def test_show_editor_counts_and_its_close_forgets(self):
+        s = self.script
+        self.send(s.frame(0x4C, s.enc_u14(5)))
+        self.assertIn(5, self.bridge.seen_open)
+        self.bridge.show_editor(5)  # it has the focus now: closed
+        self.assertNotIn(5, self.bridge.seen_open)
+
+    def test_the_user_moving_the_focus_away_forgets_the_window(self):
+        for widget in (None, self.fl.script_midi.widChannelRack):
+            self.bridge.reset_follow()
+            self.focus_generator(2)
+            self.settle_focus()
+            self.fl.focused_widget = widget  # closed with the mouse, or another window clicked
+            self.refresh_focus()
+            self.assertEqual(self.bridge.seen_open, set(), widget)
+
+    def test_a_focus_change_the_script_caused_forgets_nothing(self):
+        for frame in (0x71, 0x52, 0x72):
+            self.bridge.reset_follow()
+            self.focus_generator(2)
+            self.settle_focus()
+            self.send(self.script.frame(frame, bytes([1])))  # a page button
+            self.fl.focused_widget = self.fl.script_midi.widChannelRack
+            self.refresh_focus()
+            self.assertEqual(self.bridge.seen_open, {2}, hex(frame))
+
+    def test_a_selection_soon_after_forgets_nothing(self):
+        self.focus_generator(2)
+        self.settle_focus()
         self.select(4)
-        self.assertEqual(self.editor_calls(), [])
-        self.assertEqual(self.selected(), 4)
+        self.fl.focused_widget = None  # FL reports the focus with the selection
+        self.refresh_focus()
+        self.assertEqual(self.bridge.seen_open, {2})
 
-    def test_no_follow_for_the_same_or_an_invalid_channel(self):
+    def test_other_windows_and_other_flags_add_nothing(self):
+        self.fl.focused_widget = self.fl.script_midi.widMixer
+        self.fl.focused_form_id = 2
+        self.refresh_focus()
+        self.assertEqual(self.bridge.seen_open, set())
+        self.focus_generator(2, refresh=False)
+        self.script.OnRefresh(0)  # no focus flag: not looked at
+        self.assertEqual(self.bridge.seen_open, set())
+
+    def test_same_or_invalid_channel(self):
         self.focus_generator(0)
         self.select(0)
         self.select(5000)
         self.assertEqual(self.editor_calls(), [])
         self.assertEqual(self.fl.called("channels.selectOneChannel"), [(0,)])
 
-    def test_explicit_show_editor_counts_as_seen_open(self):
-        s = self.script
-        self.send(s.frame(0x4C, s.enc_u14(5)))
-        self.assertIn(5, self.bridge.seen_open)
-
-    def test_seen_open_ignores_focus_changes_to_other_windows(self):
-        self.fl.focused_widget = self.fl.script_midi.widMixer
-        self.fl.focused_form_id = 2
-        self.script.OnRefresh(self.fl.script_midi.HW_Dirty_FocusedWindow)
-        self.assertEqual(self.bridge.seen_open, set())
-        self.focus_generator(2, refresh=False)
-        self.script.OnRefresh(0)  # no focus flag: not looked at
-        self.assertEqual(self.bridge.seen_open, set())
-
-    def test_request_state_resets_both_sets(self):
-        self.bridge.follow_opened.add(1)
+    def test_request_state_close_all_and_a_new_channel_count_forget(self):
         self.bridge.seen_open.add(2)
         self.send("f07d4d3341f7")
-        self.assertEqual((self.bridge.follow_opened, self.bridge.seen_open), (set(), set()))
-
-    def test_channel_count_change_resets_both_sets(self):
+        self.assertEqual(self.bridge.seen_open, set())
+        self.bridge.seen_open.add(2)
+        self.bridge.close_all_windows()
+        self.assertEqual(self.bridge.seen_open, set())
         self.bridge.channel_total()
-        self.bridge.follow_opened.add(1)
         self.bridge.seen_open.add(2)
         self.bridge.channel_total()
-        self.assertEqual(self.bridge.follow_opened, {1})  # unchanged count: kept
+        self.assertEqual(self.bridge.seen_open, {2})  # unchanged count: kept
         self.fl.channels.pop()
         self.bridge.channel_total()
-        self.assertEqual((self.bridge.follow_opened, self.bridge.seen_open), (set(), set()))
+        self.assertEqual(self.bridge.seen_open, set())
+
+    def test_the_log_says_what_it_learnt_and_did(self):
+        self.fl.sysex_out[:] = []
+        self.focus_generator(3)
+        self.select(4)
+        self.fl.focused_widget = self.fl.script_midi.widChannelRack  # while the selection moves the focus
+        self.refresh_focus()
+        self.select(3)
+        self.bridge.show_editor(3)
+        frames = self.probes()
+        for text in (b"channel 4 is up", b"channel 4 brought up again", b"channel 4 closed"):
+            self.assertTrue(any(text in frame for frame in frames), text)
 
     def test_api_exceptions_are_swallowed(self):
-        for name in (
-            "ui.getFocused",
-            "ui.getFocusedFormID",
-            "channels.showEditor",
-            "channels.focusEditor",
-        ):
+        for name in ("ui.getFocused", "ui.getFocusedFormID", "channels.showEditor", "channels.focusEditor"):
             with self.subTest(name):
-                self.fl.calls[:] = []
                 self.fl.raise_on.clear()
-                self.fl.raise_on[name] = RuntimeError("boom")
-                self.fl.channels[0]["selected"] = True
-                self.fl.focused_widget = self.fl.script_midi.widPluginGenerator
-                self.fl.focused_form_id = 0
                 self.bridge.reset_follow()
-                event = self.select(4)
+                self.bridge.seen_open.add(4)
+                self.fl.raise_on[name] = RuntimeError("boom")
+                with contextlib.redirect_stdout(io.StringIO()):
+                    event = self.select(4)
+                    self.refresh_focus()
+                    self.script.OnIdle()
                 self.assertTrue(event.handled)
                 self.assertEqual(self.selected(), 4)  # the selection itself still happened
-                self.script.OnRefresh(self.fl.script_midi.HW_Dirty_FocusedWindow)
-                self.script.OnIdle()
+                self.fl.raise_on.clear()
                 self.select(0)
-
-    def test_failed_open_is_not_remembered(self):
-        self.focus_generator(0)
-        self.fl.raise_on["channels.showEditor"] = RuntimeError("boom")
-        self.select(4)
-        self.assertEqual(self.bridge.follow_opened, set())
-
-    def test_follow_logs_one_line(self):
-        self.focus_generator(0)
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            self.select(4)
-        self.assertIn("editor follows: channel 0 -> 4", out.getvalue())
-        self.assertEqual(len(out.getvalue().strip().splitlines()), 1)
 
 
 class StateTests(BridgeTestCase):
@@ -1874,6 +1930,13 @@ class PresetsTests(BridgeTestCase):
     def name_reads(self):
         return [a for a in self.fl.called("plugins.getName") if a[2] == 6]
 
+    def test_audio_unit_value_text(self):
+        looks = self.script.audio_unit_value_text
+        for text in ("0.00 ", "47.75 ", "-3.10 ", "100.00 ", "1,50 ", "Nan ", "+Inf "):
+            self.assertTrue(looks(text), text)
+        for text in ("", "0.00", "On ", "1/16 ", "50 ", "0.5 ", "0.00 dB", "0.47dB", "99.00% left "):
+            self.assertFalse(looks(text), text)
+
     def test_nothing_is_read_or_sent_unless_the_view_asks(self):
         frames = self.start() + self.settle()
         self.assertEqual(self.frames_with(frames, 0x15), [])
@@ -1940,6 +2003,168 @@ class PresetsTests(BridgeTestCase):
         self.step("prev")
         self.assertEqual(self.fl.called("plugins.prevPreset"), [(0,), (0,)])
         self.assertEqual(self.presets_frames(self.settle())[-1][1], 16)
+
+    def audio_unit(self):
+        """An Audio Unit, as FL shows one: every value text is a number with 2 decimals and a space."""
+        for param in self.plugin["params"]:
+            param["text"] = "%.2f " % (param["value"] * 100)
+
+    def test_an_audio_unit_preset_name_is_never_asked_for(self):
+        self.audio_unit()
+        self.start()
+        self.view()
+        self.assertEqual(self.presets_frames(self.settle()), [(0, None, 0, [])])
+        self.assertEqual(self.name_reads(), [])
+
+    def test_stepping_an_audio_unit_does_nothing(self):
+        self.audio_unit()
+        self.start()
+        self.view()
+        self.settle()
+        self.step("next")
+        self.settle()
+        self.assertEqual(self.plugin["preset"], 17)
+        self.assertEqual(self.name_reads(), [])
+
+    def test_a_plugin_with_no_value_text_counts_as_a_possible_audio_unit(self):
+        for param in self.plugin["params"]:
+            param["text"] = ""
+        self.start()
+        self.view()
+        self.assertEqual(self.presets_frames(self.settle()), [(0, None, 0, [])])
+        self.assertEqual(self.name_reads(), [])
+
+    def test_one_value_in_words_is_enough_to_read_the_names(self):
+        self.audio_unit()
+        self.plugin["params"][5]["text"] = "On "
+        self.start()
+        self.view()
+        self.assertEqual(self.presets_frames(self.settle())[0][0], 300)
+
+    def test_the_decision_is_taken_once_per_instance(self):
+        self.audio_unit()
+        self.start()
+        self.view()
+        self.settle()
+        reads = len(self.fl.called("plugins.getParamValueString"))
+        self.view()
+        self.settle()
+        scan_again = len(self.fl.called("plugins.getParamValueString")) - reads
+        self.assertLess(scan_again, self.script.PARAM_UNITS_SCAN)
+
+    def probes(self, frames):
+        return [
+            bytes(f[5:-1]).decode("ascii", "replace").rstrip("\x00")
+            for f in self.frames_with(frames, self.script.CMD_PROBE)
+        ]
+
+    def test_the_log_says_when_presets_are_held_back(self):
+        self.audio_unit()
+        self.start()
+        self.view()
+        text = " ".join(self.probes(self.settle()))
+        self.assertIn("may be an Audio Unit", text)
+
+    def test_the_log_says_once_if_onsysex_is_on_another_thread_than_onidle(self):
+        self.start()
+        frames = self.settle()
+        self.view()
+        frames += self.settle()
+        self.assertEqual([p for p in self.probes(frames) if "OnSysEx" in p], [])
+        self.script._bridge.idle_thread = -1
+        self.view()
+        frames = self.settle()
+        self.script._bridge.idle_thread = -1
+        self.view()
+        frames += self.settle()
+        self.assertEqual([p for p in self.probes(frames) if "OnSysEx" in p], ["OnSysEx runs on another thread than OnIdle"])
+
+    def test_a_frame_on_another_thread_is_answered_from_onidle(self):
+        self.start()
+        self.settle()
+        self.script._bridge.idle_thread = -1
+        before = len(self.fl.sysex_out)
+        self.view()
+        self.assertEqual(len(self.fl.sysex_out), before)
+        self.clock.advance(0.2)
+        self.script.OnIdle()
+        self.assertGreater(len(self.fl.sysex_out), before)
+
+    def held_bridge(self):
+        """A started script whose frames come from a side thread, with what it handles written down."""
+        self.start()
+        self.settle()
+        bridge = self.script._bridge
+        bridge.idle_thread = -1
+        handled = []
+        real = bridge.handle
+        bridge.handle = lambda message: (handled.append(message.get("window")), real(message))[1]
+        return bridge, handled
+
+    def show_window_frame(self, window):
+        return bytes([0xF0, 0x7D, 0x4D, 0x33, 0x52, window, 0xF7])
+
+    def test_a_frame_on_another_thread_waits_for_onidle_and_they_keep_their_order(self):
+        bridge, handled = self.held_bridge()
+        self.send(self.show_window_frame(1))
+        self.send(self.show_window_frame(2))
+        self.assertEqual(handled, [])
+        self.script.OnIdle()
+        self.assertEqual(handled, [1, 2])
+        self.assertEqual(bridge.held_frames, [])
+
+    def test_a_frame_on_fls_thread_runs_after_the_held_ones(self):
+        bridge, handled = self.held_bridge()
+        self.send(self.show_window_frame(1))
+        bridge.idle_thread = self.script._thread.get_ident()
+        self.send(self.show_window_frame(2))
+        self.assertEqual(handled, [1, 2])
+
+    def test_held_frames_wait_while_a_step_edit_or_a_held_frame_runs(self):
+        bridge, handled = self.held_bridge()
+        self.send(self.show_window_frame(1))
+        bridge.batching = 1
+        self.script.OnIdle()
+        self.assertEqual(handled, [])
+        bridge.batching = 0
+        bridge.held_running = True
+        self.script.OnIdle()
+        self.assertEqual(handled, [])
+        bridge.held_running = False
+        self.script.OnIdle()
+        self.assertEqual(handled, [1])
+
+    def test_a_held_frame_that_fails_does_not_lose_the_next(self):
+        bridge, handled = self.held_bridge()
+
+        def handle(message):
+            handled.append(message["window"])
+            if message["window"] == 1:
+                raise ValueError("refused")
+
+        bridge.handle = handle
+        self.send(self.show_window_frame(1))
+        self.send(self.show_window_frame(2))
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.script.OnIdle()
+        self.assertEqual(handled, [1, 2])
+
+    def test_only_so_many_frames_are_held_and_the_oldest_goes_first(self):
+        bridge, handled = self.held_bridge()
+        for _ in range(self.script.MAX_HELD_FRAMES):
+            bridge.hold_frame({"window": 0})
+        bridge.hold_frame({"window": 4})
+        self.assertEqual(len(bridge.held_frames), self.script.MAX_HELD_FRAMES)
+        self.assertEqual(bridge.held_frames[-1][1], {"window": 4})
+
+    def test_a_held_window_frame_says_how_long_it_waited(self):
+        bridge, _ = self.held_bridge()
+        self.send(self.show_window_frame(1))
+        self.clock.advance(0.04)
+        self.script.OnIdle()
+        probes = [frame for key, frame in bridge.queue.items() if key.startswith("PROBE@")]
+        probes += [bytes(frame) for frame in self.fl.sysex_out if list(frame)[4] == 0x17]
+        self.assertTrue(any(b"window 1: 40 ms waiting for OnIdle" in bytes(frame) for frame in probes))
 
     def test_preset_step_vector_decodes(self):
         self.assertEqual(self.script.decode(bytes.fromhex("f07d4d335501f7")), {"type": "presetStep", "dir": "next"})
@@ -2652,6 +2877,54 @@ class QuickEditCommandTests(BridgeTestCase):
             self.assertEqual([call[0] for call in ui_calls], ["ui.hideWindow", "ui.showWindow"])
             self.assertEqual(self.fl.called("ui.setFocused"), [(window,)])
             self.assertIn(window, self.fl.visible)
+
+    def test_raise_window_shows_and_focuses_a_hidden_window(self):
+        self.run_vector("raiseWindow")  # window 3, the piano roll
+        self.assertEqual(self.fl.called("ui.hideWindow"), [])
+        self.assertEqual(self.fl.called("ui.showWindow"), [(3,)])
+        self.assertEqual(self.fl.called("ui.setFocused"), [(3,)])
+
+    def test_raise_window_leaves_the_focused_window_alone(self):
+        self.start()
+        self.fl.visible.add(3)
+        self.fl.focused_widget = 3
+        self.fl.calls[:] = []
+        self.send(self.script.frame(0x71, bytes([3])))
+        self.assertEqual(self.fl.called("ui.hideWindow"), [])
+        self.assertEqual(self.fl.called("ui.showWindow"), [])
+        self.assertIn(3, self.fl.visible)
+
+    def test_raise_window_reopens_a_window_that_is_behind(self):
+        self.start()
+        self.fl.visible.add(1)
+        self.fl.focused_widget = 0
+        self.fl.calls[:] = []
+        self.send(self.script.frame(0x71, bytes([1])))
+        self.assertEqual(self.fl.called("ui.hideWindow"), [(1,)])
+        self.assertEqual(self.fl.called("ui.showWindow"), [(1,)])
+        self.assertEqual(self.fl.called("ui.setFocused"), [(1,)])
+
+    def test_raise_window_ignores_other_windows(self):
+        self.start()
+        self.fl.calls[:] = []
+        self.send(self.script.frame(0x71, bytes([9])))
+        self.assertEqual(self.fl.called("ui.showWindow"), [])
+
+    def test_close_window_hides_the_window_with_or_without_the_focus(self):
+        self.run_vector("closeWindow")  # window 3, the piano roll
+        self.assertEqual(self.fl.called("ui.hideWindow"), [(3,)])
+        self.assertEqual(self.fl.called("ui.showWindow"), [])
+        self.fl.calls[:] = []
+        self.fl.visible.add(3)
+        self.fl.focused_widget = 3
+        self.send(self.script.frame(0x72, bytes([3])))
+        self.assertEqual(self.fl.called("ui.hideWindow"), [(3,)])
+
+    def test_close_window_ignores_other_windows(self):
+        self.start()
+        self.fl.calls[:] = []
+        self.send(self.script.frame(0x72, bytes([9])))
+        self.assertEqual(self.fl.called("ui.hideWindow"), [])
 
     def test_show_window_does_not_close_the_browser_first(self):
         self.start()
