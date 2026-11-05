@@ -97,9 +97,8 @@ still takes the computer (see [Limits](#limits)).
 - **SHIFT + pads 13–16 (octave and semitone)** move the notes of a step-sequencer channel, but move notes
   recorded or drawn in the piano roll wrongly: one note per step, and chords can split. FL's script API can't
   select or move piano roll notes, so use FL's own transpose for those.
-- **BROWSER on plug-ins with their own patch browser**, u-he Diva for example, steps FL's generic "Program n"
-  list. Each step renames the channel and adds an undo step. It works as intended on plug-ins whose presets
-  FL lists.
+- **BROWSER can't reach a plug-in's own patch browser**, u-he Diva's for example: FL only lists numbered programs
+  for it, and the page says so. It works as intended on plug-ins whose presets FL lists.
 - **SCENE's marker positions** come from a scan that can be off after edits in FL until SCENE is opened again.
 - **FL Studio froze once** with the script running (2026-10-21). macOS recorded no details and the cause is
   unknown.

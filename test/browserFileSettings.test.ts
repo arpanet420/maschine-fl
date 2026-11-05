@@ -461,18 +461,41 @@ describe("BROWSER", () => {
     expect(h.pages.browser.rows(h.mc)[0]).toEqual([0, "Preset 1"]);
   });
 
+  it("doesn't offer a plug-in's numbered programs", () => {
+    const h = stackHarness();
+    h.tap("browser");
+    h.presets(129, null, ["Program 1", "Program 2", "Program 3"], 0);
+    expect(h.pages.browser.state(h.mc)).toEqual({
+      kind: "none",
+      text: "FL only lists numbered programs",
+    });
+    h.sent.length = 0;
+    h.turn(1);
+    h.push();
+    h.push(false);
+    h.tap("display5");
+    h.tap("display6");
+    h.tap("display8");
+    expect(h.sent.filter((c) => c.type !== "view")).toEqual([]);
+    expect(h.light("display5")).toBe("off");
+  });
+
+  it("offers a bank where one name is a real one", () => {
+    const h = stackHarness();
+    h.tap("browser");
+    h.presets(129, null, ["Program 1", "Warm Pad", "Program 3"], 0);
+    expect(h.pages.browser.state(h.mc).kind).toBe("presets");
+  });
+
   it("says so when there are no presets, no plugin or no channel", () => {
     const h = stackHarness();
     h.tap("browser");
     expect(h.pages.browser.state(h.mc)).toEqual({ kind: "reading" });
     h.presets(0, null, [], 0);
-    expect(h.pages.browser.state(h.mc)).toEqual({ kind: "none", text: "No presets for Sampler" });
+    expect(h.pages.browser.state(h.mc)).toEqual({ kind: "none", text: "No presets" });
     const selected = h.fl.selectedChannel;
     h.fl.apply({ type: "selectedChannel", ...selected, plugin: "" });
-    expect(h.pages.browser.state(h.mc)).toEqual({
-      kind: "none",
-      text: "No presets for this channel",
-    });
+    expect(h.pages.browser.state(h.mc)).toEqual({ kind: "none", text: "No presets" });
     h.fl.apply({ type: "selectedChannel", ...selected, index: null });
     expect(h.pages.browser.state(h.mc)).toEqual({ kind: "none", text: "No channel selected" });
   });

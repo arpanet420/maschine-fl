@@ -388,9 +388,11 @@ export class LiveOverlay implements Mode {
       triangle(ctx, right - 10, cy, 10, color, filled);
       right -= 20;
     }
+    // The row is dimmed while it's muted; the badges that say why aren't.
+    ctx.globalAlpha = 1;
     for (const [on, label, color] of [
       [row.solo, "S", theme.option],
-      [row.muted, "M", theme.dimText],
+      [row.muted, "M", theme.text],
     ] as const) {
       if (!on) continue;
       ctx.fillStyle = color;
@@ -401,6 +403,7 @@ export class LiveOverlay implements Mode {
       ctx.fillText(label, right - 9, cy);
       right -= 24;
     }
+    ctx.globalAlpha = row.muted ? 0.4 : 1;
     ctx.fillStyle = theme.text;
     ctx.font = font(15);
     ctx.textAlign = "left";

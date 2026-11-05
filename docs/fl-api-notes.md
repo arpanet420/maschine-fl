@@ -113,6 +113,7 @@ name. The others are marked Used.
 | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
 | `general.undoUp()`, `general.undoDown()`                                              | Undo and redo. The stubs warn that FL 21 and later may have flipped the visual order; the owner's try says the direction is right                                                                                    | Seen 2026-10-19 |
 | `general.saveUndo(name, UF_PR)`, once before the first `setGridBit`                   | One undo entry per batch. Saved before the edit                                                                                                                                                                      | Seen 2026-10-19 |
+| `ui.setHintMsg(name)`, with the same name                                             | FL's hint bar says what the MK3 just did                                                                                                                                                                             | Open            |
 | Nothing read during a batch (ours)                                                    | FL may call `OnRefresh` or `OnIdle` from inside `saveUndo` or `setGridBit`, so `service()` reads nothing until the batch ends and everything goes out once, never half done                                          | —               |
 | `getUndoHistoryPos`, `getUndoHistoryCount`, `getUndoLevelHint`, `getUndoHistoryLast`  | UNDO_STATE sends the first three. The stub says Pos "seems to behave the same as Count" and that Last is the current position (0 = newest), while the hint is built from Last + 1 and Count. What each one means hasn't been read from a log | Open            |
 
@@ -187,6 +188,7 @@ nothing is called.
 | `playlist.getLiveBlockStatus(track, block, LB_Status_Default)`, `getLiveBlockColor`           | Real data only while performance mode is on; otherwise every block reads as empty. Bits 1 filled, 2 scheduled, 4 playing: 3 queued, 5 playing with a switch pending, 7 playing | Seen 2026-10-21 |
 | `playlist.triggerLiveClip(track, block, TLC_MuteOthers \| TLC_Fill \| TLC_ColumnMode …)`      | As Image-Line's Akai Fire script does it, with `TLC_Release` on the pad's release: it fires the column on every track with a clip there and stops the others             | Seen 2026-10-21 |
 | `playlist.getLiveTrigSnap(track)`                                                             | 5 is `LiveSnap_Four` (4 beats). The stubs list 0 off, 1 ¼ beat, 2 ½ beat, 3 1 beat, 4 2 beats, 5 4 beats, 6 auto                                                         | Seen 2026-10-21 |
+| `playlist.liveDisplayZone(left, top, right, bottom, ms)`                                      | FL outlines the pads' window for 2 s when LIVE opens or moves: blocks 0-based with `right` left out, tracks 1-based with `bottom` included. A temporary zone needs no clearing | Open            |
 | `playlist.getLiveStatus(i, mode)`                                                             | Not used. It raised "Index out of range" in our probe, possibly because the probe passed `LB_Status_Simplest`, which the stubs allow only for `getLiveBlockStatus`        | Seen 2026-10-20 |
 
 ## The Plugin picker
@@ -202,5 +204,5 @@ a new channel. Seen 2026-10-19 ([fl-ilmcp.md](fl-ilmcp.md)).
 - **`PME_System_Safe`:** the Fire triggers clips only when `event.pmeFlags & PME_System_Safe` is set. Our script
   makes system changes from `OnSysEx` without looking. No failure seen. It tells mk3d's log once per load if the
   flag is ever missing (`OnSysEx without PME_System_Safe`).
-- Image-Line's Fire also uses `playlist.liveDisplayZone` / `OnDisplayZone` (FL outlines what the controller covers),
-  `getTrackActivityLevel`, `channels.showGraphEditor` + `getStepParam` and `ui.setHintMsg`.
+- Image-Line's Fire also uses `playlist.getTrackActivityLevel`, and `channels.showGraphEditor` + `getStepParam` for
+  held steps. STEP does that with `getCurrentStepParam` and `setStepParameterByIndex`.

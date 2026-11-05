@@ -357,9 +357,11 @@ class FakeFL(object):
             liveBlockNumToTime=lambda block: block * 384,
             liveTimeToBlockNum=lambda time: time // 96,
             triggerLiveClip=lambda index, subNum, flags, velocity=-1: None,
+            liveDisplayZone=lambda left, top, right, bottom, duration=0: None,
         )
         module(
             "ui",
+            setHintMsg=lambda text: None,
             isMetronomeEnabled=lambda: fl.metronome,
             isPrecountEnabled=lambda: fl.precount,
             up=lambda value=1: 0,
@@ -2856,6 +2858,7 @@ class BatchEditTests(BridgeTestCase):
         self.assertLess(names.index("general.saveUndo"), names.index("channels.setGridBit"))
         self.assertEqual(self.fl.called("general.saveUndo"), [("MK3: clear steps", self.script.midi.UF_PR)])
         self.assertEqual(self.fl.undo_names, ["MK3: clear steps"])
+        self.assertEqual(self.fl.called("ui.setHintMsg"), [("MK3: clear steps",)])
 
     def test_the_grid_is_sent_once_after_the_whole_batch(self):
         self.start()
@@ -3875,6 +3878,18 @@ class LiveSceneTests(BridgeTestCase):
     def trigger_frame(self, block, release=False):
         s = self.script
         return s.frame(0x6A, s.enc_u14(s.NONE_INDEX if block is None else block) + s.enc_flag(release))
+
+    def test_fl_outlines_the_window_when_it_opens_or_moves(self):
+        self.start()
+        self.fl.calls[:] = []
+        self.send(self.view_frame(scenes=True, offset=0))
+        self.send(self.view_frame(scenes=True, offset=0))
+        self.send(self.view_frame(scenes=True, offset=16))
+        self.send(self.view_frame(scenes=False, offset=16))
+        self.assertEqual(
+            self.fl.called("playlist.liveDisplayZone"),
+            [(0, 1, 16, 8, 2000), (16, 1, 32, 8, 2000)],
+        )
 
     def track_rows(self, frames):
         """LIVE_TRACK (0x25) frames by track: {track: (offset, flags, name, [status...])} (payload:

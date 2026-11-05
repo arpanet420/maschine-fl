@@ -892,9 +892,10 @@ preset.
   the list, over knobs 5 and 8 (right screen, first and fourth column): `SCROLL` and the cursor's
   `n / count`. Rows whose
   names FL has not sent yet show `…`.
-- **Notices** (left screen, no tabs on the right): `No presets for <plugin>` (count 0, or a plugin
-  without programs), `No presets for this channel` (no plugin), `No channel selected`, and
-  `Reading presets…` until the first PRESETS arrives.
+- **Notices** (left screen, no tabs on the right, under the plug-in's name and channel): `No presets` (count 0, a
+  plugin without programs, or no plugin), `FL only lists numbered programs` (every name is `Program n`, which on
+  Diva renames the channel and leaves its own patch browser alone, docs/nks.md), `No channel selected`, and
+  `Reading presets…` until the first PRESETS arrives. PREV, NEXT and LOAD do nothing on these.
 - LEDs: display 1 and 2 the source (the current one bright, the other dim), display 5 and 6 dim while there
   are presets, display 8 as above, 4D tilt up/down dim orange (left/right off), the rest off. On `PLUG-INS`,
   display 8 and all four tilts are dim while the picker is open.

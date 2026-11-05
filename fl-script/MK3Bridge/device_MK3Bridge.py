@@ -166,6 +166,8 @@ LIVE_TRACK_FLAG_SOLO = 0x02
 # Playlist tracks (1-based) LIVE_TRACK reports, one row each, and STOP stops; a press picks the
 # first of them that is filled at the block as the clip it hands FL's scene trigger.
 LIVE_TRACK_SCAN = 8
+LIVE_BLOCKS_SHOWN = 16  # the pads' window on the playlist's blocks
+LIVE_ZONE_MS = 2000  # how long FL outlines that window after it moves
 # playlist.triggerLiveClip flags (FL's midi.py; the stubs leave most undocumented). A scene is a
 # flag, not a separate call: TLC_ColumnMode ("scene") on one clip makes FL fire that block on
 # every track. Image-Line's Akai Fire script launches with MuteOthers | Fill (+ GlobalSnap while
@@ -1091,6 +1093,7 @@ class Bridge(object):
         self.batching += 1
         try:
             _general(None, "saveUndo", undo_name, _undo_flags())
+            _attr(None, ui, "setHintMsg", undo_name)  # FL's hint bar says what the MK3 just did
             yield
         finally:
             self.batching -= 1
@@ -2634,6 +2637,10 @@ class Bridge(object):
             # Opened, closed or a different window: mk3d has dropped the old one, send fresh.
             self.drop_family("LIVE_GRID")
             self.mark("live_grid")
+            if new.live_scenes:
+                # FL outlines what the pads cover for a moment (a temporary zone needs no clearing).
+                last = new.live_offset + LIVE_BLOCKS_SHOWN
+                _attr(None, playlist, "liveDisplayZone", new.live_offset, 1, last, LIVE_TRACK_SCAN, LIVE_ZONE_MS)
 
     def set_channel(self, index, what, value):
         if not 0 <= index < self.channel_total():

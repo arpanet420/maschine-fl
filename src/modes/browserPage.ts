@@ -18,7 +18,7 @@
 // Right screen: tabs PREV / NEXT / LOAD,
 // a list of 7 rows (cursor = filled bar, loaded = orange text and a marker, a scroll bar on the right
 // edge with a tick for the loaded preset) and, under it, knobs 5 and 8's `SCROLL`. No plugin or no presets:
-// a notice (`No presets for <plugin>`).
+// a notice (`No presets`).
 //
 // PLUG-INS (display 2, verified in FL 2026, docs/fl-ilmcp.md) = FL's own **Plugin picker** (Generators and
 // Effects, category tabs at the bottom): display 2 sends PLUGIN_PICKER (FPT_F8, a toggle), mk3d
@@ -78,6 +78,13 @@ const LIST_BOTTOM = TAB_HEIGHT + LIST_ROWS * ROW_HEIGHT;
 const KNOB_STRIP = { y: LIST_BOTTOM, width: 120, height: FULL.height - LIST_BOTTOM };
 const BAR_WIDTH = 6;
 const DARK_TEXT = theme.background;
+
+/**
+ * What FL calls a VST's programs when the plug-in names none of them. On Diva, stepping them renames the channel
+ * and adds an undo step, and the plug-in's own patch browser doesn't move (docs/nks.md), so they aren't offered.
+ */
+const GENERIC_PROGRAM = /^Program \d+$/;
+const NO_PRESETS = "No presets";
 
 /** What the page can say about the selected channel's presets. */
 export type BrowserState =
@@ -378,13 +385,13 @@ export class BrowserPage implements Mode {
     mc.requestRender();
   }
 
-  /** Load the previous or next preset (only when the selected channel has a plugin). */
+  /** Load the previous or next preset, while the page has any. */
   private step(next: boolean, mc: ModeContext): void {
-    if (!mc.fl.connected || mc.fl.selectedChannel.index === null) return;
-    mc.send({ type: "presetStep", dir: next ? "next" : "prev" });
     const state = this.state(mc);
+    if (!mc.fl.connected || state.kind !== "presets") return;
+    mc.send({ type: "presetStep", dir: next ? "next" : "prev" });
     const loaded = this.loadedIndex(mc);
-    if (state.kind !== "presets" || loaded === null) {
+    if (loaded === null) {
       this.cursor = null; // FL steps from where it is; the cursor follows once FL says where that is
       mc.requestRender();
       return;
@@ -413,10 +420,13 @@ export class BrowserPage implements Mode {
     const { fl } = mc;
     const plugin = fl.selectedChannel.plugin;
     if (fl.selectedChannel.index === null) return { kind: "none", text: "No channel selected" };
-    if (!plugin) return { kind: "none", text: "No presets for this channel" };
+    if (!plugin) return { kind: "none", text: NO_PRESETS };
     const presets = fl.presets;
     if (!presets) return { kind: "reading" };
-    if (presets.count === 0) return { kind: "none", text: `No presets for ${plugin}` };
+    if (presets.count === 0) return { kind: "none", text: NO_PRESETS };
+    if (presets.names.length > 0 && presets.names.every((name) => GENERIC_PROGRAM.test(name))) {
+      return { kind: "none", text: "FL only lists numbered programs" };
+    }
     return { kind: "presets", count: presets.count, current: presets.current };
   }
 
