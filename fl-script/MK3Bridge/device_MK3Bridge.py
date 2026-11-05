@@ -4096,6 +4096,8 @@ def OnControlChange(event):
 
 def OnSysEx(event):
     try:
+        if event.sysex is None:
+            return  # FL sent one without data while loading (bug #17)
         data = bytes(event.sysex)
         if not data.startswith(SYSEX_HEADER):
             return

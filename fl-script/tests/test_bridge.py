@@ -5457,6 +5457,16 @@ class WatchLogTests(BridgeTestCase):
         self.script.OnSysEx(Event(sysex=self.script.frame(0x4F, b"")))
         self.assertEqual(self.probes(self.drain()), [])
 
+    def test_an_event_without_data_is_left_alone(self):
+        self.script._forwarded_errors[0] = 0
+        self.script._logged_errors.clear()
+        self.start()
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.script.OnSysEx(Event(sysex=None))  # FL sent one while loading (bug #17)
+        self.drain()
+        errors = [bytes(f) for f in self.fl.sysex_out if list(f)[4] == 0x17 and b"script error: " in bytes(f)]
+        self.assertEqual(errors, [])
+
     def test_the_full_re_reads_are_timed_once_per_load(self):
         self.script.TIMED_FULL_PASSES = 3
         self.start()
