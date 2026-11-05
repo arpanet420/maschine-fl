@@ -11,6 +11,7 @@
 class MaschineFl < Formula
   desc "Use a Native Instruments Maschine MK3 as an FL Studio controller (mk3d daemon)"
   homepage "https://github.com/arpanet420/maschine-fl"
+  license "GPL-3.0-or-later"
   head "https://github.com/arpanet420/maschine-fl.git", branch: "main"
 
   depends_on :macos

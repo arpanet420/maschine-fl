@@ -1,7 +1,8 @@
 # Third-party notices
 
-maschine-fl contains no source files from the projects below, but some protocol facts and one
-table were taken from them, and their authors are credited here. See also the Acknowledgements in `README.md`.
+maschine-fl is under the GPL-3.0-or-later ([LICENSE](LICENSE)). It contains no source files from the
+projects below, but some protocol facts and one table were taken from them, and their authors are credited
+here. See also the Acknowledgements in `README.md`.
 
 ## cabl (MIT)
 

@@ -281,6 +281,12 @@ authors of [node-hid](https://github.com/node-hid/node-hid), [node-usb](https://
 [@julusian/midi](https://github.com/Julusian/node-midi) and
 [@napi-rs/canvas](https://github.com/Brooooooklyn/canvas), which mk3d is built on.
 
+## Licence
+
+Copyright © 2026 the maschine-fl contributors. Free software under the
+[GNU General Public License](LICENSE), version 3 or any later version (`GPL-3.0-or-later`): use it, change it and pass
+it on, as long as what you pass on stays under the same licence and comes with its source. There is no warranty.
+
 ## Disclaimer
 
 An independent hobby project, not affiliated with or endorsed by Native Instruments, Image-Line
