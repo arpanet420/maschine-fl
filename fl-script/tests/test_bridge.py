@@ -4053,6 +4053,54 @@ class MarkerTests(BridgeTestCase):
         self.assertIn(b"loop 1536 to 3840", probes)
         self.assertIn(b"after the jump the song was at 1540 1548 1556 1564", probes)
 
+    # Bug #16: FL keeps the loop that was on when play started, so a LOOP jump while playing restarts FL.
+
+    def switch_calls(self):
+        names = ("arrangement.selectionSet", "arrangement.selectionClear", "transport.setSongPos",
+                 "transport.stop", "transport.start")
+        return [name.split(".")[1] for (name, _) in self.fl.calls if name in names]
+
+    def test_a_queued_looped_jump_restarts_fl_on_the_new_loop(self):
+        self.scanned()
+        self.fl.selection = (384, 768)
+        self.fl.playing = True
+        self.fl.song_pos[2] = 400
+        self.looped_jump(2, True)
+        self.play_to(764)
+        self.assertEqual(self.switch_calls(), ["selectionSet", "stop", "setSongPos", "start"])
+        self.assertEqual(self.fl.selection, (1536, 3840))
+        self.assertEqual(self.fl.song_pos[2], 1536)
+
+    def test_a_looped_jump_now_while_playing_restarts_too(self):
+        self.scanned()
+        self.fl.playing = True
+        self.looped_jump(2, False)
+        self.assertEqual(self.switch_calls(), ["selectionSet", "stop", "setSongPos", "start"])
+
+    def test_a_queued_jump_without_loop_does_not_restart(self):
+        self.scanned()
+        self.fl.playing = True
+        self.fl.song_pos[2] = 400
+        self.jump(2, True)
+        self.play_to(764)
+        self.assertEqual(self.switch_calls(), ["setSongPos"])
+
+    def test_a_looped_jump_while_stopped_does_not_start_fl(self):
+        self.scanned()
+        self.looped_jump(2, False)
+        self.assertEqual(self.switch_calls(), ["selectionSet", "setSongPos"])
+
+    def test_the_log_says_a_looped_jump_restarted(self):
+        self.scanned()
+        self.fl.playing = True
+        self.fl.song_pos[2] = 400
+        self.looped_jump(2, True)
+        self.play_to(764)
+        self.drain()
+        probes = b"".join(bytes(f) for f in self.fl.sysex_out if list(f)[4] == 0x17)
+        self.assertIn(b"loop 1536 to 3840,", probes)
+        self.assertIn(b"restarted", probes)
+
     def test_an_old_jump_frame_without_the_loop_byte_still_jumps(self):
         self.scanned()
         self.jump(2, False)

@@ -3056,9 +3056,15 @@ class Bridge(object):
     def go_to_marker(self, index, loop=False):
         # A marker whose time is unknown cannot be jumped to.
         if 0 <= index < len(self.markers) and self.markers[index][0] is not None:
-            if loop:
+            target = self.markers[index][0]
+            if loop and self.is_playing():
+                self.queue_probe("jump to marker %d now, to tick %d%s" % (index + 1, target, self.switch_loop(index, target)))
+                self.jump_watch = {"left": 4, "seen": []}
+            elif loop:
                 self.loop_section(index)
-            _safe(None, transport.setSongPos, self.markers[index][0], SONGLENGTH_ABSTICKS)
+                _safe(None, transport.setSongPos, target, SONGLENGTH_ABSTICKS)
+            else:
+                _safe(None, transport.setSongPos, target, SONGLENGTH_ABSTICKS)
             self.mark("song_pos")
 
     def loop_section(self, index):
@@ -3075,6 +3081,17 @@ class Bridge(object):
             _safe(None, function, start, end)
             self.mark("loop")
         return start, end
+
+    def switch_loop(self, index, land):
+        """LOOP while playing: the new section's loop, then FL stops, jumps to `land` and plays on, in one call.
+        FL keeps looping the time selection that was on when play started, whatever selectionSet does while it
+        plays, and sends a jump to or past that loop's end back to its start; starting again takes the new one
+        (bug #16, seen in FL 2026 with no gap to hear). Returns the text for the log."""
+        start, end = self.loop_section(index)
+        _safe(None, transport.stop)
+        _safe(None, transport.setSongPos, land, SONGLENGTH_ABSTICKS)
+        _safe(None, transport.start)
+        return "; loop %d to %d, restarted" % (start, end)
 
     def jump_marker(self, index, quantized, loop=False):
         """JUMP_MARKER: now, or (while playing, `quantized`) at the next bar line (service_queued_jump)."""
@@ -3136,8 +3153,9 @@ class Bridge(object):
         if pending.get("loop"):
             # The loop changes in the same pass as the position: set earlier, a loop that ends before the song's
             # position could send FL back to its start off the bar line.
-            looped = "; loop %d to %d" % self.loop_section(index)
-        _safe(None, transport.setSongPos, land, SONGLENGTH_ABSTICKS)
+            looped = self.switch_loop(index, land)
+        else:
+            _safe(None, transport.setSongPos, land, SONGLENGTH_ABSTICKS)
         self.mark("song_pos")
         self.queue_probe(
             "queued jump to marker %d (tick %d): %s ticks at tick %d, to tick %d%s; a pass every %s ticks"

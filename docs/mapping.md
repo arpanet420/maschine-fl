@@ -1033,7 +1033,9 @@ toggles quantized and immediate (underlined = immediate); the choice is saved in
 (`pages.scene.immediate`). Display 3 `LOOP` (on by default, `pages.scene.loop`) makes a press loop the
 marker's section too: the song loop (time selection) becomes the marker up to the next one, the last one
 to the song's end, set by the FL script in the same pass as the jump, so in a live set FL stays in a song
-until the next scene is picked. Display 4 `FOLLOW` (off by default, `pages.scene.follow`) makes the MK3 show
+until the next scene is picked. While FL plays, the script then stops FL, jumps and starts it again in the
+same call: FL keeps looping the selection that was on at play start otherwise (bug #16); no gap was heard.
+Display 4 `FOLLOW` (off by default, `pages.scene.follow`) makes the MK3 show
 only the channels of the song that is playing: when the song position is in another marker's section, every
 channel page, the pads and PAD MODE count only the channels of the channel rack filter group named like the
 marker (`2 swesyntmaster` goes with marker `swesyntmaster`, a leading number left out, case ignored), and FL's
