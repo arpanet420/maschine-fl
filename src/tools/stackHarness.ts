@@ -7,7 +7,7 @@ import type { FlCommand, LiveTrack } from "../fl/sysex.js";
 import type { HwEvent, PadEvent } from "../hw/events.js";
 import { type ButtonId, panelPad } from "../hw/ids.js";
 import { LedState, MONO_LEDS } from "../hw/leds.js";
-import { ArrangerPage, type ArrangerOptions } from "../modes/arrangerPage.js";
+import { ArrangerPage } from "../modes/arrangerPage.js";
 import { BrowserPage } from "../modes/browserPage.js";
 import { ChannelMode } from "../modes/channelMode.js";
 import { DuplicateOverlay } from "../modes/duplicateOverlay.js";
@@ -43,7 +43,6 @@ export const padByte = (pad: number) => 26 + panelPad(pad);
 export function stackHarness(
   options: DemoOptions & {
     pinsPath?: string;
-    arranger?: ArrangerOptions;
     /** The arpeggiator's Random. */
     random?: () => number;
   } = {},
@@ -62,7 +61,7 @@ export function stackHarness(
     channel: new ChannelMode(time.clock),
     plugin: new PluginMode(time.clock, new FlParamPages()),
     mixer: new MixerMode(time.clock),
-    arranger: new ArrangerPage(options.arranger),
+    arranger: new ArrangerPage(),
     scene: new SceneOverlay({ timers: time.timers }),
     liveClips: new LiveOverlay({ timers: time.timers }),
     browser: new BrowserPage(time.clock),
@@ -291,18 +290,11 @@ export function stackHarness(
     stack.onFlChange("pattern", mc);
   };
   /** FL reports which hidden functions it lacks (FEATURES). */
-  const features = (missing: {
-    patternLength?: boolean;
-    loop?: boolean;
-    browser?: boolean;
-    picker?: boolean;
-  }) => {
+  const features = (missing: { patternLength?: boolean; loop?: boolean }) => {
     fl.apply({
       type: "features",
       patternLength: false,
       loop: false,
-      browser: false,
-      picker: false,
       ...missing,
     });
     stack.onFlChange("features", mc);

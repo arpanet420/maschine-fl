@@ -168,11 +168,6 @@ class FakeFL(object):
         self.patch_name = None  # what plugins.getName(FPN_Patch) says instead of the current preset
         self.focused_widget = None  # midi.wid* of the focused FL window
         self.focused_form_id = -1  # channel rack index for a generator window
-        self.node_caption = "Diva"  # the browser's focused node (plug-in loader trial)
-        self.node_type = -1
-        self.in_popup = False
-        self.form_caption = "Browser"
-        self.hint = "Plugin database"
         self.open_editors = set()  # channels whose plugin window is open
         self.group_base = 0  # global index of group-local channel 0 (getChannelIndex adds it)
         self.notes = []  # (global channel index, note, velocity) passed to channels.midiNoteOn
@@ -191,7 +186,6 @@ class FakeFL(object):
         self.loop_mode = 0  # transport.getLoopMode(): 0 pattern, 1 song
         self.ppq = 96
         self.song_pos[2] = 0  # the position in absolute ticks
-        self.added_markers = []  # (ticks, name) passed to arrangement.addAutoTimeMarker
         self.visible = set()  # midi.wid* windows that are shown
         self.playlist_tracks = 500  # playlist.trackCount()
         self.perf_mode = False  # playlist.getPerformanceModeState()
@@ -330,19 +324,12 @@ class FakeFL(object):
                 if behind:
                     fl.song_pos[2] = behind[-min(-delta, len(behind))]
 
-        def add_auto_time_marker(time, name):
-            fl.added_markers.append((time, name))
-            fl.marker_ticks.append(time)
-            fl.marker_ticks.sort()
-            fl.marker_names[fl.marker_ticks.index(time)] = name
-
         module(
             "arrangement",
             jumpToMarker=jump_to_marker,
             getMarkerName=lambda index: fl.marker_names.get(
                 index, "Marker %d" % index if 0 <= index < len(fl.marker_ticks) else ""
             ),
-            addAutoTimeMarker=add_auto_time_marker,
             selectionSet=lambda start, end: setattr(fl, "selection", (start, end)),
             selectionClear=lambda: setattr(fl, "selection", None),
             selectionIsActive=lambda: fl.selection is not None,
@@ -390,21 +377,8 @@ class FakeFL(object):
             showWindow=lambda widget: fl.visible.add(widget),
             hideWindow=lambda widget: fl.visible.discard(widget),
             setFocused=lambda widget: setattr(fl, "focused_widget", widget),
-            navigateBrowser=lambda direction, shift=False: fl.node_caption,
-            toggleBrowserNode=lambda value=-1: 0,
-            selectBrowserMenuItem=lambda: 0,
-            previewBrowserMenuItem=lambda: 0,
-            closeActivePopupMenu=lambda: 0,
-            isInPopupMenu=lambda: fl.in_popup,
-            getFocusedNodeCaption=lambda: fl.node_caption,
-            getFocusedNodeFileType=lambda: fl.node_type,
-            getFocusedFormCaption=lambda: fl.form_caption,
-            getHintMsg=lambda: fl.hint,
-            showPicker=lambda show, mode=-1: 0,
             getSnapMode=lambda: fl.snap,
             setSnapMode=lambda value: setattr(fl, "snap", value),
-            horZoom=lambda value: 0,
-            jog=lambda value: 0,
             cut=lambda: 0,
             copy=lambda: 0,
             paste=lambda: 0,
@@ -3498,44 +3472,6 @@ class MarkerTests(BridgeTestCase):
 
     # -- ADD_MARKER, SET_LOOP_MODE, PLAYLIST_VIEW, SET_SONG_POS --------------------------------
 
-    def test_add_marker_saves_undo_first_then_adds_and_rescans(self):
-        self.scanned()
-        self.fl.song_pos[2] = 1000
-        self.send(bytes.fromhex("f07d4d3357f7"))
-        self.assertEqual(self.fl.undo_names, ["MK3: add marker"])
-        self.assertEqual(self.fl.added_markers, [(1000, "MK3 5")])
-        names = [name for name, _ in [(n, a) for (n, a) in self.fl.calls]]
-        self.assertLess(names.index("general.saveUndo"), names.index("arrangement.addAutoTimeMarker"))
-        self.assertEqual(self.fl.called("general.saveUndo")[0][1], 2048)
-        self.drain()
-        listed = self.listed(self.take())
-        self.assertEqual([t for t, _ in listed], [384, 768, 1000, 1536, 3840])
-        self.assertEqual(self.fl.song_pos[2], 1000)  # the rescan put the song back
-
-    def test_add_marker_while_playing_shows_it_at_once_and_scans_when_fl_stops(self):
-        self.scanned()
-        self.fl.playing = True
-        self.fl.song_pos[2] = 2000
-        self.send(bytes.fromhex("f07d4d3357f7"))
-        self.drain()
-        self.assertEqual(self.fl.called("arrangement.jumpToMarker"), [])
-        listed = self.listed(self.take())
-        self.assertEqual([t for t, _ in listed], [384, 768, 1536, 2000, 3840])
-        self.assertEqual(listed[3][1], "MK3 5")
-        self.fl.playing = False
-        self.drain()
-        self.assertGreater(len(self.fl.called("arrangement.jumpToMarker")), 0)
-
-    def test_add_marker_while_playing_with_unknown_times_just_appends(self):
-        self.fl.marker_ticks = [0, 384, 768]
-        self.scanned()
-        self.fl.playing = True
-        self.fl.song_pos[2] = 100
-        self.send(bytes.fromhex("f07d4d3357f7"))
-        self.drain()
-        names = [name for _, name in self.listed(self.take())]
-        self.assertEqual(names, ["Marker 0", "Marker 1", "Marker 2", "MK3 4"])
-
     def test_add_marker_failure_is_caught(self):
         self.scanned()
         self.fl.raise_on["arrangement.addAutoTimeMarker"] = RuntimeError("boom")
@@ -3578,38 +3514,11 @@ class MarkerTests(BridgeTestCase):
         frames = self.start()
         self.assertEqual(self.frames_with(frames, 0x02)[0][5] & 0x10, 0)
 
-    def test_playlist_zoom_and_scroll_focus_the_playlist_first(self):
-        self.start()
-        self.take()
-        self.fl.calls[:] = []
-        self.send(bytes.fromhex("f07d4d3359003df7"))  # zoom -3
-        self.assertEqual(self.fl.called("ui.showWindow"), [(2,)])
-        self.assertEqual(self.fl.called("ui.setFocused"), [(2,)])
-        self.assertEqual(self.fl.called("ui.horZoom"), [(-3,)])
-        self.fl.calls[:] = []
-        self.send(bytes.fromhex("f07d4d33590145f7"))  # scroll +5, the playlist has the focus now
-        self.assertEqual(self.fl.called("ui.showWindow"), [])
-        self.assertEqual(self.fl.called("ui.jog"), [(5,)])
-
-    def test_playlist_view_failure_is_caught(self):
-        self.start()
-        self.fl.raise_on["ui.horZoom"] = RuntimeError("boom")
-        self.send(bytes.fromhex("f07d4d3359003df7"))
-        self.fl.raise_on["ui.getFocused"] = RuntimeError("boom")
-        self.send(bytes.fromhex("f07d4d33590145f7"))
-
-    def test_set_song_pos_in_ticks(self):
-        self.start()
-        self.take()
-        self.fl.calls[:] = []
-        self.send(bytes.fromhex("f07d4d335b001e00f7"))
-        self.assertEqual(self.fl.called("transport.setSongPos"), [(3840, 2)])
-
     def test_marker_commands_survive_fl_errors(self):
         self.scanned()
         for name in ("transport.setSongPos", "transport.setLoopMode", "general.getRecPPQ"):
             self.fl.raise_on[name] = RuntimeError("boom")
-        for hex_frame in ("f07d4d33560100f7", "f07d4d335801f7", "f07d4d335b001e00f7", "f07d4d335af7"):
+        for hex_frame in ("f07d4d33560100f7", "f07d4d335801f7", "f07d4d335af7"):
             self.send(bytes.fromhex(hex_frame))
         self.drain()
 
@@ -3652,7 +3561,7 @@ class TransposeTests(BridgeTestCase):
         self.fl.step_params[(3, 2, 0)] = 50  # a step that is off: left alone
         self.fl.calls[:] = []
         self.transpose(3, 5)
-        frames = self.done()
+        self.done()
         names = [name for (name, args) in self.fl.calls]
         self.assertEqual(self.fl.undo_names[-1], "MK3: transpose")
         self.assertLess(names.index("general.saveUndo"), names.index("channels.setStepParameterByIndex"))
@@ -3662,7 +3571,6 @@ class TransposeTests(BridgeTestCase):
         self.assertEqual(self.fl.step_params[(3, 2, 0)], 50)
         self.assertEqual(self.fl.called("channels.setGridBit"), [])
         self.assertEqual(self.fl.called("ui.up"), [])
-        self.assertEqual(self.probes(frames), ["transpose(ch 3, +5): steps 2 changed"])
 
     def test_clamps_at_zero_going_down(self):
         self.start()
@@ -3690,11 +3598,10 @@ class TransposeTests(BridgeTestCase):
         self.start()
         self.fl.calls[:] = []
         self.transpose(6, 12)
-        frames = self.done()
+        self.done()
         self.assertEqual(self.fl.called("ui.up"), [])
         self.assertEqual(self.fl.called("ui.showWindow"), [])
         self.assertEqual(self.fl.called("ui.setFocused"), [])
-        self.assertEqual(self.probes(frames), ["transpose(ch 6, +12): steps 0 changed"])
 
     def test_a_failing_step_function_or_a_missing_one_does_not_raise(self):
         self.start()
@@ -3783,14 +3690,14 @@ class LengthAndLoopTests(BridgeTestCase):
 
     # -- SET_LOOP -----------------------------------------------------------------------------
 
-    def test_set_loop_sets_reads_back_and_probes(self):
+    def test_set_loop_sets_and_says_so_in_loop_state(self):
         self.start()
         event = self.send(self.script.frame(0x60, self.script.enc_u21(1536) + self.script.enc_u21(3072)))
         self.assertTrue(event.handled)
         self.assertEqual(self.fl.called("arrangement.selectionSet"), [(1536, 3072)])
         self.assertEqual(self.fl.selection, (1536, 3072))
         frames = self.done()
-        self.assertEqual(self.probes(frames), ["selectionSet(1536, 3072) -> active=1 start=1536 end=3072"])
+        self.assertEqual(self.probes(frames), [])
         loop = self.last(frames, 0x1C)
         self.assertEqual((loop[5], self.u21(loop, 6), self.u21(loop, 9)), (1, 1536, 3072))
 
@@ -3801,8 +3708,7 @@ class LengthAndLoopTests(BridgeTestCase):
         self.assertEqual(self.fl.called("arrangement.selectionClear"), [()])
         self.assertEqual(self.fl.called("arrangement.selectionSet"), [])
         self.assertIsNone(self.fl.selection)
-        frames = self.done()
-        self.assertEqual(self.probes(frames), ["selectionClear() -> active=0 start=0 end=0"])
+        self.assertEqual(self.probes(self.done()), [])
 
     def test_set_loop_ignores_an_empty_or_backwards_range(self):
         self.start()
@@ -3828,14 +3734,14 @@ class LengthAndLoopTests(BridgeTestCase):
 
     # -- SET_PATTERN_LENGTH -------------------------------------------------------------------
 
-    def test_set_pattern_length_sets_reads_back_and_probes(self):
+    def test_set_pattern_length_sets_and_pattern_follows(self):
         self.start()
         s = self.script
         event = self.send(s.frame(0x5F, s.enc_u7(3) + s.enc_u14(32)))
         self.assertTrue(event.handled)
         self.assertEqual(self.fl.called("patterns.setPatternLength"), [(3, 32)])
         frames = self.done()
-        self.assertEqual(self.probes(frames), ["setPatternLength(3, 32) -> getPatternLength(3) = 32"])
+        self.assertEqual(self.probes(frames), [])
         # PATTERN follows with the new length (the pattern in view is number 1: same fake length)
         pattern = self.last(frames, 0x18)
         self.assertEqual((pattern[5] << 7) | pattern[6], 1)
@@ -3864,7 +3770,7 @@ class LengthAndLoopTests(BridgeTestCase):
 
     # -- SET_PATTERN_COLOR --------------------------------------------------------------------
 
-    def test_set_pattern_color_sets_reads_back_and_probes(self):
+    def test_set_pattern_color_sets_and_pattern_follows(self):
         self.start()
         s = self.script
         color = 0xE0707A
@@ -3872,7 +3778,7 @@ class LengthAndLoopTests(BridgeTestCase):
         self.assertTrue(self.send(s.frame(0x62, payload)).handled)
         self.assertEqual(self.fl.called("patterns.setPatternColor"), [(1, color)])
         frames = self.done()
-        self.assertEqual(self.probes(frames), ["setPatternColor(1, 0xe0707a) -> getPatternColor(1) = 0xe0707a"])
+        self.assertEqual(self.probes(frames), [])
         pattern = self.last(frames, 0x18)
         # PATTERN's color field: after number (2), count (2), length (2)
         self.assertEqual(pattern[11:15], s.enc_color(color))
@@ -3891,13 +3797,25 @@ class LengthAndLoopTests(BridgeTestCase):
     def test_probe_lines_are_never_deduplicated(self):
         self.start()
         s = self.script
+        self.fl.raise_on["patterns.setPatternLength"] = RuntimeError("boom")
         for _ in range(2):
             self.send(s.frame(0x5F, s.enc_u7(1) + s.enc_u14(32)))
             self.assertEqual(len(self.probes(self.done())), 1)
+        self.assertEqual([key for key in self.bridge.sent if key.startswith("PROBE")], [])
+
+    def test_a_long_probe_line_is_cut_up(self):
+        split = self.script.split_probe_text
+        self.assertEqual(split("short"), ["short"])
+        self.assertEqual(split("x" * 100), ["x" * 100])
+        self.assertEqual(split("x" * 101), ["x" * 100, "+ x"])
+        pieces = split(" ".join(["abcdef"] * 30))
+        self.assertTrue(len(pieces) > 1 and all(len(p) <= 100 for p in pieces))
+        self.assertEqual(" ".join(p.lstrip("+ ") if i else p for i, p in enumerate(pieces)), " ".join(["abcdef"] * 30))
 
     def test_a_burst_of_sets_never_sends_more_than_eight_frames_per_callback(self):
         self.start()
         s = self.script
+        self.fl.raise_on["patterns.setPatternLength"] = RuntimeError("boom")
         for length in range(10, 40):
             self.send(s.frame(0x5F, s.enc_u7(1) + s.enc_u14(length)))
         total = 0
@@ -3910,238 +3828,6 @@ class LengthAndLoopTests(BridgeTestCase):
             if not self.bridge.queue and not sent:
                 break
         self.assertGreaterEqual(len(self.probes(self.take())), 30)
-
-
-class PlaylistProbeTests(BridgeTestCase):
-    """RUN_PROBE (5C): PROBE lines (17) with what the performance-mode functions return."""
-
-    RUN = "f07d4d335cf7"
-
-    @staticmethod
-    def text(frame):
-        payload = frame[5:-1]
-        assert payload[-1] == 0
-        return bytes(payload[:-1]).decode("ascii")
-
-    def probe_frames(self, frames):
-        return [self.text(f) for f in self.frames_with(frames, 0x17)]
-
-    def run_probe(self, ilmcp=False):
-        """RUN_PROBE and OnIdle until the lines stop; returns the PROBE texts, in order (the playlist
-        lines only, unless `ilmcp`: the ilmcp browser lines come first)."""
-        self.start()
-        self.take()
-        self.send(self.RUN)
-        self.drain()
-        lines = self.probe_frames(self.take())
-        if ilmcp:
-            return lines
-        hidden = ("ilmcp: ", "browser ", "prscript: ", "channels.getSwing", "general.getProjectTitle")
-        hidden += ("arrangement.selectionIsActive", "mixer.getPluginMixLevel")
-        hidden += ("patterns.getBlockSetStatus",)
-        kept, skipping = [], False
-        for l in lines:  # a hidden line's continuations ("+ …") go with it
-            if l.startswith("+ "):
-                if not skipping:
-                    kept.append(l)
-                continue
-            skipping = l.startswith(hidden)
-            if not skipping:
-                kept.append(l)
-        return kept
-
-    def test_the_ilmcp_browser_lines_come_first_and_only_read(self):
-        calls = []
-
-        class FakeIlmcp:
-            def getBrowserNames(self, path, recursive):
-                calls.append((path, recursive))
-                return {"": ["Current project", "Plugin database"], "Plugin database": ["Generators"]}.get(
-                    path, []
-                )
-
-            def addChannel(self, name=""):
-                raise AssertionError("the probe must not add channels")
-
-        sys.modules["ilmcp"] = FakeIlmcp()
-        try:
-            lines = self.run_probe(ilmcp=True)
-        finally:
-            del sys.modules["ilmcp"]
-        self.assertEqual(lines[0], "ilmcp: addChannel getBrowserNames")
-        self.assertEqual(lines[1], "browser '' (2): Current project, Plugin database")
-        self.assertIn("browser 'Plugin database' (1): Generators", lines)
-        self.assertTrue(all(recursive is False for _, recursive in calls))
-
-    def test_the_piano_roll_probe_runs_a_reading_script_and_reports_the_shared_notes(self):
-        scripts = []
-
-        class FakeIlmcp:
-            def getBrowserNames(self, path, recursive):
-                return []
-
-            def runPRScript(self, code):
-                scripts.append(code)
-                shared = type(sys)("mk3_shared")
-                shared.notes = [(60, 0, 96, 0.8)]
-                shared.ppq = 96
-                sys.modules["mk3_shared"] = shared
-                return None
-
-        sys.modules["ilmcp"] = FakeIlmcp()
-        try:
-            lines = self.run_probe(ilmcp=True)
-        finally:
-            del sys.modules["ilmcp"]
-            sys.modules.pop("mk3_shared", None)
-        line = next(l for l in lines if l.startswith("prscript: "))
-        self.assertIn("shared=1 notes ppq 96", line)
-        self.assertEqual(len(scripts), 1)
-        self.assertNotIn("addNote", scripts[0])  # it only reads
-
-    def test_without_ilmcp_the_probe_says_so(self):
-        lines = self.run_probe(ilmcp=True)
-        self.assertTrue(lines[0].startswith("ilmcp: import failed"))
-
-    def test_nothing_is_sent_without_run_probe(self):
-        self.start()
-        self.settle()
-        self.assertEqual(self.probe_frames(self.take()), [])
-        self.assertEqual(self.fl.called("playlist.getLiveStatus"), [])
-
-    def test_one_line_per_tick_and_never_a_burst(self):
-        self.start()
-        self.take()
-        self.send(self.RUN)
-        self.take()
-        counts = []
-        for _ in range(120):
-            self.script.OnIdle()
-            counts.append(len(self.probe_frames(self.take())))
-        self.assertTrue(all(c <= 1 for c in counts), counts)
-        first_empty = counts.index(0)
-        self.assertTrue(first_empty >= 44, counts)  # every line took its own tick (a long one, several)
-        self.assertEqual(sum(counts[first_empty:]), 0)  # and then it is over
-        self.assertEqual(self.bridge.probe_todo, [])
-
-    def test_the_run_probe_command_sends_the_first_line_at_once(self):
-        self.start()
-        self.take()
-        self.send(self.RUN)
-        self.assertEqual(len(self.probe_frames(self.take())), 1)
-
-    def test_the_lines_come_in_the_order_of_the_spec(self):
-        lines = self.run_probe()
-        self.assertEqual(
-            lines[0],
-            "perf=False tracks=500 ppq=96 songlen=3840 bars=10 start=0 pos=0 "
-            "bst=12:2:0 posHint=12:03:00 loop=0",
-        )
-        self.assertEqual(
-            lines[1],
-            "blocks: " + " ".join(str(b * 384) for b in range(16)),
-        )
-        self.assertEqual(lines[2], "t2b: " + " ".join(str(4 * bar) for bar in range(16)))
-        self.assertTrue(lines[3].startswith('track0 "Track 0" st=0 '))
-        track_lines = [l for l in lines if l.startswith("T")]
-        self.assertEqual(sum(1 for l in track_lines if l.startswith("T12 ")), 3)
-        self.assertFalse(any(l.startswith("T13 ") for l in lines))
-        self.assertTrue(lines[-2].startswith("markers: "))
-        self.assertTrue(lines[-1].startswith("patterns: n=5 "))
-
-    def test_track_lines(self):
-        lines = self.run_probe()
-        # T2: status mode Simplest as hex digits, joined; getLiveStatus(i, Simplest)
-        simplest = "".join("%x" % ((2 + b) % 3) for b in range(16))
-        self.assertIn('T2 "Track 2" st=2 ' + simplest, lines)
-        self.assertEqual(self.fl.called("playlist.getLiveStatus")[:2], [(0, 2), (1, 2)])
-        self.assertIn(("playlist.getLiveBlockStatus", (2, 3, 0)), self.fl.calls)  # LB_Status_Default
-        self.assertIn(("playlist.getLiveBlockStatus", (2, 3, 2)), self.fl.calls)  # LB_Status_Simplest
-        default = "T2 def: " + " ".join("%x" % (2 * 16 + b) for b in range(16))
-        self.assertIn(default, lines)
-        colors = ["%06x" % (0x123456 + b) for b in range(15)] + ["ffffff"]
-        joined = " ".join(colors)
-        piece = [l for l in lines if l.startswith("T2 col: ")][0]
-        self.assertTrue(joined.startswith(piece[len("T2 col: ") :]))
-        self.assertEqual(self.fl.called("playlist.getLiveBlockColor")[0], (0, 0))
-
-    def test_every_text_fits_100_characters_and_a_long_line_continues(self):
-        lines = self.run_probe()
-        self.assertTrue(all(len(l) <= 100 for l in lines), [l for l in lines if len(l) > 100])
-        index = [i for i, l in enumerate(lines) if l.startswith("T1 col: ")][0]
-        self.assertTrue(lines[index + 1].startswith("+ "))
-        whole = lines[index] + " " + lines[index + 1][2:]
-        self.assertEqual(whole.split("col: ")[1].split(" "), ["%06x" % (0x123456 + b) for b in range(15)] + ["ffffff"])
-
-    def test_split_probe_text(self):
-        split = self.script.split_probe_text
-        self.assertEqual(split("short"), ["short"])
-        self.assertEqual(split("x" * 100), ["x" * 100])
-        self.assertEqual(split("x" * 101), ["x" * 100, "+ x"])
-        pieces = split(" ".join(["abcdef"] * 30))
-        self.assertTrue(len(pieces) > 1 and all(len(p) <= 100 for p in pieces))
-        self.assertEqual(" ".join(p.lstrip("+ ") if i else p for i, p in enumerate(pieces)), " ".join(["abcdef"] * 30))
-
-    def test_the_markers_and_patterns_lines(self):
-        self.fl.marker_ticks = [384, 768]
-        self.fl.marker_names = {0: "Intro", 1: "Drop"}
-        self.fl.pattern_count = 10
-        self.fl.pattern_names = {1: "Kick"}
-        lines = self.run_probe()
-        self.assertIn("markers: 0=Intro, 1=Drop", lines)
-        patterns = [l for l in lines if l.startswith("patterns: ")][0]
-        self.assertTrue(patterns.startswith("patterns: n=10 Kick/16, Pattern 2/16"))
-
-    def test_no_markers(self):
-        self.fl.marker_ticks = []
-        self.assertIn("markers: (none)", self.run_probe())
-
-    def test_a_failing_call_becomes_an_error_note_and_the_rest_goes_on(self):
-        self.fl.raise_on["playlist.getPerformanceModeState"] = RuntimeError("boom")
-        self.fl.raise_on["playlist.getLiveStatus"] = RuntimeError("no live")
-        self.fl.raise_on["arrangement.getMarkerName"] = RuntimeError("no markers")
-        self.fl.raise_on["patterns.patternCount"] = RuntimeError("no count")
-        lines = self.run_probe()
-        self.assertTrue(lines[0].startswith("perf=? tracks=500 ppq=96 "), lines[0])
-        self.assertIn("playlist.getPerformanceModeState: error boom", lines[0] + " " + lines[1])
-        t1 = [l for l in lines if l.startswith('T1 "Track 1" st=? ')][0]
-        self.assertIn("playlist.getLiveStatus: error no live", t1)
-        self.assertIn("markers: (none) | arrangement.getMarkerName: error no markers", lines)
-        self.assertIn("patterns: n=? | patterns.patternCount: error no count", [l.rstrip() for l in lines])
-        self.assertTrue(any(l.startswith("T12 def: ") for l in lines))  # the rest still ran
-
-    def test_a_missing_function_is_an_error_note_too(self):
-        del sys.modules["playlist"].getLiveBlockColor
-        lines = self.run_probe()
-        colors = [l for l in lines if l.startswith("T1 col: ")][0]
-        self.assertIn("? ? ?", colors)
-        self.assertTrue(any("playlist.getLiveBlockColor: error" in l for l in lines))
-        self.assertTrue(lines[-1].startswith("patterns: "))
-
-    def test_every_call_is_read_only(self):
-        self.run_probe()
-        changing = [n for n, _ in self.fl.calls if n.startswith(("transport.set", "ui.show", "ui.hide", "ui.set", "playlist.trigger", "playlist.lock"))]
-        self.assertEqual(changing, [])
-
-    def test_a_second_run_probe_starts_over(self):
-        self.start()
-        self.take()
-        self.send(self.RUN)
-        self.script.OnIdle()
-        self.send(self.RUN)
-        self.drain()
-        lines = self.probe_frames(self.take())
-        # the first run got as far as its first line (ilmcp's), the second ran to the end
-        self.assertEqual(sum(1 for l in lines if l.startswith("ilmcp: ")), 2)
-        self.assertEqual(sum(1 for l in lines if l.startswith("perf=")), 1)
-        self.assertEqual(sum(1 for l in lines if l.startswith("patterns: ")), 1)
-
-    def test_probe_frames_are_not_remembered(self):
-        self.run_probe()
-        self.assertEqual([k for k in self.bridge.sent if k.startswith("PROBE")], [])
-        self.send(self.RUN)
-        self.drain()
-        self.assertEqual(sum(1 for l in self.probe_frames(self.take()) if l.startswith("perf=")), 1)
 
 
 def parse_pattern_grid(frame):
@@ -4692,28 +4378,6 @@ class DoublePatternTests(BridgeTestCase):
         self.assertTrue(self.send(self.vector("doublePattern")).handled)
         self.assertEqual(self.fl.called("patterns.setPatternLength"), [(3, 32)])
 
-    def test_shift_double_tries_duplicate_pattern_data_with_undo_and_a_before_after_probe(self):
-        self.start()
-        self.fl.pattern = 2
-        self.fl.pattern_len_steps = 16
-        self.fl.channels[0]["grid"].update([0, 4])
-        calls = []
-        patterns_module = self.script.patterns
-        patterns_module.duplicatePatternData = lambda n: calls.append(n)
-        try:
-            s = self.script
-            self.send(s.frame(0x63, s.enc_u7(2) + s.enc_u7(1)))
-            frames = self.done()
-        finally:
-            del patterns_module.duplicatePatternData
-        self.assertEqual(calls, [2])
-        self.assertTrue(any(c[0] == "general.saveUndo" for c in self.fl.calls))
-        line = [p for p in self.probes(frames) if p.startswith("duplicatePatternData(2)")]
-        self.assertEqual(len(line), 1)
-        self.assertIn("before count", line[0])
-        self.assertIn("0:x...x", line[0])
-        self.assertEqual(self.fl.called("patterns.setPatternLength"), [])  # the step copy did not run
-
     def test_double_uses_duplicate_pattern_data_then_sets_twice_the_length(self):
         self.start()
         self.fl.pattern = 1
@@ -4729,7 +4393,7 @@ class DoublePatternTests(BridgeTestCase):
         self.assertEqual(calls, [1])
         self.assertEqual(self.fl.called("patterns.setPatternLength"), [(1, 32)])
         self.assertEqual(self.fl.called("channels.setGridBit"), [])  # no step copy
-        self.assertTrue(any("(duplicatePatternData)" in p for p in self.probes(frames)))
+        self.assertEqual(self.probes(frames), [])
 
     def test_doubles_the_length_and_copies_the_steps_of_every_channel(self):
         self.start()
@@ -4791,7 +4455,7 @@ class DoublePatternTests(BridgeTestCase):
         self.assertLess(names.index("patterns.setPatternLength"), names.index("channels.setGridBit"))
         self.assertEqual(self.fl.undo_names, ["MK3: double pattern"])
 
-    def test_the_grid_is_sent_once_when_it_is_over_and_the_probe_reads_back(self):
+    def test_the_grid_is_sent_once_when_it_is_over(self):
         self.start()
         self.fl.channels[0]["grid"].update([0, 1])
         self.fl.channels[1]["grid"].update([2])
@@ -4810,7 +4474,6 @@ class DoublePatternTests(BridgeTestCase):
             if self.bridge.double_job is None and not self.bridge.dirty:
                 break
         self.assertEqual(len(self.grids(frames)), 1)
-        self.assertEqual(self.probes(frames), ["doublePattern(1) 16 -> 32, channels 2"])
 
     def test_it_is_paced_a_few_channels_per_service_pass(self):
         self.start()
@@ -4885,12 +4548,8 @@ class DoublePatternTests(BridgeTestCase):
         self.assertEqual(self.fl.called("patterns.findFirstNextEmptyPat"), [])
         self.assertEqual(self.fl.pattern, 7)
         self.assertEqual(self.fl.pattern_count, 7)
-        self.assertEqual(
-            self.probes(self.done()),
-            ["createPattern(7): jumpToPattern -> patternNumber 7, patternCount 5 -> 7"],
-        )
 
-    def test_it_falls_back_to_the_first_empty_pattern_and_says_which_it_got(self):
+    def test_it_falls_back_to_the_first_empty_pattern(self):
         self.start()
         self.fl.jump_creates = False
         self.create(7)
@@ -4898,12 +4557,6 @@ class DoublePatternTests(BridgeTestCase):
             self.fl.called("patterns.findFirstNextEmptyPat"), [(self.script.midi.FFNEP_DontPromptName,)]
         )
         self.assertEqual(self.fl.pattern, 6)
-        self.assertEqual(
-            self.probes(self.done()),
-            [
-                "createPattern(7): jump left 1; findFirstNextEmptyPat -> pattern 6, count 5 -> 6"
-            ],
-        )
 
     def test_existing_and_absurd_numbers_create_nothing(self):
         self.start()
@@ -5100,9 +4753,49 @@ class TouchStripTests(BridgeTestCase):
         self.script.OnDeInit()
         self.assertEqual(self.param(0, 3), 0.25)
 
+class PluginPickerTests(BridgeTestCase):
+    """PLUGIN_PICKER (67) and UI_KEY (68): FL's Plugin picker."""
 
-if __name__ == "__main__":
-    unittest.main()
+    def vector(self, name):
+        for v in load_vectors():
+            if v["name"] == name:
+                return bytes.fromhex(v["hex"])
+        raise KeyError(name)
+
+    def test_vectors_decode_and_run(self):
+        self.start()
+        self.fl.calls[:] = []
+        self.assertTrue(self.send(self.vector("pluginPicker")).handled)
+        self.assertTrue(self.send(self.vector("uiKey")).handled)
+        self.assertEqual(self.fl.called("transport.globalTransport"), [(self.script.midi.FPT_F8, 1)])
+        self.assertEqual(self.fl.called("ui.enter"), [()])
+
+    def test_each_key_calls_the_function_of_its_name(self):
+        for code, name in enumerate(("up", "down", "left", "right", "enter", "escape")):
+            with self.subTest(name=name):
+                self.start()
+                self.fl.calls[:] = []
+                self.send(self.script.frame(0x68, bytes([code])))
+                self.assertEqual(self.fl.called("ui." + name), [()])
+
+    def test_unknown_keys_do_nothing(self):
+        self.start()
+        self.fl.calls[:] = []
+        self.assertTrue(self.send(self.script.frame(0x68, bytes([6]))).handled)
+        self.assertEqual([name for (name, _) in self.fl.calls if name.startswith("ui.")], [])
+
+    def test_exceptions_never_escape(self):
+        self.start()
+        self.fl.raise_on["transport.globalTransport"] = RuntimeError("boom")
+        self.fl.raise_on["ui.enter"] = RuntimeError("boom")
+        self.assertTrue(self.send(self.vector("pluginPicker")).handled)
+        self.assertTrue(self.send(self.vector("uiKey")).handled)
+
+    def test_a_missing_function_is_only_logged(self):
+        self.start()
+        delattr(self.script.ui, "enter")
+        self.assertTrue(self.send(self.vector("uiKey")).handled)
+
 
 
 class PerformScoreTests(BridgeTestCase):
@@ -5124,209 +4817,5 @@ class PerformScoreTests(BridgeTestCase):
         self.assertEqual(bridge.perform_score("Volume"), 0)
 
 
-class PluginLoaderTrialTests(BridgeTestCase):
-    """BROWSE (67), UI_KEY (68), PICKER (69) and BROWSER_NODE (1E): the plug-in loader trial."""
-
-    def vector(self, name):
-        for v in load_vectors():
-            if v["name"] == name:
-                return bytes.fromhex(v["hex"])
-        raise KeyError(name)
-
-    def probes(self, frames):
-        return [bytes(f[5:-2]).decode("ascii") for f in self.frames_with(frames, 0x17)]
-
-    def run_command(self, code, *payload):
-        """Send the command, drain, and return (frames, FL calls of the trial functions)."""
-        self.start()
-        self.fl.calls[:] = []
-        self.send(self.script.frame(code, bytes(payload)))
-        frames = self.take()
-        self.drain()
-        frames += self.take()
-        return frames
-
-    def node(self, frames):
-        found = self.frames_with(frames, 0x1E)
-        self.assertEqual(len(found), 1)
-        return found[0]
-
-    ACTIONS = (
-        "ui.showWindow",
-        "ui.setFocused",
-        "transport.globalTransport",
-        "ui.navigateBrowser",
-        "ui.toggleBrowserNode",
-        "ui.selectBrowserMenuItem",
-        "ui.previewBrowserMenuItem",
-        "ui.closeActivePopupMenu",
-        "ui.up",
-        "ui.down",
-        "ui.left",
-        "ui.right",
-        "ui.enter",
-        "ui.escape",
-        "ui.showPicker",
-    )
-
-    def acted(self):
-        return [(n, a) for (n, a) in self.fl.calls if n in self.ACTIONS]
-
-    def test_vectors_decode_and_run(self):
-        self.start()
-        self.fl.calls[:] = []
-        self.assertTrue(self.send(self.vector("browse")).handled)
-        self.assertTrue(self.send(self.vector("uiKey")).handled)
-        self.assertTrue(self.send(self.vector("picker")).handled)
-        self.assertEqual(
-            self.acted(),
-            [("ui.setFocused", (4,)), ("ui.navigateBrowser", (41, False)), ("ui.enter", ()), ("ui.showPicker", (1, 2))],
-        )
-
-    def test_browser_node_matches_the_vector_encoding(self):
-        v = [v for v in load_vectors() if v["name"] == "browserNode"][0]
-        m = v["message"]
-        self.assertEqual(self.script.encode(m).hex(), v["hex"])
-
-    def test_browse_show_shows_and_focuses_the_browser(self):
-        self.run_command(0x67, 0)
-        self.assertEqual(self.acted(), [("ui.showWindow", (4,)), ("ui.setFocused", (4,))])
-
-    def test_each_browse_action_calls_exactly_one_function(self):
-        # next / prev focus the browser first (round 2, the owner's try 2026-10-19)
-        expected = {
-            1: [("ui.setFocused", (4,)), ("ui.navigateBrowser", (41, False))],
-            2: [("ui.setFocused", (4,)), ("ui.navigateBrowser", (40, False))],
-            3: [("ui.toggleBrowserNode", (-1,))],
-            4: [("ui.selectBrowserMenuItem", ())],
-            5: [("ui.previewBrowserMenuItem", ())],
-            6: [("ui.setFocused", (4,)), ("ui.enter", ())],  # load: FL sends the item to the selected channel
-            7: [("ui.setFocused", (4,)), ("transport.globalTransport", (91, 1))],  # the item's own menu
-            8: [("transport.globalTransport", (67, 1))],  # F8: FL's Plugin picker
-        }
-        for action, calls in expected.items():
-            with self.subTest(action=action):
-                self.setUp()
-                self.run_command(0x67, action)
-                self.assertEqual(self.acted(), calls)
-
-    def test_each_ui_key_calls_the_matching_function(self):
-        names = ["up", "down", "left", "right", "enter", "escape", "closeActivePopupMenu"]
-        for key, name in enumerate(names):
-            with self.subTest(key=key):
-                self.setUp()
-                self.run_command(0x68, key)
-                self.assertEqual(self.acted(), [("ui." + name, ())])
-
-    def test_picker_with_one_or_two_arguments(self):
-        self.run_command(0x69, 1, 63)  # mode -1: left out
-        self.assertEqual(self.acted(), [("ui.showPicker", (1,))])
-        self.setUp()
-        self.run_command(0x69, 0, 64 + 3)
-        self.assertEqual(self.acted(), [("ui.showPicker", (0, 3))])
-
-    def test_unknown_action_or_key_is_ignored(self):
-        self.run_command(0x67, 9)
-        self.run_command(0x68, 9)
-        self.assertEqual(self.acted(), [])
-
-    def test_answer_is_browser_node_and_a_probe_line_after_a_service_pass(self):
-        self.start()
-        self.send(self.script.frame(0x67, bytes([1])))  # OnSysEx serviced once already
-        self.fl.in_popup = True
-        frames = self.take()
-        self.assertEqual(self.frames_with(frames, 0x1E), [])  # FL has not had a pass to update yet
-        self.script.OnIdle()
-        frames = self.take()
-        node = self.node(frames)
-        text = bytes(node[5:-1])
-        self.assertTrue(text.startswith(b"Diva\x00"))
-        flags = text[len(b"Diva\x00") + 2]
-        self.assertEqual(flags, 0x03)  # popup; next focused the browser first
-        self.assertEqual(
-            self.probes(frames),
-            ['browse(next) returned "Diva" -> "Diva" type -1 popup 1 form "Browser" id -1 hint "Plugin database"'],
-        )
-
-    def test_folder_type_and_flags(self):
-        self.fl.node_type = -120
-        self.fl.focused_widget = 4
-        frames = self.run_command(0x67, 3)
-        text = bytes(self.node(frames)[5:-1])
-        at = len(b"Diva\x00")
-        self.assertEqual((text[at] << 7 | text[at + 1]) - 8192, -120)
-        self.assertEqual(text[at + 2], 0x02)  # browser focused
-
-    def test_other_form_focused_flag(self):
-        self.fl.form_caption = "Plugin picker"
-        self.fl.focused_widget = 0
-        frames = self.run_command(0x68, 4)  # enter
-        text = bytes(self.node(frames)[5:-1])
-        self.assertEqual(text[len(b"Diva\x00") + 2], 0x04)
-
-    def test_arrow_keys_get_no_answer_but_enter_and_the_plugin_picker_do(self):
-        for key in (0, 1, 2, 3):
-            self.setUp()
-            self.assertEqual(self.frames_with(self.run_command(0x68, key), 0x1E), [])
-        self.setUp()
-        self.assertEqual(len(self.frames_with(self.run_command(0x68, 4), 0x1E)), 1)
-        self.setUp()
-        self.assertEqual(len(self.frames_with(self.run_command(0x67, 8), 0x1E)), 1)
-
-    def test_strings_are_cut_to_forty_characters(self):
-        self.fl.node_caption = "x" * 60
-        self.fl.hint = "h" * 60
-        frames = self.run_command(0x67, 1)
-        text = bytes(self.node(frames)[5:-1])
-        self.assertTrue(text.startswith(b"x" * 40 + b"\x00"))
-        self.assertTrue(text.endswith(b"h" * 40 + b"\x00"))
-
-    def test_missing_functions_go_into_features_and_the_probe_says_missing(self):
-        delattr(self.script.ui, "navigateBrowser")
-        delattr(self.script.ui, "getHintMsg")
-        frames = self.start()
-        self.assertEqual(self.frames_with(frames, 0x1D), [bytes.fromhex("f07d4d331d04f7")])
-        self.fl.calls[:] = []
-        self.send(self.script.frame(0x67, bytes([1])))
-        self.drain()
-        frames = self.take()
-        self.assertEqual(self.acted(), [("ui.setFocused", (4,))])
-        probe = self.probes(frames)
-        self.assertIn("browse(next) -> missing: ui.navigateBrowser, ui.getHintMsg; ", "".join(probe))
-        self.assertEqual(len(self.frames_with(frames, 0x1E)), 1)
-
-    def test_missing_picker_goes_into_features(self):
-        delattr(self.script.ui, "showPicker")
-        frames = self.start()
-        self.assertEqual(self.frames_with(frames, 0x1D), [bytes.fromhex("f07d4d331d08f7")])
-        self.send(self.script.frame(0x69, bytes([1, 63])))
-        self.drain()
-        self.assertIn("picker(1) -> missing: ui.showPicker; ", "".join(self.probes(self.take())))
-
-    def test_exceptions_never_escape(self):
-        cases = (
-            (0x67, bytes([1]), "ui.navigateBrowser"),
-            (0x69, bytes([1, 63]), "ui.showPicker"),
-            (0x68, bytes([4]), "ui.enter"),
-            (0x67, bytes([1]), "ui.getFocusedNodeCaption"),
-            (0x67, bytes([1]), "ui.isInPopupMenu"),
-        )
-        for code, payload, name in cases:
-            with self.subTest(name=name):
-                self.setUp()
-                self.start()
-                self.fl.raise_on[name] = RuntimeError("boom")
-                event = self.send(self.script.frame(code, payload))
-                self.assertTrue(event.handled)
-                self.drain()
-                frames = self.take()
-                self.assertIn("error " + name + ": boom", "".join(self.probes(frames)))
-                self.assertEqual(len(self.frames_with(frames, 0x1E)), 1)
-
-    def test_every_command_is_answered(self):
-        self.start()
-        for code, payload in ((0x67, 1), (0x68, 4), (0x69, 1)):
-            self.take()
-            self.send(self.script.frame(code, bytes([payload, 63]) if code == 0x69 else bytes([payload])))
-            self.drain()
-            self.assertEqual(len(self.frames_with(self.take(), 0x1E)), 1)
+if __name__ == "__main__":
+    unittest.main()

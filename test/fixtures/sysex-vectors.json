@@ -197,8 +197,14 @@
       "type": "meters",
       "offset": 8,
       "peaks": [
-        [1, 0.5],
-        [0, 0.25]
+        [
+          1,
+          0.5
+        ],
+        [
+          0,
+          0.25
+        ]
       ]
     },
     "hex": "f07d4d33120008027f400020f7"
@@ -303,7 +309,13 @@
       "type": "patternGrid",
       "channel": 0,
       "start": 0,
-      "steps": [true, true, false, false, true],
+      "steps": [
+        true,
+        true,
+        false,
+        false,
+        true
+      ],
       "stepSequencer": false
     },
     "hex": "f07d4d331b000000051300f7"
@@ -362,7 +374,12 @@
     "message": {
       "type": "paramNames",
       "offset": 300,
-      "names": ["main: Output", "VCC: Voices", "", "Filter: Cutoff"]
+      "names": [
+        "main: Output",
+        "VCC: Voices",
+        "",
+        "Filter: Cutoff"
+      ]
     },
     "hex": "f07d4d3322022c046d61696e3a204f7574707574005643433a20566f69636573000046696c7465723a204375746f666600f7"
   },
@@ -407,7 +424,12 @@
     "message": {
       "type": "activity",
       "first": 16,
-      "active": [true, false, false, true]
+      "active": [
+        true,
+        false,
+        false,
+        true
+      ]
     },
     "hex": "f07d4d332400100401000001f7"
   },
@@ -417,7 +439,10 @@
     "message": {
       "type": "playedNotes",
       "channel": 1,
-      "notes": [36, 38]
+      "notes": [
+        36,
+        38
+      ]
     },
     "hex": "f07d4d33270001022426f7"
   },
@@ -441,7 +466,16 @@
       "meters": true,
       "presets": false,
       "patternGrid": false,
-      "params": [0, 1, 2, 3, 4, 5, 6, 7],
+      "params": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
       "liveScenes": false,
       "liveOffset": 0
     },
@@ -598,7 +632,13 @@
     "message": {
       "type": "uiState",
       "snap": 8,
-      "visible": [true, true, false, true, false],
+      "visible": [
+        true,
+        true,
+        false,
+        true,
+        false
+      ],
       "focused": 3
     },
     "hex": "f07d4d3313080b03f7"
@@ -676,7 +716,16 @@
       "count": 300,
       "current": 17,
       "offset": 14,
-      "names": ["Init", "Pad A", "Bass 1", "Lead – wide", "Pluck", "Keys", "Strings", "Brass"]
+      "names": [
+        "Init",
+        "Pad A",
+        "Bass 1",
+        "Lead – wide",
+        "Pluck",
+        "Keys",
+        "Strings",
+        "Brass"
+      ]
     },
     "hex": "f07d4d3315022c001108000e496e697400506164204100426173732031004c656164207f627f007f13207769646500506c75636b004b65797300537472696e677300427261737300f7"
   },
@@ -870,14 +919,6 @@
     "hex": "f07d4d33560000f7"
   },
   {
-    "name": "addMarker",
-    "direction": "toFl",
-    "message": {
-      "type": "addMarker"
-    },
-    "hex": "f07d4d3357f7"
-  },
-  {
     "name": "setLoopModeSong",
     "direction": "toFl",
     "message": {
@@ -896,41 +937,12 @@
     "hex": "f07d4d335800f7"
   },
   {
-    "name": "playlistViewZoomOut",
-    "direction": "toFl",
-    "message": {
-      "type": "playlistView",
-      "what": "zoom",
-      "delta": -3
-    },
-    "hex": "f07d4d3359003df7"
-  },
-  {
-    "name": "playlistViewScroll",
-    "direction": "toFl",
-    "message": {
-      "type": "playlistView",
-      "what": "scroll",
-      "delta": 5
-    },
-    "hex": "f07d4d33590145f7"
-  },
-  {
     "name": "requestMarkers",
     "direction": "toFl",
     "message": {
       "type": "requestMarkers"
     },
     "hex": "f07d4d335af7"
-  },
-  {
-    "name": "setSongPos",
-    "direction": "toFl",
-    "message": {
-      "type": "setSongPos",
-      "ticks": 3840
-    },
-    "hex": "f07d4d335b001e00f7"
   },
   {
     "name": "probe",
@@ -940,14 +952,6 @@
       "text": "perf=0 tracks=2 ppq=96"
     },
     "hex": "f07d4d3317706572663d3020747261636b733d32207070713d393600f7"
-  },
-  {
-    "name": "runProbe",
-    "direction": "toFl",
-    "message": {
-      "type": "runProbe"
-    },
-    "hex": "f07d4d335cf7"
   },
   {
     "name": "presetWindow",
@@ -995,9 +999,7 @@
     "message": {
       "type": "features",
       "patternLength": true,
-      "loop": false,
-      "browser": false,
-      "picker": false
+      "loop": false
     },
     "hex": "f07d4d331d01f7"
   },
@@ -1111,28 +1113,12 @@
     "hex": "f07d4d3366010234f7"
   },
   {
-    "name": "browserNode",
-    "direction": "fromFl",
-    "message": {
-      "type": "browserNode",
-      "caption": "Diva",
-      "fileType": -1,
-      "popup": true,
-      "browserFocused": true,
-      "otherFormFocused": false,
-      "formCaption": "Browser",
-      "hint": "Plugin database"
-    },
-    "hex": "f07d4d331e44697661003f7f0342726f7773657200506c7567696e20646174616261736500f7"
-  },
-  {
-    "name": "browse",
+    "name": "pluginPicker",
     "direction": "toFl",
     "message": {
-      "type": "browse",
-      "action": "next"
+      "type": "pluginPicker"
     },
-    "hex": "f07d4d336701f7"
+    "hex": "f07d4d3367f7"
   },
   {
     "name": "uiKey",
@@ -1142,16 +1128,6 @@
       "key": "enter"
     },
     "hex": "f07d4d336804f7"
-  },
-  {
-    "name": "picker",
-    "direction": "toFl",
-    "message": {
-      "type": "picker",
-      "show": true,
-      "mode": 2
-    },
-    "hex": "f07d4d33690142f7"
   },
   {
     "name": "triggerLiveClip",

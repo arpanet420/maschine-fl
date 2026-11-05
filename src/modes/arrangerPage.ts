@@ -26,8 +26,7 @@
 // - SCENE (hold) is the marker overlay and still works over this page.
 //
 // Opening the page shows and focuses FL's playlist (SHOW_WINDOW 2) unless it has the focus already.
-// A second press of ARRANGER goes home, like MIXER. RUN_PROBE (the playlist probe) is sent only when
-// the environment has MK3D_PROBE=1.
+// A second press of ARRANGER goes home, like MIXER.
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import type { FlSection, FlState } from "../fl/flState.js";
 import { MAX_PATTERN_STEPS } from "../fl/protocol.js";
@@ -99,14 +98,8 @@ export function cellRect(row: number, column: number): Rect {
 /** Steps the script sends for a pattern (longer patterns show their first 256 steps). */
 const patternLength = (fl: FlState): number => Math.min(fl.pattern.length, MAX_PATTERN_STEPS);
 
-export interface ArrangerOptions {
-  /** Send RUN_PROBE when the page opens; `MK3D_PROBE=1` in the environment by default. */
-  probe?: boolean;
-}
-
 export class ArrangerPage implements Mode {
   readonly name = "arranger";
-  private readonly probe: boolean;
   /** The channel the row cursor is on (a global index). */
   private cursor = 0;
   /** The first of the 8 rows, as an offset into the cursor's bank. */
@@ -123,10 +116,6 @@ export class ArrangerPage implements Mode {
   private rowTurn = 0;
   private pageTurn = 0;
   private lastView: string | undefined;
-
-  constructor(options: ArrangerOptions = {}) {
-    this.probe = options.probe ?? process.env.MK3D_PROBE === "1";
-  }
 
   // ── Window ─────────────────────────────────────────────────────────────────
 
@@ -146,8 +135,6 @@ export class ArrangerPage implements Mode {
     this.scrollIntoView(fl);
     this.lastView = undefined;
     this.sendView(mc);
-    // A diagnostic: FL answers with what its performance-mode functions return (PROBE lines in the log).
-    if (this.probe) mc.send({ type: "runProbe" });
   }
 
   /** An overlay closed: resend the VIEW and keep everything else. */

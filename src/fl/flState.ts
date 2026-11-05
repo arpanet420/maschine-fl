@@ -1,7 +1,6 @@
 // The daemon's mirror of FL Studio, built from the messages the FL script sends.
 import { EventEmitter } from "node:events";
 import type {
-  BrowserNodeInfo,
   ChannelDetailInfo,
   ChannelEntry,
   FlMessage,
@@ -41,7 +40,6 @@ export type FlSection =
   | "loop"
   | "stepParams"
   | "features"
-  | "browserNode"
   | "pattern"
   | "patterns"
   | "stepGrid"
@@ -69,7 +67,6 @@ const SECTIONS: readonly FlSection[] = [
   "loop",
   "stepParams",
   "features",
-  "browserNode",
   "pattern",
   "patterns",
   "stepGrid",
@@ -138,7 +135,6 @@ interface Data {
   /** Hidden FL functions this FL version lacks (FEATURES); all present until it says otherwise. */
   missing: MissingFeatures;
   /** The last BROWSER_NODE (plug-in loader trial); undefined until one arrived. */
-  browserNode: BrowserNodeInfo | undefined;
   pattern: PatternInfo;
   patterns: Map<number, PatternEntry>;
   patternCount: number;
@@ -207,8 +203,7 @@ function emptyData(): Data {
     markerTotal: 0,
     ppq: DEFAULT_PPQ,
     loop: { active: false, start: 0, end: 0 },
-    missing: { patternLength: false, loop: false, browser: false, picker: false },
-    browserNode: undefined,
+    missing: { patternLength: false, loop: false },
     pattern: { number: 0, count: 0, length: 0, color: 0, name: "" },
     patterns: new Map(),
     patternCount: 0,
@@ -322,10 +317,6 @@ export class FlState extends EventEmitter<{ change: [section: FlSection] }> {
   /** Hidden FL functions this FL version lacks. */
   get missing(): Readonly<MissingFeatures> {
     return this.data.missing;
-  }
-  /** The focused browser node and focus state FL last reported (plug-in loader trial). */
-  get browserNode(): Readonly<BrowserNodeInfo> | undefined {
-    return this.data.browserNode;
   }
   get songPos(): Readonly<SongPosition> {
     return this.data.songPos;
@@ -565,27 +556,10 @@ export class FlState extends EventEmitter<{ change: [section: FlSection] }> {
         const missing = {
           patternLength: message.patternLength,
           loop: message.loop,
-          browser: message.browser,
-          picker: message.picker,
         };
         const changed = !same(d.missing, missing);
         d.missing = missing;
         this.changed("features", changed);
-        break;
-      }
-      case "browserNode": {
-        const node: BrowserNodeInfo = {
-          caption: message.caption,
-          fileType: message.fileType,
-          popup: message.popup,
-          browserFocused: message.browserFocused,
-          otherFormFocused: message.otherFormFocused,
-          formCaption: message.formCaption,
-          hint: message.hint,
-        };
-        const changed = !d.browserNode || !same(d.browserNode, node);
-        d.browserNode = node;
-        this.changed("browserNode", changed);
         break;
       }
       case "meters": {

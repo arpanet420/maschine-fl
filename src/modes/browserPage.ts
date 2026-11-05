@@ -21,7 +21,7 @@
 // a notice (`No presets for <plugin>`).
 //
 // PLUG-INS (display 2, verified in FL 2026, docs/fl-ilmcp.md) = FL's own **Plugin picker** (Generators and
-// Effects, category tabs at the bottom): display 2 sends BROWSE `pluginPicker` (FPT_F8, a toggle), mk3d
+// Effects, category tabs at the bottom): display 2 sends PLUGIN_PICKER (FPT_F8, a toggle), mk3d
 // remembers `pickerOpen`. While it is open the 4D turn = UI_KEY down / up (at most ~15 per second), tilt =
 // up / down / left / right (left / right change the category page), 4D push = UI_KEY enter, which adds the
 // highlighted plugin as a new channel; display 8 `CLOSE` (or display 2 again) toggles the picker closed.
@@ -221,7 +221,7 @@ export class BrowserPage implements Mode {
 
   /** F8 toggles FL's Plugin picker. */
   private togglePicker(mc: ModeContext): void {
-    if (!this.send({ type: "browse", action: "pluginPicker" }, mc)) return;
+    if (!this.send({ type: "pluginPicker" }, mc)) return;
     this.pickerOpen = !this.pickerOpen;
   }
 

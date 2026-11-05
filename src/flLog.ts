@@ -3,7 +3,7 @@ import type { FlSection, FlState } from "./fl/flState.js";
 import { FOCUS_NONE, FOCUS_PLUGIN, PROTOCOL_VERSION, UI_WINDOWS } from "./fl/protocol.js";
 import { panText, pct } from "./modes/format.js";
 
-/** The log line for one PROBE message (the playlist probe, docs/sysex.md). */
+/** The log line for one PROBE message (something the script wants in the log, docs/sysex.md). */
 export const describeProbe = (text: string): string => `← FL probe: ${text}`;
 
 export function describeSection(fl: FlState, section: FlSection): string | undefined {
@@ -119,19 +119,11 @@ export function describeSection(fl: FlState, section: FlSection): string | undef
       const l = fl.loop;
       return l.active ? `song loop: ${l.start}…${l.end} ticks` : "song loop: off";
     }
-    case "browserNode": {
-      const n = fl.browserNode;
-      if (!n) return undefined;
-      return `browser node: ${JSON.stringify(n.caption)} type ${n.fileType}${n.popup ? " popup" : ""} form ${JSON.stringify(n.formCaption)}`;
-    }
     case "features": {
       const m = fl.missing;
-      const list = [
-        m.patternLength && "setPatternLength",
-        m.loop && "selectionSet",
-        m.browser && "ui.navigateBrowser",
-        m.picker && "ui.showPicker",
-      ].filter(Boolean);
+      const list = [m.patternLength && "setPatternLength", m.loop && "selectionSet"].filter(
+        Boolean,
+      );
       return list.length > 0 ? `missing in this FL version: ${list.join(", ")}` : undefined;
     }
     case "songPos":

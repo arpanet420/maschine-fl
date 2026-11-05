@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCanvas } from "@napi-rs/canvas";
 import { afterEach, describe, expect, it } from "vitest";
-import { decodeCommand, encodeCommand, decodeSysex, encodeFlMessage } from "../src/fl/sysex.js";
+import { encodeCommand, decodeSysex, encodeFlMessage } from "../src/fl/sysex.js";
 import { paletteWhite } from "../src/hw/palette.js";
 import { flColorToPalette, lengthText, positionStepsText } from "../src/modes/format.js";
 import { HOLD_MS } from "../src/modes/pageStack.js";
@@ -75,7 +75,7 @@ describe("wire format of the new messages", () => {
   it("round-trips LOOP_STATE and FEATURES", () => {
     for (const message of [
       { type: "loopState", active: true, start: 1536, end: 3072 },
-      { type: "features", patternLength: true, loop: true, browser: true, picker: false },
+      { type: "features", patternLength: true, loop: true },
     ] as const) {
       expect(decodeSysex(encodeFlMessage(message))).toEqual(message);
     }
@@ -91,8 +91,6 @@ describe("FlState: loop and features", () => {
     expect(h.fl.missing).toEqual({
       patternLength: false,
       loop: false,
-      browser: false,
-      picker: false,
     });
     h.loopState(true, 96, 192);
     h.loopState(true, 96, 192);
@@ -103,8 +101,6 @@ describe("FlState: loop and features", () => {
     expect(h.fl.missing).toEqual({
       patternLength: false,
       loop: true,
-      browser: false,
-      picker: false,
     });
     h.fl.apply({ type: "hello", version: 2 }); // a new script run forgets both
     expect(h.fl.loop.active).toBe(false);
@@ -575,19 +571,6 @@ describe("PATTERN: DOUBLE", () => {
     h.tap("display3");
     h.pages.pattern.leave();
     expect(h.time.timerCount).toBe(0);
-  });
-
-  it("DOUBLE_PATTERN has an optional trailing mode byte (1 = only FL's duplicatePatternData)", () => {
-    expect(encodeCommand({ type: "doublePattern", pattern: 3, native: true })).toEqual([
-      0xf0, 0x7d, 0x4d, 0x33, 0x63, 3, 1, 0xf7,
-    ]);
-    expect(
-      decodeCommand(encodeCommand({ type: "doublePattern", pattern: 3, native: true })),
-    ).toEqual({
-      type: "doublePattern",
-      pattern: 3,
-      native: true,
-    });
   });
 
   it("is lit while it can double, dim and inert at 512 steps and for patterns above 127", () => {

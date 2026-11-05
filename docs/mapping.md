@@ -281,7 +281,7 @@ bright while open; the PAD MODE / KEYBOARD radio pair stays lit as it is.
   `DELETE` tab (docs/workflow.md, "Hard to map").
 - A pad with no pattern behind it (a free slot, as Maschine shows one) is lit dim white and the grid shows
   its number with `+`: pressing it creates that pattern and selects it (CREATE_PATTERN: `jumpToPattern(k)`,
-  else `findFirstNextEmptyPat`; the script's PROBE line says which pattern number it got). ERASE + pad and the
+  else `findFirstNextEmptyPat`). ERASE + pad and the
   DUPLICATE overlay's pads (empty ones stay off and do nothing) keep their meaning.
 - Left screen: pin tab `PATTERN` (lit when pinned), the current pattern's number and name big in its
   color, its length in steps, and the knob row under it (COLOR and LENGTH). Right screen: a 4×4 grid that
@@ -294,9 +294,7 @@ bright while open; the PAD MODE / KEYBOARD radio pair stays lit as it is.
     (120 counts) = the next or previous common length: 16, 32, 64, 128, 256, 512 steps (1, 2, 4, 8, 16, 32
     bars); from a length that is not on the list the first detent snaps to the nearest list value in that
     direction, and the ends stay put. SHIFT = fine, ±1 step, from 1 to 512. Each change sends
-    SET_PATTERN_LENGTH (`patterns.setPatternLength`, in steps: verified in FL 2026, docs/fl-ilmcp.md) and the
-    script answers with a PROBE line (`setPatternLength(3, 32) -> getPatternLength(3) = 32`, logged as
-    `← FL probe: …`). The shown value is ours for 300 ms after a turn
+    SET_PATTERN_LENGTH (`patterns.setPatternLength`, in steps: verified in FL 2026, docs/fl-ilmcp.md). The shown value is ours for 300 ms after a turn
     (the pending-value pattern), then FL's. The knob reads `2 bars`, `1 bar 4 steps` or `6 steps`.
     Patterns 128 and up cannot be resized (the command's pattern is a `u7`; the page says so), and an
     FL without the function shows `n/a` and `Not available in this FL version` (FEATURES) and sends
@@ -304,8 +302,7 @@ bright while open; the PAD MODE / KEYBOARD radio pair stays lit as it is.
   - **Knob 1 `COLOR`** (left screen, column 1) = the pattern's colour: one detent steps through
     twelve colours (Red … Grey, wrapping; a colour that is not on the list reads `Custom` and the first
     turn starts at the end of the list it turns towards), SET_PATTERN_COLOR (`patterns.setPatternColor`,
-    documented; the script sends the wire's `0xRRGGBB` unchanged and a PROBE line shows what FL read
-    back), pending for 300 ms like the length. The colour bar on the left screen shows it.
+    documented; the script sends the wire's `0xRRGGBB` unchanged), pending for 300 ms like the length. The colour bar on the left screen shows it.
 - The 4D encoder and display 2 do nothing.
 
 ## Touch strip (PITCH, MOD, PERFORM, NOTES)
@@ -820,8 +817,7 @@ steps (16th notes, 4 beats a bar) from bar 1 and sent as ticks (`fl.ppq` ticks a
   screen: the marker grid with the looped section outlined in mint, or without markers a bar ruler
   (16 bars or more from the loop's start, the loop filled in orange).
 - FL without the functions (FEATURES): the page says `Not available in this FL version` and nothing
-  is sent. After every SET_LOOP the script reads back and sends a PROBE line (`selectionSet(0, 1536)
-  -> active=1 start=0 end=1536`), logged `← FL probe: …`, so the first try shows the units.
+  is sent. After every SET_LOOP, LOOP_STATE says what FL made of it.
 - RESTART's LED: dim, bright while LOOP_STATE says a loop is active.
 
 ## GRID (hold SHIFT + FOLLOW)
@@ -851,11 +847,11 @@ Plugin picker** (Generators and Effects, category tabs at the bottom; **verified
 "Plugin loader trial"). Display 3 has no source (no label, LED off). The VIEW has the `presets` flag only on
 `PRESETS`.
 
-- **PLUG-INS**: display 2 sends BROWSE 8 `pluginPicker` (`globalTransport(FPT_F8, 1)`, a toggle) and mk3d
+- **PLUG-INS**: display 2 sends PLUGIN_PICKER (`globalTransport(FPT_F8, 1)`, a toggle) and mk3d
   remembers `pickerOpen`; display 2 again while open closes it. While it is open: **4D turn** = UI_KEY down / up
   (one per detent, at most ~15 per second), **4D tilt** up / down = up / down and left / right = left / right
   (the category page), **4D push** = UI_KEY enter, which adds the highlighted plugin as a **new channel**;
-  display 8 `CLOSE` = BROWSE 8 again. FL gives nothing about the highlighted plugin, so mk3d cannot show its
+  display 8 `CLOSE` = PLUGIN_PICKER again. FL gives nothing about the highlighted plugin, so mk3d cannot show its
   name: the user looks at FL's screen, and the left screen only says `Picker open` or `Picker closed`. After the push mk3d assumes FL closed the picker (`pickerOpen` off),
   goes back to `PRESETS` (the new channel is FL's selected one, so the list follows it) and, when FL's
   channel count grows within ~3 s, shows the read-out card `ADDED` / the new channel's name.
@@ -980,9 +976,8 @@ clips of FL's performance mode are on the LIVE overlay (below).
   DUPLICATE (held) clones a pattern and SHIFT + DUPLICATE doubles the current one as on every page, so ARRANGER does not repeat
   them. Moves and releases of a pad are swallowed: no pad plays a note.
 - **SCENE** works over this page as an overlay (below); the page's VIEW is sent again when it closes.
-- RUN_PROBE (the playlist probe) is no longer sent when ARRANGER opens; only with `MK3D_PROBE=1` in the
-  environment. The old marker controls (position knob, zoom/scroll, `ADD MKR`, `PREV MKR`/`NEXT MKR`) are
-  gone; their FL commands stay in the protocol.
+- The old marker controls (position knob, zoom/scroll, `ADD MKR`, `PREV MKR`/`NEXT MKR`) are gone, with their
+  FL commands.
 
 ### SCENE (hold SCENE)
 
@@ -1001,7 +996,7 @@ into beats with the PPQ of MARKERS (16 steps per bar, as the STEP page assumes).
 8 `>>` (right screen) page between the banks, and show only when there is another bank. The right screen
 is a 4×4 grid of the marker names in FL's look, pad 1 bottom-left, the corner text `Bar n`, the current
 marker outlined in orange. Without markers the pads are off, and the left screen says `No markers` on SCENE
-(add them in FL; ADD_MARKER is no longer on any page). The bank
+(add them in FL). The bank
 starts at the current marker's, and follows a marker mk3d jumped to once FL reports the jump. ERASE + pad
 does nothing (FL's script cannot delete a marker).
 

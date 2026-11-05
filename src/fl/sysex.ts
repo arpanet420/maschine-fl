@@ -1,12 +1,8 @@
 import {
   CHANNEL_FLAGS,
   CHANNEL_PROPS,
-  BROWSE_ACTIONS,
   FEATURE_MISSING,
   FROM_FL,
-  MAX_NODE_TEXT,
-  NODE_FLAGS,
-  NODE_TYPE_BIAS,
   UI_KEYS,
   LIVE_TRACK_FLAGS,
   MAX_LIVE_BLOCKS,
@@ -14,12 +10,10 @@ import {
   MAX_PROBE,
   MARKER_TICKS_UNKNOWN,
   MAX_STRING,
-  PLAYLIST_VIEWS,
   STRIP_KINDS,
   MIXER_FLAGS,
   NONE,
   NORM_MAX,
-  PICKER_NO_MODE,
   PATTERN_FLAGS,
   PATTERN_GRID_FLAGS,
   PEAK_MAX,
@@ -182,28 +176,6 @@ export interface MissingFeatures {
   patternLength: boolean;
   /** `arrangement.selectionSet` / `selectionClear` */
   loop: boolean;
-  /** `ui.navigateBrowser` and the other browser functions of the plug-in loader trial */
-  browser: boolean;
-  /** `ui.showPicker` */
-  picker: boolean;
-}
-
-/** The focused node of FL's browser and what has the focus (BROWSER_NODE, a trial). */
-export interface BrowserNodeInfo {
-  /** `ui.getFocusedNodeCaption()` */
-  caption: string;
-  /** `ui.getFocusedNodeFileType()`; −100 or lower = a folder. */
-  fileType: number;
-  /** `ui.isInPopupMenu()` */
-  popup: boolean;
-  /** FL's browser has the focus. */
-  browserFocused: boolean;
-  /** Another form (the plugin picker?) has the focus. */
-  otherFormFocused: boolean;
-  /** `ui.getFocusedFormCaption()` */
-  formCaption: string;
-  /** `ui.getHintMsg()` */
-  hint: string;
 }
 
 /** FL's windows and snap mode (UI_STATE). */
@@ -267,7 +239,6 @@ export type FlMessage =
   | ({ type: "loopState" } & LoopInfo)
   | { type: "stepParams"; channel: number; step: number; pitch: number; velocity: number }
   | ({ type: "features" } & MissingFeatures)
-  | ({ type: "browserNode" } & BrowserNodeInfo)
   | ({ type: "presets" } & PresetsInfo)
   /** Playlist markers `offset … offset + entries.length − 1` of `total`, and FL's PPQ (ticks per quarter note). */
   | { type: "markers"; total: number; offset: number; entries: MarkerEntry[]; ppq: number }
@@ -367,18 +338,10 @@ export type FlCommand =
   | { type: "ui"; action: UiAction }
   /** Go to marker `index` (0-based, time order): now, or at the next bar while playing (`quantized`). */
   | { type: "jumpMarker"; index: number; quantized: boolean }
-  /** A marker at the play position (`MK3 n`). */
-  | { type: "addMarker" }
   /** Loop mode: song (true) or pattern (false). */
   | { type: "setLoopMode"; song: boolean }
-  /** FL's playlist: zoom or scroll by `delta` steps (−64…63). */
-  | { type: "playlistView"; what: (typeof PLAYLIST_VIEWS)[number]; delta: number }
   /** Scan the markers again (ARRANGER or SCENE opened); FL answers with MARKERS. */
   | { type: "requestMarkers" }
-  /** Move the play position to `ticks` (absolute ticks). */
-  | { type: "setSongPos"; ticks: number }
-  /** Run the playlist probe: FL answers with PROBE lines, one per service pass (MK3D_PROBE=1 only). */
-  | { type: "runProbe" }
   /** Send PRESETS for the names `offset … offset + 7` (`current` stays the loaded preset). */
   | { type: "presetWindow"; offset: number }
   /** Load preset `index` of the selected channel's plugin (FL steps there the short way round). */
@@ -396,8 +359,7 @@ export type FlCommand =
   /** Set pattern `pattern`'s color (`0xRRGGBB`, the encoding FL's colors come in). */
   | { type: "setPatternColor"; pattern: number; color: number }
   /** Double pattern `pattern` (1-based, at most 127): twice the length, the grid steps copied. */
-  /** `native`: try FL's own (hidden) patterns.duplicatePatternData instead of copying the steps (SHIFT + DOUBLE, a trial). */
-  | { type: "doublePattern"; pattern: number; native?: boolean }
+  | { type: "doublePattern"; pattern: number }
   /** Create the pattern `number` (1-based, not yet existing) and select it. */
   | { type: "createPattern"; number: number }
   /**
@@ -407,12 +369,10 @@ export type FlCommand =
   | { type: "strip"; kind: StripKind; value: number; release: boolean }
   /** Transpose the notes of `channel` in the current pattern by `semitones` (−64…63). */
   | { type: "transpose"; channel: number; semitones: number }
-  /** Plug-in loader trial: act on FL's browser; FL answers with BROWSER_NODE. */
-  | { type: "browse"; action: BrowseAction }
-  /** Plug-in loader trial: a plain FL key for the focused window / menu / picker; FL answers with BROWSER_NODE. */
+  /** Open or close FL's Plugin picker (a toggle). */
+  | { type: "pluginPicker" }
+  /** A plain FL key for what has the focus: browses FL's Plugin picker. */
   | { type: "uiKey"; key: UiKey }
-  /** Plug-in loader trial: `ui.showPicker(show)` or, with a `mode` (0–63), `ui.showPicker(show, mode)`. */
-  | { type: "picker"; show: boolean; mode: number | null }
   /**
    * Fire scene `block` (null = stop), the way Image-Line's Akai Fire script does: one
    * `playlist.triggerLiveClip(track, block, TLC_MuteOthers | TLC_Fill | TLC_ColumnMode [|
@@ -422,7 +382,6 @@ export type FlCommand =
    */
   | { type: "triggerLiveClip"; block: number | null; release: boolean };
 
-export type BrowseAction = (typeof BROWSE_ACTIONS)[number];
 export type UiKey = (typeof UI_KEYS)[number];
 
 export type StripKind = (typeof STRIP_KINDS)[number];
@@ -762,23 +721,6 @@ function readFlMessage(command: number, payload: number[], r: Reader): FlMessage
         type: "features",
         patternLength: has(missing, FEATURE_MISSING.patternLength),
         loop: has(missing, FEATURE_MISSING.loop),
-        browser: has(missing, FEATURE_MISSING.browser),
-        picker: has(missing, FEATURE_MISSING.picker),
-      };
-    }
-    case FROM_FL.browserNode: {
-      const caption = r.str();
-      const fileType = r.u14() - NODE_TYPE_BIAS;
-      const flags = r.u7();
-      return {
-        type: "browserNode",
-        caption,
-        fileType,
-        popup: has(flags, NODE_FLAGS.popup),
-        browserFocused: has(flags, NODE_FLAGS.browserFocused),
-        otherFormFocused: has(flags, NODE_FLAGS.otherFormFocused),
-        formCaption: r.str(),
-        hint: r.str(),
       };
     }
     case FROM_FL.markers: {
@@ -1023,23 +965,8 @@ export function encodeFlMessage(message: FlMessage): number[] {
         flagBits(
           [message.patternLength, FEATURE_MISSING.patternLength],
           [message.loop, FEATURE_MISSING.loop],
-          [message.browser, FEATURE_MISSING.browser],
-          [message.picker, FEATURE_MISSING.picker],
         ),
       );
-      break;
-    case "browserNode":
-      w.str(message.caption, MAX_NODE_TEXT)
-        .u14(message.fileType + NODE_TYPE_BIAS)
-        .u7(
-          flagBits(
-            [message.popup, NODE_FLAGS.popup],
-            [message.browserFocused, NODE_FLAGS.browserFocused],
-            [message.otherFormFocused, NODE_FLAGS.otherFormFocused],
-          ),
-        )
-        .str(message.formCaption, MAX_NODE_TEXT)
-        .str(message.hint, MAX_NODE_TEXT);
       break;
     case "presets":
       w.u14(message.count).index(message.current).u7(message.names.length).u14(message.offset);
@@ -1210,18 +1137,11 @@ export function encodeCommand(command: FlCommand): number[] {
     case "jumpMarker":
       w.u7(command.index).flag(command.quantized);
       break;
-    case "addMarker":
     case "requestMarkers":
-    case "runProbe":
+    case "pluginPicker":
       break;
     case "setLoopMode":
       w.flag(command.song);
-      break;
-    case "playlistView":
-      w.u7(codeOf(PLAYLIST_VIEWS, command.what)).s7(command.delta);
-      break;
-    case "setSongPos":
-      w.u21(command.ticks);
       break;
     case "setPatternLength":
       w.u7(command.pattern).u14(command.length);
@@ -1243,14 +1163,8 @@ export function encodeCommand(command: FlCommand): number[] {
     case "transpose":
       w.u14(command.channel).s7(command.semitones);
       break;
-    case "browse":
-      w.u7(codeOf(BROWSE_ACTIONS, command.action));
-      break;
     case "uiKey":
       w.u7(codeOf(UI_KEYS, command.key));
-      break;
-    case "picker":
-      w.flag(command.show).s7(command.mode ?? PICKER_NO_MODE);
       break;
     case "triggerLiveClip":
       w.index(command.block).flag(command.release);
@@ -1260,7 +1174,6 @@ export function encodeCommand(command: FlCommand): number[] {
       break;
     case "doublePattern":
       w.u7(command.pattern);
-      if (command.native) w.u7(1); // optional trailing mode byte; absent = copy the steps
       break;
     case "createPattern":
       w.u14(command.number);
@@ -1357,18 +1270,10 @@ function readCommand(command: number, r: Reader): FlCommand | undefined {
       return { type: "ui", action: nameOf(UI_ACTIONS, r.u7()) };
     case TO_FL.jumpMarker:
       return { type: "jumpMarker", index: r.u7(), quantized: r.flag() };
-    case TO_FL.addMarker:
-      return { type: "addMarker" };
     case TO_FL.setLoopMode:
       return { type: "setLoopMode", song: r.flag() };
-    case TO_FL.playlistView:
-      return { type: "playlistView", what: nameOf(PLAYLIST_VIEWS, r.u7()), delta: r.s7() };
     case TO_FL.requestMarkers:
       return { type: "requestMarkers" };
-    case TO_FL.setSongPos:
-      return { type: "setSongPos", ticks: r.u21() };
-    case TO_FL.runProbe:
-      return { type: "runProbe" };
     case TO_FL.presetWindow:
       return { type: "presetWindow", offset: r.u14() };
     case TO_FL.presetLoad:
@@ -1391,12 +1296,8 @@ function readCommand(command: number, r: Reader): FlCommand | undefined {
       };
     case TO_FL.setPatternColor:
       return { type: "setPatternColor", pattern: r.u14(), color: r.color() };
-    case TO_FL.doublePattern: {
-      const pattern = r.u7();
-      return r.remaining >= 1 && r.u7() === 1
-        ? { type: "doublePattern", pattern, native: true }
-        : { type: "doublePattern", pattern };
-    }
+    case TO_FL.doublePattern:
+      return { type: "doublePattern", pattern: r.u7() };
     case TO_FL.createPattern:
       return { type: "createPattern", number: r.u14() };
     case TO_FL.strip:
@@ -1408,15 +1309,10 @@ function readCommand(command: number, r: Reader): FlCommand | undefined {
       };
     case TO_FL.transpose:
       return { type: "transpose", channel: r.u14(), semitones: r.s7() };
-    case TO_FL.browse:
-      return { type: "browse", action: nameOf(BROWSE_ACTIONS, r.u7()) };
+    case TO_FL.pluginPicker:
+      return { type: "pluginPicker" };
     case TO_FL.uiKey:
       return { type: "uiKey", key: nameOf(UI_KEYS, r.u7()) };
-    case TO_FL.picker: {
-      const show = r.flag();
-      const mode = r.s7();
-      return { type: "picker", show, mode: mode === PICKER_NO_MODE ? null : mode };
-    }
     case TO_FL.triggerLiveClip:
       return { type: "triggerLiveClip", block: r.index(), release: r.flag() };
     default:

@@ -324,7 +324,7 @@ async function main(): Promise<void> {
   h.presets(0, null, [], 0);
   await writeScene("browser-none", h);
 
-  // BROWSER's PLUG-INS = FL's Plugin picker: open (help text, CLOSE), closed (the notice), then the ADDED card.
+  // BROWSER's PLUG-INS = FL's Plugin picker: open (CLOSE), closed, then the ADDED card.
   h = stackHarness({ selected: 2 });
   h.tap("browser");
   h.tap("display2");

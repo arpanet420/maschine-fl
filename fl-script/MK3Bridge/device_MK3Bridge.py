@@ -21,7 +21,7 @@
 #   - mixer.getCurrentTempo(): seen in FL 26.1.5, getCurrentTempo(True) gives whole BPM (140),
 #     not BPM x 1000. We read the float version and scale down anything above 1000 to be safe.
 #   - SONG_POS comes from transport.getSongPos(SONGLENGTH_ABSTICKS) and general.getRecPPQ() alone;
-#     FL's B:S:T bases do not matter (the ARRANGER probe prints them beside it, `bst=`).
+#     FL's B:S:T bases do not matter.
 #   - patterns.getPatternLength is documented as "length in beats", but FL 26.1.5 returned 64 for
 #     a 4-bar pattern: it is steps (STEPS_PER_UNIT = 1).
 #   - plugins.getParamName for every index 0..getParamCount-1 (4240 for a VST, most unnamed at the end)
@@ -176,13 +176,12 @@
 #     selected channel of the current pattern, up to the shorter of the two lengths, as one batch;
 #     cut (9) is copy + clear as one batch. The clipboard lives until the script is reloaded.
 
-# ARRANGER and SCENE: playlist markers (MARKERS, JUMP_MARKER, ADD_MARKER, SET_LOOP_MODE, PLAYLIST_VIEW,
-# REQUEST_MARKERS, SET_SONG_POS, TRANSPORT's song-mode flag). FL has no scenes; a marker stands for one.
+# ARRANGER and SCENE: playlist markers (MARKERS, JUMP_MARKER, SET_LOOP_MODE, REQUEST_MARKERS, TRANSPORT's
+# song-mode flag). FL has no scenes; a marker stands for one.
 # Verified in the stubs: arrangement.jumpToMarker(delta, select), getMarkerName(index) (absolute index),
-# addAutoTimeMarker(time, name) (time in absolute ticks), transport.getSongPos/setSongPos(position, mode)
-# with midi.SONGLENGTH_ABSTICKS (2), getLoopMode() (0 pattern, 1 song) and setLoopMode() (a toggle, no
-# argument), ui.horZoom(value), ui.jog(value), general.getRecPPQ(), the OnUpdateBeatIndicator(value)
-# callback (1 = bar, 2 = beat, 0 = off) and midi.UF_PLMarker (an undo flag). The API has no marker count
+# transport.getSongPos/setSongPos(position, mode) with midi.SONGLENGTH_ABSTICKS (2), getLoopMode() (0 pattern,
+# 1 song) and setLoopMode() (a toggle, no argument), general.getRecPPQ() and the OnUpdateBeatIndicator(value)
+# callback (1 = bar, 2 = beat, 0 = off). The API has no marker count
 # and no marker time, so the list is built by SCANNING, and only while FL is stopped (a jump while playing
 # is audible): remember the position, setSongPos(0), jumpToMarker(1, False) + getSongPos(ABSTICKS) until the
 # position stops increasing (at most MAX_MARKERS = 127, `total` is a u7), name i = getMarkerName(i), then
@@ -203,14 +202,9 @@
 #   * JUMP_MARKER with `quantized` while playing is kept pending and run when OnUpdateBeatIndicator says
 #     "bar" (1); while stopped it runs at once, also a pending one when FL stops. A bar beat that arrives
 #     late makes the jump late by a callback;
-#   * ADD_MARKER: saveUndo("MK3: add marker", UF_PLMarker) first, then addAutoTimeMarker(current abs
-#     ticks, "MK3 n"); whether UF_PLMarker is the right undo flag for a playlist marker;
-#   * SET_LOOP_MODE: setLoopMode() toggles, so it is only called when getLoopMode() differs;
-#   * PLAYLIST_VIEW: ui.horZoom(delta) zooms the playlist and ui.jog(delta) scrolls it (jog is documented
-#     as moving selections; moveJog or scrollWindow may be what scrolls) with the playlist focused first
-#     (showWindow + setFocused when it is not); the units are not consistent.
+#   * SET_LOOP_MODE: setLoopMode() toggles, so it is only called when getLoopMode() differs.
 # MARKERS goes out as chunks of at most 8, one chunk per service pass (never the whole list in one call).
-# A scan is wanted on REQUEST_STATE, REQUEST_MARKERS, after ADD_MARKER and on project load; while FL plays
+# A scan is wanted on REQUEST_STATE, REQUEST_MARKERS and on project load; while FL plays
 # the cached list is answered instead and the scan runs when FL stops.
 #
 # Marker names and times (the redo after the owner's hardware test): the probe showed that
@@ -253,24 +247,13 @@
 #     the same way; selectionClear() for start = end = 0;
 #   * setPatternColor's byte order (the script passes the wire's 0xRRGGBB through unchanged, as it does
 #     for the colors it reads).
-# After EVERY set the script reads back and queues one PROBE frame (always, not only with MK3D_PROBE;
-# mk3d logs it as `<- FL probe: ...`): `setPatternLength(3, 32) -> getPatternLength(3) = 32`,
-# `selectionSet(0, 1536) -> active=1 start=0 end=1536`, `setPatternColor(3, 0xe0707a) -> getPatternColor(3)
-# = 0xe0707a`, so the owner's first try shows the units. LOOP_STATE is read on every service pass (three
-# cheap getters, like the snap mode) and sent when it changed, on REQUEST_LOOP and after SET_LOOP.
+# A setter that fails sends one PROBE frame (`setPatternLength(3, 32) -> error: boom`), which mk3d logs as
+# `<- FL probe: ...`. LOOP_STATE is read on every service pass (three cheap getters, like the snap mode) and
+# sent when it changed, on REQUEST_LOOP and after SET_LOOP.
 #
-# BROWSE, UI_KEY, PICKER and BROWSER_NODE (the plug-in loader TRIAL, docs/fl-ilmcp.md): FL's script API has no
-# "add plugin" call, so the BROWSER page's PLUG-INS and PICKER sources drive FL's browser (ui.navigateBrowser,
-# toggleBrowserNode, selectBrowserMenuItem, previewBrowserMenuItem, closeActivePopupMenu, plain ui.up/down/...)
-# and its plugin picker (ui.showPicker, hidden). One FL call per command, all through getattr + try/except; a
-# missing function is reported in FEATURES (`browser`, `picker`) and in the PROBE line. After each command, on a
-# later service pass (so FL has updated), the script sends BROWSER_NODE (caption, file type, popup, focus flags,
-# focused form caption, hint) and one PROBE line with the same facts. NOT VERIFIED (live FL): all of it.
-#
-# RUN_PROBE (the playlist probe, a diagnostic; mk3d sends it only with MK3D_PROBE=1 in its environment). The script reads
-# playlist.getPerformanceModeState/trackCount/getLiveStatus/getLiveBlockStatus/getLiveBlockColor/
-# liveBlockNumToTime/liveTimeToBlockNum, the markers and the patterns, and sends the results as PROBE
-# lines (at most 100 characters, one per service pass); mk3d only logs them. See probe_lines.
+# PLUGIN_PICKER and UI_KEY: FL's script API has no "add plugin" call, so the BROWSER page's PLUG-INS opens FL's
+# Plugin picker (the toolbar's plug button, transport.globalTransport(FPT_F8), docs/fl-ilmcp.md) and sends plain
+# keys (ui.up/down/...) to it.
 
 import contextlib
 import math
@@ -317,7 +300,6 @@ CMD_STEP_GRID = 0x1A
 CMD_PATTERN_GRID = 0x1B
 CMD_LOOP_STATE = 0x1C
 CMD_FEATURES = 0x1D
-CMD_BROWSER_NODE = 0x1E
 CMD_STEP_PARAMS = 0x26
 CMD_PLUGIN = 0x20
 CMD_PLUGIN_PARAMS = 0x21
@@ -350,12 +332,8 @@ CMD_SET_SNAP = 0x53
 CMD_SET_MAIN_VOLUME = 0x54
 CMD_PRESET_STEP = 0x55
 CMD_JUMP_MARKER = 0x56
-CMD_ADD_MARKER = 0x57
 CMD_SET_LOOP_MODE = 0x58
-CMD_PLAYLIST_VIEW = 0x59
 CMD_REQUEST_MARKERS = 0x5A
-CMD_SET_SONG_POS = 0x5B
-CMD_RUN_PROBE = 0x5C
 CMD_PRESET_WINDOW = 0x5D
 CMD_PRESET_LOAD = 0x5E
 CMD_SET_PATTERN_LENGTH = 0x5F
@@ -366,9 +344,8 @@ CMD_DOUBLE_PATTERN = 0x63
 CMD_CREATE_PATTERN = 0x64
 CMD_STRIP = 0x65
 CMD_TRANSPOSE = 0x66
-CMD_BROWSE = 0x67
+CMD_PLUGIN_PICKER = 0x67
 CMD_UI_KEY = 0x68
-CMD_PICKER = 0x69
 CMD_TRIGGER_LIVE_CLIP = 0x6A
 CMD_REQUEST_STEP_PARAMS = 0x6B
 CMD_SET_STEP_PARAM = 0x6C
@@ -392,10 +369,6 @@ NONE_INDEX = 0x3FFF
 NORM_MAX = 16383
 MAX_STRING = 32
 MAX_PROBE_TEXT = 100  # characters per PROBE frame
-PROBE_BLOCKS = 16  # live blocks / bars the playlist probe reads
-PROBE_TRACKS = 12  # playlist tracks the probe reads (1-based, as FL numbers them)
-PROBE_MARKERS = 16
-PROBE_PATTERNS = 8
 MAX_LIST_ENTRIES = 4  # entries per frame
 MAX_FRAMES_PER_CALLBACK = 8
 
@@ -412,8 +385,6 @@ PRESET_SETTLE_SECONDS = 0.3  # after a step or load the script keeps its own ind
 MAX_MARKERS = 127  # MARKERS `total` is a u7
 MARKER_TICKS_UNKNOWN = 0x1FFFFF  # MARKERS `ticks` (the largest u21): the time could not be worked out
 MARKERS_PER_FRAME = 8
-PLAYLIST_WINDOW = 2  # ui.showWindow(2) / ui.getFocused(2): the playlist
-PLAYLIST_VIEW_WHAT = ("zoom", "scroll")
 VIEW_FLAG_METERS = 0x01
 VIEW_FLAG_PRESETS = 0x02
 VIEW_FLAG_PATTERN_GRID = 0x04
@@ -447,29 +418,9 @@ MAX_PATTERN_LENGTH_STEPS = 512  # SET_PATTERN_LENGTH and DOUBLE_PATTERN: 32 bars
 MAX_PATTERN_NUMBER = 999  # CREATE_PATTERN: FL's highest pattern number
 DOUBLE_CHANNELS_PER_PASS = 4  # channels DOUBLE_PATTERN copies per service pass (the script must not stall)
 STEP_PARAMS = (0, 1, 2, 3, 4, 5, 6, 7)  # midi.pPitch ... pShift: pitch, velocity, release, fine pitch, pan, mod X/Y, shift
-MAX_LENGTH_PATTERN = 127  # SET_PATTERN_LENGTH names the pattern with a u7
 FEATURE_MISSING_PATTERN_LENGTH = 0x01  # FEATURES bits: the hidden function is not in this FL
 FEATURE_MISSING_LOOP = 0x02
-FEATURE_MISSING_BROWSER = 0x04  # any browser function of the plug-in loader trial
-FEATURE_MISSING_PICKER = 0x08  # ui.showPicker
-# Plug-in loader trial (docs/sysex.md, docs/fl-ilmcp.md): BROWSE / UI_KEY / PICKER and BROWSER_NODE. NOT VERIFIED.
-BROWSE_ACTIONS = ("show", "next", "prev", "toggle", "menu", "preview", "load", "itemMenu", "pluginPicker")
-UI_KEYS = ("up", "down", "left", "right", "enter", "escape", "closePopup")
-BROWSER_FUNCTIONS = (  # the ui functions the browser actions use; one missing = FEATURES `browser`
-    "navigateBrowser",
-    "toggleBrowserNode",
-    "selectBrowserMenuItem",
-    "previewBrowserMenuItem",
-    "closeActivePopupMenu",
-    "isInPopupMenu",
-    "getFocusedNodeCaption",
-    "getFocusedNodeFileType",
-)
-NODE_TEXT = 40  # BROWSER_NODE strings are cut to this many characters
-NODE_TYPE_BIAS = 8192  # fileType travels as fileType + 8192 in a u14
-NODE_NEXT = 41  # ui.navigateBrowser directions
-NODE_PREV = 40
-PICKER_NO_MODE = -1
+UI_KEYS = ("up", "down", "left", "right", "enter", "escape")  # UI_KEY: FL's Plugin picker
 PATTERN_GRID_CHUNKS_PER_PASS = 4  # chunks (of 16 steps of one channel) read and queued per service pass
 PARAM_SCAN_PER_PASS = 1000  # getParamName calls per service pass; FL reports 4240 for every VST
 
@@ -824,24 +775,8 @@ def encode(message):
         missing = (
             (FEATURE_MISSING_PATTERN_LENGTH if message["patternLength"] else 0)
             | (FEATURE_MISSING_LOOP if message["loop"] else 0)
-            | (FEATURE_MISSING_BROWSER if message.get("browser") else 0)
-            | (FEATURE_MISSING_PICKER if message.get("picker") else 0)
         )
         return frame(CMD_FEATURES, enc_u7(missing))
-    if kind == "browserNode":
-        flags = (
-            (1 if message["popup"] else 0)
-            | (2 if message["browserFocused"] else 0)
-            | (4 if message["otherFormFocused"] else 0)
-        )
-        return frame(
-            CMD_BROWSER_NODE,
-            enc_str(message["caption"], NODE_TEXT)
-            + enc_u14(max(0, min(0x3FFF, message["fileType"] + NODE_TYPE_BIAS)))
-            + enc_u7(flags)
-            + enc_str(message["formCaption"], NODE_TEXT)
-            + enc_str(message["hint"], NODE_TEXT),
-        )
     if kind == "probe":
         return frame(CMD_PROBE, enc_str(message["text"], MAX_PROBE_TEXT))
     if kind == "meters":
@@ -1053,21 +988,10 @@ def decode(data):
             return {"type": "presetStep", "dir": "next" if r.u7() else "prev"}
         if command == CMD_JUMP_MARKER:
             return {"type": "jumpMarker", "index": r.u7(), "quantized": r.u7() != 0}
-        if command == CMD_ADD_MARKER:
-            return {"type": "addMarker"}
         if command == CMD_SET_LOOP_MODE:
             return {"type": "setLoopMode", "song": r.u7() != 0}
-        if command == CMD_PLAYLIST_VIEW:
-            what = r.u7()
-            if what >= len(PLAYLIST_VIEW_WHAT):
-                return None
-            return {"type": "playlistView", "what": PLAYLIST_VIEW_WHAT[what], "delta": r.s7()}
         if command == CMD_REQUEST_MARKERS:
             return {"type": "requestMarkers"}
-        if command == CMD_SET_SONG_POS:
-            return {"type": "setSongPos", "ticks": r.u21()}
-        if command == CMD_RUN_PROBE:
-            return {"type": "runProbe"}
         if command == CMD_PRESET_WINDOW:
             return {"type": "presetWindow", "offset": r.u14()}
         if command == CMD_PRESET_LOAD:
@@ -1095,20 +1019,13 @@ def decode(data):
             return {"type": "strip", "kind": STRIP_KINDS[kind], "value": r.u14(), "release": r.u7() != 0}
         if command == CMD_TRANSPOSE:
             return {"type": "transpose", "channel": r.u14(), "semitones": r.s7()}
-        if command == CMD_BROWSE:
-            action = r.u7()
-            if action >= len(BROWSE_ACTIONS):
-                return None
-            return {"type": "browse", "action": BROWSE_ACTIONS[action]}
+        if command == CMD_PLUGIN_PICKER:
+            return {"type": "pluginPicker"}
         if command == CMD_UI_KEY:
             key = r.u7()
             if key >= len(UI_KEYS):
                 return None
             return {"type": "uiKey", "key": UI_KEYS[key]}
-        if command == CMD_PICKER:
-            show = r.u7() != 0
-            mode = r.u7() - 64
-            return {"type": "picker", "show": show, "mode": None if mode == PICKER_NO_MODE else mode}
         if command == CMD_TRIGGER_LIVE_CLIP:
             block = r.u14()
             release = r.u7() != 0 if r.pos < len(r.payload) else False
@@ -1125,10 +1042,7 @@ def decode(data):
                 "color": (r.u7() << 21) | (r.u7() << 14) | (r.u7() << 7) | r.u7(),
             }
         if command == CMD_DOUBLE_PATTERN:
-            pattern = r.u7()
-            if r.pos < len(r.payload) and r.u7() == 1:
-                return {"type": "doublePattern", "pattern": pattern, "native": True}
-            return {"type": "doublePattern", "pattern": pattern}
+            return {"type": "doublePattern", "pattern": r.u7()}
         if command == CMD_CREATE_PATTERN:
             return {"type": "createPattern", "number": r.u14()}
         if command == CMD_UI:
@@ -1139,43 +1053,6 @@ def decode(data):
     except ValueError:
         return None
     return None
-
-
-# ---------------------------------------------------------------------------------------------
-# The playlist probe (pure reading; a diagnostic before the ARRANGER redesign)
-# ---------------------------------------------------------------------------------------------
-#
-# FL's script API cannot read playlist clips, but the performance-mode functions (playlist.getLive*)
-# may give a tracks x blocks grid outside performance mode too. RUN_PROBE reads them and sends the
-# results as PROBE lines (docs/sysex.md); mk3d only logs them. Every FL call has its own try/except:
-# a call that fails shows as `?` in its place and adds ` | <function>: error <message>` to the line.
-
-
-class _ProbeLine(object):
-    def __init__(self):
-        self.errors = []
-
-    def call(self, name, function, *args, **kwargs):
-        """function(*args) formatted with `fmt` (default str), or `?` when it raises."""
-        fmt = kwargs.get("fmt", str)
-        try:
-            return fmt(function(*args))
-        except Exception as error:
-            note = "%s: error %s" % (name, error)
-            if note not in self.errors:
-                self.errors.append(note)
-            return "?"
-
-    def text(self, body):
-        return body + "".join(" | " + note for note in self.errors)
-
-
-def _hex(value):
-    return "%x" % int(value)
-
-
-def _hex6(value):
-    return "%06x" % (int(value) & 0xFFFFFF)
 
 
 def split_probe_text(text, limit=MAX_PROBE_TEXT):
@@ -1196,257 +1073,12 @@ def split_probe_text(text, limit=MAX_PROBE_TEXT):
     return pieces
 
 
-def _probe_bar_step_tick():
-    # FL's own B:S:T beside `pos` and `posHint`: what read_song_pos no longer depends on.
-    return "%s:%s:%s" % (
-        transport.getSongPos(midi.SONGLENGTH_BARS),
-        transport.getSongPos(midi.SONGLENGTH_STEPS),
-        transport.getSongPos(midi.SONGLENGTH_TICKS),
-    )
-
-
-def _probe_header():
-    p = _ProbeLine()
-    abs_ticks = SONGLENGTH_ABSTICKS
-    bars = getattr(midi, "SONGLENGTH_BARS", 3)
-    fields = (
-        ("perf", "playlist.getPerformanceModeState", lambda: playlist.getPerformanceModeState()),
-        ("tracks", "playlist.trackCount", lambda: playlist.trackCount()),
-        ("ppq", "general.getRecPPQ", lambda: general.getRecPPQ()),
-        ("songlen", "transport.getSongLength", lambda: transport.getSongLength(abs_ticks)),
-        ("bars", "transport.getSongLength", lambda: transport.getSongLength(bars)),
-        ("start", "playlist.getSongStartTickPos", lambda: playlist.getSongStartTickPos()),
-        ("pos", "transport.getSongPos", lambda: transport.getSongPos(abs_ticks)),
-        ("bst", "transport.getSongPos", _probe_bar_step_tick),
-        ("posHint", "transport.getSongPosHint", lambda: transport.getSongPosHint()),
-        ("loop", "transport.getLoopMode", lambda: transport.getLoopMode()),
-    )
-    return p.text(" ".join("%s=%s" % (key, p.call(name, function)) for key, name, function in fields))
-
-
-def _probe_ppq():
+def project_ppq():
     try:
         ppq = int(general.getRecPPQ())
         return ppq if ppq > 0 else DEFAULT_PPQ
     except Exception:
         return DEFAULT_PPQ
-
-
-def _probe_blocks():
-    p = _ProbeLine()
-    values = [p.call("playlist.liveBlockNumToTime", lambda b=b: playlist.liveBlockNumToTime(b)) for b in range(PROBE_BLOCKS)]
-    return p.text("blocks: " + " ".join(values))
-
-
-def _probe_time_to_block():
-    p = _ProbeLine()
-    ppq = _probe_ppq()
-    values = [
-        p.call("playlist.liveTimeToBlockNum", lambda t=ppq * 4 * bar: playlist.liveTimeToBlockNum(t))
-        for bar in range(PROBE_BLOCKS)
-    ]
-    return p.text("t2b: " + " ".join(values))
-
-
-def _probe_track(index, label):
-    """One of the three lines of a track: `first` (name, status), the default status, the colors."""
-    simplest = getattr(midi, "LB_Status_Simplest", 2)
-    default = getattr(midi, "LB_Status_Default", 0)
-
-    def line_status():
-        p = _ProbeLine()
-        name = p.call("playlist.getTrackName", lambda: playlist.getTrackName(index), fmt=str)
-        status = p.call("playlist.getLiveStatus", lambda: playlist.getLiveStatus(index, simplest), fmt=_hex)
-        blocks = "".join(
-            p.call("playlist.getLiveBlockStatus", lambda b=b: playlist.getLiveBlockStatus(index, b, simplest), fmt=_hex)
-            for b in range(PROBE_BLOCKS)
-        )
-        return p.text('%s "%s" st=%s %s' % (label, name, status, blocks))
-
-    def line_default():
-        p = _ProbeLine()
-        values = [
-            p.call("playlist.getLiveBlockStatus", lambda b=b: playlist.getLiveBlockStatus(index, b, default), fmt=_hex)
-            for b in range(PROBE_BLOCKS)
-        ]
-        return p.text("%s def: %s" % (label, " ".join(values)))
-
-    def line_colors():
-        p = _ProbeLine()
-        values = [
-            p.call("playlist.getLiveBlockColor", lambda b=b: playlist.getLiveBlockColor(index, b), fmt=_hex6)
-            for b in range(PROBE_BLOCKS)
-        ]
-        return p.text("%s col: %s" % (label, " ".join(values)))
-
-    return [line_status, line_default, line_colors]
-
-
-def _probe_markers():
-    p = _ProbeLine()
-    names = []
-    for i in range(PROBE_MARKERS):
-        name = p.call("arrangement.getMarkerName", lambda i=i: arrangement.getMarkerName(i), fmt=lambda v: str(v).strip())
-        if name in ("", "?"):
-            break
-        names.append("%d=%s" % (i, name))
-    return p.text("markers: " + (", ".join(names) if names else "(none)"))
-
-
-def _probe_patterns():
-    p = _ProbeLine()
-    count = p.call("patterns.patternCount", lambda: patterns.patternCount(), fmt=int)
-    entries = []
-    if count != "?":
-        for n in range(1, min(count, PROBE_PATTERNS) + 1):
-            name = p.call("patterns.getPatternName", lambda n=n: patterns.getPatternName(n))
-            length = p.call("patterns.getPatternLength", lambda n=n: patterns.getPatternLength(n))
-            entries.append("%s/%s" % (name, length))
-    return p.text("patterns: n=%s%s" % (count, " " + ", ".join(entries) if entries else ""))
-
-
-def _ilmcp():
-    """FL 2026's undocumented `ilmcp` module, or None. FL creates it only for the Python sessions of
-    its MCP server (the Gopher assistant's tools, docs/fl-ilmcp.md), so a controller script finds it
-    only if those sessions share this interpreter and one has run (it is then in sys.modules)."""
-    import sys
-
-    module = sys.modules.get("ilmcp")
-    if module is not None:
-        return module
-    try:
-        import ilmcp  # noqa: F401 (not in the API stubs)
-
-        return ilmcp
-    except Exception:
-        return None
-
-
-def _probe_ilmcp_dir():
-    module = _ilmcp()
-    if module is None:
-        import sys
-
-        error = ""
-        try:
-            import ilmcp  # noqa: F401
-        except Exception as e:
-            error = repr(e)
-        names = sorted(n for n in sys.modules if not n.startswith("_") and "." not in n)
-        return "ilmcp: import failed %s; modules: %s" % (error, " ".join(names))
-    return "ilmcp: " + " ".join(name for name in dir(module) if not name.startswith("__"))
-
-
-def _probe_browser(path):
-    """One read-only listing of FL's browser tree: `ilmcp.getBrowserNames(path, False)`."""
-
-    def line():
-        module = _ilmcp()
-        if module is None:
-            return "browser %r: no ilmcp" % (path,)
-        names = module.getBrowserNames(path, False)
-        return "browser %r (%d): %s" % (path, len(names), ", ".join(str(n) for n in list(names)[:24]))
-
-    return line
-
-
-def _probe_browser_children():
-    """The root's first entries one level down (built when the root is known)."""
-    module = _ilmcp()
-    if module is None:
-        return []
-    try:
-        root = list(module.getBrowserNames("", False))[:6]
-    except Exception:
-        return []
-    return [_probe_browser(str(name)) for name in root]
-
-
-# A piano roll script that only reads: every note of the open piano roll goes into a shared module
-# (if piano roll scripts share the interpreter with this script) and into a temp file.
-PR_READ_SCRIPT = """
-import flpianoroll as pr
-import sys, os, tempfile
-notes = []
-for i in range(pr.score.noteCount):
-    n = pr.score.getNote(i)
-    notes.append((n.number, n.time, n.length, n.velocity))
-shared = sys.modules.get("mk3_shared")
-if shared is None:
-    shared = type(sys)("mk3_shared")
-    sys.modules["mk3_shared"] = shared
-shared.notes = notes
-shared.ppq = pr.score.PPQ
-try:
-    with open(os.path.join(tempfile.gettempdir(), "mk3_notes.txt"), "w") as f:
-        f.write(repr(notes))
-except Exception as e:
-    shared.file_error = repr(e)
-"""
-
-
-def _probe_pr_script():
-    """Run PR_READ_SCRIPT through ilmcp.runPRScript (opens the piano roll if closed; reads only) and
-    report how the notes came back."""
-    module = _ilmcp()
-    if module is None or not hasattr(module, "runPRScript"):
-        return "prscript: no ilmcp.runPRScript"
-    import sys, os, tempfile
-
-    sys.modules.pop("mk3_shared", None)
-    result = module.runPRScript(PR_READ_SCRIPT)
-    shared = sys.modules.get("mk3_shared")
-    path = os.path.join(tempfile.gettempdir(), "mk3_notes.txt")
-    exists = os.path.exists(path)
-    notes = getattr(shared, "notes", None) if shared is not None else None
-    return "prscript: ret=%r shared=%s file=%s first=%r err=%r" % (
-        result,
-        "missing" if notes is None else "%d notes ppq %s" % (len(notes), getattr(shared, "ppq", "?")),
-        "%s %s" % (path, "exists" if exists else "missing"),
-        (notes or [])[:3],
-        getattr(shared, "file_error", None) if shared is not None else None,
-    )
-
-
-def _probe_getter(label, module, name, *args):
-    """One hidden, read-only getter (found with REA; not in the stubs)."""
-
-    def line():
-        function = getattr(module, name, None)
-        if function is None:
-            return "%s: missing" % label
-        return "%s%r = %r" % (label, args, function(*args))
-
-    return line
-
-
-def probe_lines():
-    """The lines of the probe, as functions run one at a time (each returns its text): first the
-    read-only `ilmcp` browser listing (a new instrument on an empty pad, PLAN.md), then the playlist."""
-    lines = [_probe_ilmcp_dir, _probe_browser("")]
-    lines += _probe_browser_children()
-    lines += [_probe_browser("Plugin database"), _probe_browser("Plugin database/Generators")]
-    lines += [
-        _probe_getter("channels.getSwing", channels, "getSwing"),
-        _probe_getter("general.getProjectTitle", general, "getProjectTitle"),
-        _probe_getter("arrangement.selectionIsActive", arrangement, "selectionIsActive"),
-        _probe_getter("mixer.getPluginMixLevel", mixer, "getPluginMixLevel", 1, 0),
-        _probe_pr_script,
-        # patterns.getBlockSetStatus(left, top, right, bottom): undocumented, unverified (NKS-style
-        # research, 2026-10-20). Args are unknown; try a few plausible (track, block) rectangles to
-        # see which (if any) return something other than 0. Track 1 has filled blocks 0-2 right now.
-        _probe_getter("patterns.getBlockSetStatus(0,0,4,4)", patterns, "getBlockSetStatus", 0, 0, 4, 4),
-        _probe_getter("patterns.getBlockSetStatus(1,1,4,4)", patterns, "getBlockSetStatus", 1, 1, 4, 4),
-        _probe_getter("patterns.getBlockSetStatus(1,0,4,3)", patterns, "getBlockSetStatus", 1, 0, 4, 3),
-        _probe_getter("patterns.getBlockSetStatus(0,1,3,4)", patterns, "getBlockSetStatus", 0, 1, 3, 4),
-        _probe_getter("patterns.getBlockSetStatus(1,1,1,3)", patterns, "getBlockSetStatus", 1, 1, 1, 3),
-    ]
-    lines += [_probe_header, _probe_blocks, _probe_time_to_block]
-    lines += _probe_track(0, "track0")
-    for i in range(1, PROBE_TRACKS + 1):
-        lines += _probe_track(i, "T%d" % i)
-    lines += [_probe_markers, _probe_patterns]
-    return lines
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1591,8 +1223,8 @@ class Bridge(object):
         self.pg_todo = []
         self.pg_pattern = None
         self.pg_restart = False
-        # Playlist markers: [(ticks, name)] in time order from the last scan (or the last ADD_MARKER while
-        # playing). A scan runs only while FL is stopped (see the header); marker_scan = one is wanted,
+        # Playlist markers: [(ticks, name)] in time order from the last scan. A scan runs only while FL is
+        # stopped (docs/fl-api-notes.md); marker_scan = one is wanted,
         # marker_stale = the list may be out of date, scan as soon as FL stops. marker_outbox = MARKERS
         # frames not yet sent, one per service pass. marker_pending = a quantized jump waits for the bar.
         self.markers = []
@@ -1606,19 +1238,10 @@ class Bridge(object):
         self.perform = None
         self.pitch_index = None  # the channel the strip's pitch is bent on, while a touch is on
         self.strip_params = {}
-        # The playlist probe (a diagnostic, see probe_lines): lines not yet built (callables, one is
-        # run per service pass) and PROBE texts built but not yet sent (a long line is cut up).
-        self.probe_todo = []
         self.param_units = {}  # plugin_reports_units
         self.params_anchored = set()  # param_is_known: parameters FL gives as 0-1 because we set them
         self.param_search_late = {}  # find_param_norm: (text wanted, tries) while FL lags behind
-        self.probe_texts = []
         self.probe_count = 0
-        # Plug-in loader trial: the label of the browser / key / picker command whose answer (BROWSER_NODE
-        # and a PROBE line) is due, and how many service passes to wait first so FL has updated.
-        self.node_label = None
-        self.node_wait = 0
-        self.node_notes = []
 
     # -- queue ------------------------------------------------------------------------------
 
@@ -1805,18 +1428,9 @@ class Bridge(object):
         except Exception as error:
             _log_once("service_markers", error)
         try:
-            self.service_probe()
-        except Exception as error:
-            _log_once("service_probe", error)
-        try:
             self.service_preset_load()
         except Exception as error:
             _log_once("service_preset_load", error)
-        try:
-            self.service_browser_node()
-        except Exception as error:
-            self.node_label = None
-            _log_once("service_browser_node", error)
         sent = self.flush()
         # PROBE frames are never repeated, so there is nothing to compare the next one with.
         for key in [k for k in self.sent if k.startswith("PROBE@")]:
@@ -1879,7 +1493,7 @@ class Bridge(object):
         # their bases were never verified (a step base one off puts 1/8 on the off-beat). 16 steps
         # to the bar, as mk3d counts them.
         ticks = max(0, int(_safe(0, transport.getSongPos, SONGLENGTH_ABSTICKS)))
-        ppq = _probe_ppq()
+        ppq = project_ppq()
         per_step = max(1, ppq // 4)
         steps, tick = divmod(ticks, per_step)
         bar, step = divmod(steps, 16)
@@ -2515,7 +2129,7 @@ class Bridge(object):
         call tells which note a channel plays, but the step reads see recorded notes too (measured,
         docs/sysex.md): a step's pitch, and in param 7 where it starts. So the song position says
         which steps to look at. The step before counts too: a note just before its beat is in it."""
-        per_step = max(1, _probe_ppq() // 4)
+        per_step = max(1, project_ppq() // 4)
         length = self.pattern_length()
         if length <= 0:
             return []
@@ -2547,19 +2161,17 @@ class Bridge(object):
                     callable(getattr(arrangement, "selectionSet", None))
                     and callable(getattr(arrangement, "selectionClear", None))
                 ),
-                "browser": not all(callable(getattr(ui, name, None)) for name in BROWSER_FUNCTIONS),
-                "picker": not callable(getattr(ui, "showPicker", None)),
             },
         )
 
     def queue_probe(self, text):
-        """One PROBE frame per piece of `text`, always (the verification lines of the setters)."""
+        """One PROBE frame per piece of `text`: something mk3d's log should say."""
         for piece in split_probe_text(text):
             self.probe_count += 1
             self.queue["PROBE@%d" % self.probe_count] = encode({"type": "probe", "text": piece})
 
     def set_pattern_length(self, number, length):
-        """SET_PATTERN_LENGTH: patterns.setPatternLength(number, length), then read it back (PROBE)."""
+        """SET_PATTERN_LENGTH: patterns.setPatternLength(number, length)."""
         function = getattr(patterns, "setPatternLength", None)
         if not callable(function):
             _log_once("patterns.setPatternLength", "missing in this FL version")
@@ -2571,36 +2183,24 @@ class Bridge(object):
         argument = max(1, length // STEPS_PER_UNIT)
         try:
             function(number, argument)
-            result = "getPatternLength(%d) = %s" % (number, _safe("?", patterns.getPatternLength, number))
         except Exception as error:
             _log_once("patterns.setPatternLength", error)
-            result = "error: %s" % (error,)
-        self.queue_probe("setPatternLength(%d, %d) -> %s" % (number, argument, result))
+            self.queue_probe("setPatternLength(%d, %d) -> error: %s" % (number, argument, error))
         self.mark(*PATTERN_READERS)
         self.mark("pattern_grid")
 
     def create_pattern(self, number):
         """CREATE_PATTERN: make the (not yet existing) pattern `number` and select it. jumpToPattern creates
-        a missing pattern (stub note, NOT VERIFIED live); if FL then did not select `number`, fall back to
-        findFirstNextEmptyPat. A PROBE line says what happened."""
+        a missing pattern (stub note); if FL then did not select `number`, fall back to
+        findFirstNextEmptyPat."""
         count = self.pattern_count()
         before = int(_safe(1, patterns.patternNumber))
         if not count < number <= MAX_PATTERN_NUMBER:
             return
         _safe(None, patterns.jumpToPattern, number)
         after = int(_safe(before, patterns.patternNumber))
-        if after == number:
-            self.queue_probe(
-                "createPattern(%d): jumpToPattern -> patternNumber %d, patternCount %d -> %d"
-                % (number, after, count, self.pattern_count())
-            )
-        else:
+        if after != number:
             _safe(None, patterns.findFirstNextEmptyPat, midi.FFNEP_DontPromptName)
-            got = int(_safe(after, patterns.patternNumber))
-            self.queue_probe(
-                "createPattern(%d): jump left %d; findFirstNextEmptyPat -> pattern %d, count %d -> %d"
-                % (number, after, got, count, self.pattern_count())
-            )
         self.mark(*PATTERN_READERS)
 
     def double_pattern(self, number):
@@ -2628,8 +2228,6 @@ class Bridge(object):
             try:
                 native(number)
                 function(number, length * 2)
-                after = int(_safe(0, patterns.getPatternLength, number)) * STEPS_PER_UNIT
-                self.queue_probe("doublePattern(%d) %d -> %d (duplicatePatternData)" % (number, length, after))
                 self.mark(*PATTERN_READERS)
                 self.mark("grid", "undo_state")
                 return
@@ -2646,51 +2244,13 @@ class Bridge(object):
             "pattern": number,
             "length": length,
             "next": 0,
-            "copied_channels": 0,
-            "steps": 0,
             "params": _step_param_functions(),
         }
         self.mark(*PATTERN_READERS)
 
-    def pattern_snapshot(self, number):
-        """patternCount, the pattern's length (steps) and each channel's grid as a short string (PROBE)."""
-        count = self.pattern_count()
-        length = int(_safe(0, patterns.getPatternLength, number)) * STEPS_PER_UNIT
-        grids = []
-        for channel in range(min(self.channel_total(), 8)):
-            bits = "".join(
-                "x" if _safe(False, channels.getGridBit, channel, step) else "." for step in range(min(length, 64))
-            )
-            if "x" in bits:
-                grids.append("%d:%s" % (channel, bits))
-        return "count %d len %d %s" % (count, length, " ".join(grids))
-
-    def double_pattern_native(self, number):
-        """SHIFT + DOUBLE, a trial: FL's hidden patterns.duplicatePatternData(number) (one `i` argument,
-        found with REA; what it does is NOT VERIFIED), with an undo point first, and a PROBE line with
-        the pattern before and after so the owner's first try shows what it does."""
-        function = getattr(patterns, "duplicatePatternData", None)
-        if not callable(function):
-            self.queue_probe("duplicatePatternData: missing in this FL version")
-            return
-        before = self.pattern_snapshot(number)
-        _general(None, "saveUndo", "MK3: duplicate pattern data", _undo_flags())
-        try:
-            result = function(number)
-        except Exception as error:
-            self.queue_probe("duplicatePatternData(%d) -> error: %s" % (number, error))
-            return
-        after = self.pattern_snapshot(int(_safe(number, patterns.patternNumber)))
-        self.queue_probe(
-            "duplicatePatternData(%d) -> %r; before %s; after (pattern %d) %s"
-            % (number, result, before, int(_safe(0, patterns.patternNumber)), after)
-        )
-        self.mark(*PATTERN_READERS)
-        self.mark("grid", "undo_state")
-
     def service_double(self):
-        """Copy the next DOUBLE_CHANNELS_PER_PASS channels of a DOUBLE_PATTERN; at the end read the length
-        back, queue the PROBE line and let the grid go out. batching keeps nested service() calls out."""
+        """Copy the next DOUBLE_CHANNELS_PER_PASS channels of a DOUBLE_PATTERN; at the end let the grid go
+        out. batching keeps nested service() calls out."""
         job = self.double_job
         if job is None:
             return
@@ -2707,10 +2267,6 @@ class Bridge(object):
         if job["next"] < total:
             return
         self.double_job = None
-        after = int(_safe(0, patterns.getPatternLength, job["pattern"])) * STEPS_PER_UNIT
-        self.queue_probe(
-            "doublePattern(%d) %d -> %d, channels %d" % (job["pattern"], job["length"], after, job["copied_channels"])
-        )
         self.mark(*PATTERN_READERS)
         self.mark("grid", "undo_state")
 
@@ -2718,17 +2274,12 @@ class Bridge(object):
         """Copy the steps (and their parameters) of one channel into the second half of the pattern."""
         length, pattern = job["length"], job["pattern"]
         get_param, set_param = job["params"]
-        copied = False
         for step in range(length):
             on = bool(_safe(False, channels.getGridBit, channel, step))
             target = length + step
             if bool(_safe(False, channels.getGridBit, channel, target)) != on:
                 _safe(None, channels.setGridBit, channel, target, on)
-            if not on:
-                continue
-            copied = True
-            job["steps"] += 1
-            if get_param is None or set_param is None:
+            if not on or get_param is None or set_param is None:
                 continue
             for param in STEP_PARAMS:
                 try:
@@ -2736,11 +2287,9 @@ class Bridge(object):
                     set_param(channel, pattern, target, param, value)
                 except Exception as error:
                     _log_once("step parameter %d" % param, error)
-        if copied:
-            job["copied_channels"] += 1
 
     def set_pattern_color(self, number, color):
-        """SET_PATTERN_COLOR: patterns.setPatternColor(number, color), then read it back (PROBE)."""
+        """SET_PATTERN_COLOR: patterns.setPatternColor(number, color)."""
         function = getattr(patterns, "setPatternColor", None)
         if not callable(function):
             _log_once("patterns.setPatternColor", "missing in this FL version")
@@ -2751,17 +2300,14 @@ class Bridge(object):
         color = int(color) & 0xFFFFFF
         try:
             function(number, color)
-            got = int(_safe(0, patterns.getPatternColor, number)) & 0xFFFFFF
-            result = "getPatternColor(%d) = 0x%06x" % (number, got)
         except Exception as error:
             _log_once("patterns.setPatternColor", error)
-            result = "error: %s" % (error,)
-        self.queue_probe("setPatternColor(%d, 0x%06x) -> %s" % (number, color, result))
+            self.queue_probe("setPatternColor(%d, 0x%06x) -> error: %s" % (number, color, error))
         self.mark(*PATTERN_READERS)
 
     def set_loop(self, start, end):
-        """SET_LOOP: arrangement.selectionSet(start, end) (ticks), or selectionClear() for 0, 0; then
-        read it back (PROBE)."""
+        """SET_LOOP: arrangement.selectionSet(start, end) (ticks), or selectionClear() for 0, 0. LOOP_STATE
+        says what FL has now."""
         clear = start == 0 and end == 0
         function = getattr(arrangement, "selectionClear" if clear else "selectionSet", None)
         if not callable(function):
@@ -2769,20 +2315,15 @@ class Bridge(object):
             return
         if not clear and end <= start:
             return
-        label = "selectionClear()" if clear else "selectionSet(%d, %d)" % (start, end)
         try:
             if clear:
                 function()
             else:
                 function(start, end)
-            active = bool(_attr(False, arrangement, "selectionIsActive"))
-            got_start = int(_attr(0, arrangement, "selectionStart")) if active else 0
-            got_end = int(_attr(0, arrangement, "selectionEnd")) if active else 0
-            result = "active=%d start=%d end=%d" % (1 if active else 0, got_start, got_end)
         except Exception as error:
             _log_once("arrangement.selection", error)
-            result = "error: %s" % (error,)
-        self.queue_probe("%s -> %s" % (label, result))
+            label = "selectionClear()" if clear else "selectionSet(%d, %d)" % (start, end)
+            self.queue_probe("%s -> error: %s" % (label, error))
         self.mark("loop")
 
     def request_loop(self):
@@ -2807,27 +2348,6 @@ class Bridge(object):
         self.retain_family("METERS", keys)
 
     # -- playlist probe ----------------------------------------------------------------------
-
-    def run_probe(self):
-        """mk3d asks (ARRANGER opened): read what the performance-mode functions return and send it as
-        PROBE lines, one per service pass. Nothing here changes anything in FL."""
-        self.probe_todo = probe_lines()
-        self.probe_texts = []
-
-    def service_probe(self):
-        """Queue one PROBE frame: the next piece of text, building the next line when none is left."""
-        if not self.probe_texts and self.probe_todo:
-            build = self.probe_todo.pop(0)
-            try:
-                text = build()
-            except Exception as error:
-                text = "probe: error %s" % (error,)
-            self.probe_texts = split_probe_text(text)
-        if not self.probe_texts:
-            return
-        self.probe_count += 1
-        text = self.probe_texts.pop(0)
-        self.queue["PROBE@%d" % self.probe_count] = encode({"type": "probe", "text": text})
 
     # -- playlist markers --------------------------------------------------------------------
 
@@ -2944,44 +2464,10 @@ class Bridge(object):
         self.go_to_marker(index)
         self.service()
 
-    def add_marker(self):
-        """ADD_MARKER: a marker `MK3 n` at the play position, one undo step."""
-        ticks = int(_safe(0, transport.getSongPos, SONGLENGTH_ABSTICKS))
-        name = "MK3 %d" % (len(self.markers) + 1)
-        _general(None, "saveUndo", "MK3: add marker", getattr(midi, "UF_PLMarker", 1 << 11))
-        _attr(None, arrangement, "addAutoTimeMarker", ticks, name)
-        self.mark("undo_state")
-        if self.is_playing():
-            # No scan while playing: show the new marker from what we know and scan when FL stops.
-            self.markers.append((ticks, name))
-            if all(marker[0] is not None for marker in self.markers):
-                self.markers.sort(key=lambda marker: marker[0])
-            self.marker_stale = True
-            self.publish_markers()
-        else:
-            self.marker_scan = True
-
     def set_loop_mode(self, song):
         """SET_LOOP_MODE: setLoopMode() only toggles, so call it when the mode differs."""
         if int(self.loop_mode()) != (1 if song else 0):
             _attr(None, transport, "setLoopMode")
-
-    def playlist_view(self, what, delta):
-        """PLAYLIST_VIEW: zoom (ui.horZoom) or scroll (ui.jog) the playlist, focused first."""
-        try:
-            if not ui.getFocused(PLAYLIST_WINDOW):
-                ui.showWindow(PLAYLIST_WINDOW)
-                ui.setFocused(PLAYLIST_WINDOW)
-            if what == "zoom":
-                ui.horZoom(delta)
-            else:
-                ui.jog(delta)
-        except Exception as error:
-            _log_once("playlist view", error)
-
-    def set_song_pos(self, ticks):
-        _safe(None, transport.setSongPos, ticks, SONGLENGTH_ABSTICKS)
-        self.mark("song_pos")
 
     # -- commands from mk3d ------------------------------------------------------------------
 
@@ -3079,28 +2565,17 @@ class Bridge(object):
             self.mark("presets")
         elif kind == "jumpMarker":
             self.jump_marker(message["index"], message["quantized"])
-        elif kind == "addMarker":
-            self.add_marker()
         elif kind == "setLoopMode":
             self.set_loop_mode(message["song"])
             self.mark("transport")
-        elif kind == "playlistView":
-            self.playlist_view(message["what"], message["delta"])
         elif kind == "requestMarkers":
             self.request_markers()
-        elif kind == "setSongPos":
-            self.set_song_pos(message["ticks"])
-        elif kind == "runProbe":
-            self.run_probe()
         elif kind == "setPatternLength":
             self.set_pattern_length(message["pattern"], message["length"])
         elif kind == "setPatternColor":
             self.set_pattern_color(message["pattern"], message["color"])
         elif kind == "doublePattern":
-            if message.get("native"):
-                self.double_pattern_native(message["pattern"])
-            else:
-                self.double_pattern(message["pattern"])
+            self.double_pattern(message["pattern"])
         elif kind == "createPattern":
             self.create_pattern(message["number"])
         elif kind == "setLoop":
@@ -3118,12 +2593,10 @@ class Bridge(object):
         elif kind == "transpose":
             self.transpose(message["channel"], message["semitones"])
             self.mark("grid", "undo_state")
-        elif kind == "browse":
-            self.browse(message["action"])
+        elif kind == "pluginPicker":
+            self.plugin_picker()
         elif kind == "uiKey":
             self.ui_key(message["key"])
-        elif kind == "picker":
-            self.picker(message["show"], message["mode"])
         elif kind == "triggerLiveClip":
             self.trigger_live_clip(message["block"], message.get("release", False))
         elif kind == "ui":
@@ -3230,21 +2703,19 @@ class Bridge(object):
         """TRANSPOSE: the step notes of `channel` in the current pattern by `semitones` (one undo point)."""
         if not 0 <= channel < self.channel_total() or semitones == 0:
             return
-        changed = self.transpose_steps(channel, semitones)
-        self.queue_probe("transpose(ch %d, %+d): steps %d changed" % (channel, semitones, changed))
+        self.transpose_steps(channel, semitones)
 
     def transpose_steps(self, channel, semitones):
-        """The step path: pitch + semitones (0...127) for every step that is on. Returns how many steps
-        changed. One undo point (the batch), setGridBit is not called."""
+        """The step path: pitch + semitones (0...127) for every step that is on. One undo point (the batch),
+        setGridBit is not called."""
         get_param, set_param = _step_param_functions()
         pitch = getattr(midi, "pPitch", 0)
         uses_steps = bool(_attr(True, channels, "isGridBitAssigned", channel))
         pattern = int(_safe(1, patterns.patternNumber))
         length = self.pattern_length()
-        changed = 0
         with self.batch("MK3: transpose"):
             if get_param is None or set_param is None or not uses_steps:
-                return 0
+                return
             for step in range(length):
                 if not _safe(False, channels.getGridBit, channel, step):
                     continue
@@ -3253,10 +2724,8 @@ class Bridge(object):
                     target = max(0, min(127, value + semitones))
                     if target != value:
                         set_param(channel, pattern, step, pitch, target)
-                        changed += 1
                 except Exception as error:
                     _log_once("transpose step", error)
-        return changed
 
     def copy_steps(self):
         """Step clipboard: remember the selected channel's steps of the current pattern."""
@@ -3546,155 +3015,26 @@ class Bridge(object):
         except Exception as error:
             _log_once("show window", error)
 
-    # -- plug-in loader trial ------------------------------------------------------------------
-    # BROWSE, UI_KEY and PICKER (docs/sysex.md): ONE FL call each, through getattr and try/except. The answer
-    # (BROWSER_NODE and one PROBE line with the same facts) goes out on a later service pass, so FL has
-    # updated. NOT VERIFIED in a live FL.
+    # -- FL's Plugin picker --------------------------------------------------------------------
 
-    def trial_call(self, label, module, name, *args):
-        """module.<name>(*args) for a trial command; returns (ok, result, note). Never raises."""
-        function = getattr(module, name, None)
-        if not callable(function):
-            _log_once("ui." + name, "missing in this FL version")
-            self.node_notes.append("ui." + name)
-            return False, None, None
+    def plugin_picker(self):
+        """PLUGIN_PICKER: the toolbar's plug button (midi.FPT_F8 = 67), a toggle. Picking a generator in it
+        adds it as a new channel."""
         try:
-            return True, function(*args), None
+            transport.globalTransport(getattr(midi, "FPT_F8", 67), 1)
         except Exception as error:
-            _log_once("ui." + name, error)
-            self.node_notes.append("error ui.%s: %s" % (name, error))
-            return False, None, str(error)
-
-    def trial_begin(self, label):
-        self.node_label = label
-        self.node_wait = 1
-        self.node_notes = []
-        self.node_result = None
-
-    def browse(self, action):
-        """BROWSE: one FL browser call."""
-        self.trial_begin("browse(%s)" % action)
-        if action == "show":
-            window = getattr(midi, "widBrowser", 4)
-            self.trial_call("show", ui, "showWindow", window)
-            self.trial_call("show", ui, "setFocused", window)
-        elif action in ("next", "prev"):
-            # Round 2 (owner's try 2026-10-19: the caption never moved and the browser never had the focus):
-            # focus the browser first, and log what navigateBrowser itself returns.
-            window = getattr(midi, "widBrowser", 4)
-            self.trial_call("focus", ui, "setFocused", window)
-            ok, result, _ = self.trial_call(
-                action, ui, "navigateBrowser", NODE_NEXT if action == "next" else NODE_PREV, False
-            )
-            if ok:
-                self.node_result = result
-        elif action == "toggle":
-            self.trial_call(action, ui, "toggleBrowserNode", -1)
-        elif action == "load":
-            # Round 3: FL's browser sends the highlighted item to the focused plugin, or the selected channel
-            # if none, on Enter (FL release notes: "F5/F6 ... or ENTER or middle click now sends to the focused
-            # plugin (or the selected Channel if there's none)"). selectBrowserMenuItem opens FL's File menu.
-            window = getattr(midi, "widBrowser", 4)
-            self.trial_call("focus", ui, "setFocused", window)
-            self.trial_call(action, ui, "enter")
-        elif action == "itemMenu":
-            # Round 4: the focused browser item's own menu (right click: "Open in new channel", ...) through
-            # FL's item-menu transport command (midi.FPT_ItemMenu = 91).
-            window = getattr(midi, "widBrowser", 4)
-            self.trial_call("focus", ui, "setFocused", window)
-            self.trial_call(action, transport, "globalTransport", getattr(midi, "FPT_ItemMenu", 91), 1)
-        elif action == "pluginPicker":
-            # Round 4: FL's Plugin picker (the toolbar's plug button, F8): midi.FPT_F8 = 67. Picking a generator
-            # there adds it as a new channel.
-            self.trial_call(action, transport, "globalTransport", getattr(midi, "FPT_F8", 67), 1)
-        elif action == "menu":
-            self.trial_call(action, ui, "selectBrowserMenuItem")
-        elif action == "preview":
-            self.trial_call(action, ui, "previewBrowserMenuItem")
+            _log_once("plugin picker", error)
 
     def ui_key(self, key):
-        """UI_KEY: a plain FL key (or closing the popup menu) for whatever has the focus."""
-        self.trial_begin("key(%s)" % key)
-        name = {"closePopup": "closeActivePopupMenu"}.get(key, key)
-        self.trial_call(key, ui, name)
-        if key in ("up", "down", "left", "right"):
-            # Plugin picker browsing sends these at ~15 per second: no BROWSER_NODE / PROBE answer (too chatty).
-            self.node_label = None
-
-    def picker(self, show, mode):
-        """PICKER: ui.showPicker(show) or ui.showPicker(show, mode)."""
-        shown = 1 if show else 0
-        if mode is None:
-            self.trial_begin("picker(%d)" % shown)
-            self.trial_call("picker", ui, "showPicker", shown)
-        else:
-            self.trial_begin("picker(%d, %d)" % (shown, mode))
-            self.trial_call("picker", ui, "showPicker", shown, mode)
-
-    @staticmethod
-    def node_text(value):
-        text = "" if value is None else str(value)
-        return "".join(ch for ch in text if ord(ch) >= 0x20 and ord(ch) != 0x7F)[:NODE_TEXT]
-
-    def service_browser_node(self):
-        """Answer a trial command: BROWSER_NODE and a PROBE line with what FL says now."""
-        label = self.node_label
-        if label is None:
+        """UI_KEY: a plain FL key for whatever has the focus."""
+        function = getattr(ui, key, None)
+        if not callable(function):
+            _log_once("ui." + key, "missing in this FL version")
             return
-        if self.node_wait > 0:
-            self.node_wait -= 1
-            return
-        self.node_label = None
-        missing = list(self.node_notes)
-
-        def ask(name, default, *args):
-            function = getattr(ui, name, None)
-            if not callable(function):
-                if "ui." + name not in missing:
-                    missing.append("ui." + name)
-                return default
-            try:
-                return function(*args)
-            except Exception as error:
-                _log_once("ui." + name, error)
-                missing.append("error ui.%s: %s" % (name, error))
-                return default
-
-        caption = self.node_text(ask("getFocusedNodeCaption", ""))
         try:
-            file_type = int(ask("getFocusedNodeFileType", 0))
-        except (TypeError, ValueError):
-            file_type = 0
-        popup = bool(ask("isInPopupMenu", False))
-        browser_focused = bool(ask("getFocused", False, getattr(midi, "widBrowser", 4)))
-        form = self.node_text(ask("getFocusedFormCaption", ""))
-        hint = self.node_text(ask("getHintMsg", ""))
-        form_id = ask("getFocusedFormID", "?")
-        self.queue["BROWSER_NODE"] = encode(
-            {
-                "type": "browserNode",
-                "caption": caption,
-                "fileType": file_type,
-                "popup": popup,
-                "browserFocused": browser_focused,
-                "otherFormFocused": (not browser_focused) and form != "",
-                "formCaption": form,
-                "hint": hint,
-            }
-        )
-        if getattr(self, "node_result", None) is not None:
-            label = '%s returned "%s"' % (label, self.node_text(self.node_result))
-        text = '%s -> %s"%s" type %d popup %d form "%s" id %s hint "%s"' % (
-            label,
-            ("missing: " + ", ".join(missing) + "; ") if missing else "",
-            caption,
-            file_type,
-            1 if popup else 0,
-            form,
-            form_id,
-            hint,
-        )
-        self.queue_probe(text)
+            function()
+        except Exception as error:
+            _log_once("ui." + key, error)
 
     def set_snap(self, mode):
         try:

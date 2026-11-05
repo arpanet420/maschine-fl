@@ -1,14 +1,8 @@
-// The plug-in loader: BROWSER's PLUG-INS source = FL's Plugin picker (BROWSE pluginPicker, UI_KEY), and the wire format of the trial messages.
+// The plug-in loader: BROWSER's PLUG-INS source = FL's Plugin picker (PLUGIN_PICKER, UI_KEY).
 import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
 import { describe, expect, it } from "vitest";
-import { FROM_FL, TO_FL } from "../src/fl/protocol.js";
-import {
-  decodeCommand,
-  decodeSysex,
-  encodeCommand,
-  encodeFlMessage,
-  type BrowserNodeInfo,
-} from "../src/fl/sysex.js";
+import { TO_FL } from "../src/fl/protocol.js";
+import { decodeCommand, encodeCommand } from "../src/fl/sysex.js";
 import { stackHarness, type StackHarness } from "../src/tools/stackHarness.js";
 
 const frame = (command: number, payload: number[]) => [
@@ -20,17 +14,6 @@ const frame = (command: number, payload: number[]) => [
   ...payload,
   0xf7,
 ];
-
-const node = (patch: Partial<BrowserNodeInfo> = {}): BrowserNodeInfo => ({
-  caption: "Diva",
-  fileType: -1,
-  popup: false,
-  browserFocused: true,
-  otherFormFocused: false,
-  formCaption: "Browser",
-  hint: "Plugin database",
-  ...patch,
-});
 
 const CLOSED = "Picker closed";
 
@@ -86,64 +69,6 @@ function draw(h: StackHarness): { left: Drawn[]; right: Drawn[] } {
 }
 const texts = (drawn: Drawn[]) => drawn.map((d) => d.text);
 
-describe("plug-in loader trial: wire format", () => {
-  it("uses the free codes", () => {
-    expect(FROM_FL.browserNode).toBe(0x1e);
-    expect([TO_FL.browse, TO_FL.uiKey, TO_FL.picker]).toEqual([0x67, 0x68, 0x69]);
-  });
-
-  it("encodes BROWSE and UI_KEY as one u7", () => {
-    expect(encodeCommand({ type: "browse", action: "show" })).toEqual(frame(0x67, [0]));
-    expect(encodeCommand({ type: "browse", action: "preview" })).toEqual(frame(0x67, [5]));
-    expect(encodeCommand({ type: "uiKey", key: "closePopup" })).toEqual(frame(0x68, [6]));
-  });
-
-  it("encodes PICKER with the mode as s7, −1 = left out", () => {
-    expect(encodeCommand({ type: "picker", show: true, mode: null })).toEqual(frame(0x69, [1, 63]));
-    expect(encodeCommand({ type: "picker", show: false, mode: 3 })).toEqual(frame(0x69, [0, 67]));
-    expect(decodeCommand(frame(0x69, [1, 63]))).toEqual({ type: "picker", show: true, mode: null });
-    expect(decodeCommand(frame(0x69, [1, 66]))).toEqual({ type: "picker", show: true, mode: 2 });
-  });
-
-  it("rejects unknown BROWSE actions and keys", () => {
-    expect(decodeCommand(frame(0x67, [9]))).toBeUndefined();
-    expect(decodeCommand(frame(0x68, [7]))).toBeUndefined();
-  });
-
-  it("carries a folder's file type below −100 through the +8192 bias", () => {
-    const message = { type: "browserNode" as const, ...node({ fileType: -4000, popup: true }) };
-    const decoded = decodeSysex(encodeFlMessage(message));
-    expect(decoded).toEqual(message);
-  });
-
-  it("cuts BROWSER_NODE strings to 40 characters", () => {
-    const message = { type: "browserNode" as const, ...node({ caption: "c".repeat(60) }) };
-    const decoded = decodeSysex(encodeFlMessage(message));
-    expect(decoded?.type === "browserNode" && decoded.caption).toBe("c".repeat(40));
-  });
-
-  it("decodes the flags into FlState", () => {
-    const h = stackHarness();
-    h.fl.apply({ type: "browserNode", ...node({ popup: true, otherFormFocused: true }) });
-    expect(h.fl.browserNode).toMatchObject({
-      caption: "Diva",
-      popup: true,
-      otherFormFocused: true,
-    });
-    const flags = encodeFlMessage({
-      type: "browserNode",
-      ...node({ popup: true, browserFocused: false }),
-    });
-    expect(decodeSysex(flags)).toMatchObject({ popup: true, browserFocused: false });
-  });
-
-  it("reports the missing browser functions in FEATURES", () => {
-    const h = stackHarness();
-    h.features({ browser: true });
-    expect(h.fl.missing).toMatchObject({ browser: true, picker: false });
-  });
-});
-
 describe("BROWSER sources", () => {
   it("has two source tabs on the left screen, display 3 dark", () => {
     const h = open("presets");
@@ -176,16 +101,28 @@ describe("BROWSER sources", () => {
   });
 });
 
+describe("wire format", () => {
+  it("PLUGIN_PICKER has no payload, UI_KEY is one u7", () => {
+    expect([TO_FL.pluginPicker, TO_FL.uiKey]).toEqual([0x67, 0x68]);
+    expect(encodeCommand({ type: "pluginPicker" })).toEqual(frame(0x67, []));
+    expect(encodeCommand({ type: "uiKey", key: "enter" })).toEqual(frame(0x68, [4]));
+  });
+
+  it("rejects unknown keys", () => {
+    expect(decodeCommand(frame(0x68, [6]))).toBeUndefined();
+  });
+});
+
 describe("PLUG-INS = FL's Plugin picker", () => {
   it("display 2 sends pluginPicker and says it is open; pressed again it closes", () => {
     const h = open("presets");
     h.tap("display2");
-    expect(h.sent).toEqual([{ type: "browse", action: "pluginPicker" }]);
+    expect(h.sent).toEqual([{ type: "pluginPicker" }]);
     const { left, right } = draw(h);
     expect(texts(left)).toContain("Picker open");
     expect(texts(right)).toContain("CLOSE");
     h.tap("display2");
-    expect(h.sentOf("browse")).toHaveLength(2);
+    expect(h.sentOf("pluginPicker")).toHaveLength(2);
     expect(texts(draw(h).left).join(" ")).toContain(CLOSED);
     expect(texts(draw(h).right)).not.toContain("CLOSE");
   });
@@ -212,7 +149,7 @@ describe("PLUG-INS = FL's Plugin picker", () => {
     ]);
     h.push();
     expect(h.sentOf("uiKey").at(-1)).toEqual({ type: "uiKey", key: "enter" });
-    expect(h.sentOf("browse")).toEqual([]);
+    expect(h.sentOf("pluginPicker")).toEqual([]);
   });
 
   it("sends nothing from the 4D while the picker is closed", () => {
@@ -254,7 +191,7 @@ describe("PLUG-INS = FL's Plugin picker", () => {
     const h = open();
     h.sent.length = 0;
     h.tap("display8");
-    expect(h.sent).toEqual([{ type: "browse", action: "pluginPicker" }]);
+    expect(h.sent).toEqual([{ type: "pluginPicker" }]);
     expect(texts(draw(h).left).join(" ")).toContain(CLOSED);
     h.tap("display8");
     expect(h.sent).toHaveLength(1);

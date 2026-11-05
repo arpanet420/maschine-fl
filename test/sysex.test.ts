@@ -72,8 +72,8 @@ const fromFl = vectors.filter((v) => v.direction === "fromFl");
 const toFl = vectors.filter((v) => v.direction === "toFl");
 
 describe("shared SysEx vectors", () => {
-  it("has the 101 vectors of the spec", () => {
-    expect(vectors).toHaveLength(101);
+  it("has the 94 vectors of the spec", () => {
+    expect(vectors).toHaveLength(94);
   });
 
   describe.each(fromFl)("FL → mk3d: $name", ({ message, hex }) => {
@@ -310,7 +310,7 @@ describe("main volume and undo state", () => {
   });
 });
 
-describe("the playlist probe: PROBE and RUN_PROBE", () => {
+describe("PROBE", () => {
   it("PROBE is command 17: a string of up to 100 characters", () => {
     expect(FROM_FL.probe).toBe(0x17);
     expect(decodeSysex(frame(0x17, [0x61, 0x62, 0]))).toEqual({ type: "probe", text: "ab" });
@@ -324,12 +324,6 @@ describe("the playlist probe: PROBE and RUN_PROBE", () => {
       text: "",
     });
     expect(decodeSysex(frame(0x17, [0x61, 0x62]))).toBeUndefined(); // no terminator
-  });
-
-  it("RUN_PROBE is command 5C, no payload", () => {
-    expect(TO_FL.runProbe).toBe(0x5c);
-    expect(encodeCommand({ type: "runProbe" })).toEqual(frame(0x5c, []));
-    expect(decodeCommand(frame(0x5c, []))).toEqual({ type: "runProbe" });
   });
 
   it("is logged as a line and leaves FlState alone", () => {

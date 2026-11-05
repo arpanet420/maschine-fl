@@ -60,8 +60,6 @@ export const FROM_FL = {
   features: 0x1d,
   /** The pitch and velocity of one step, the answer to REQUEST_STEP_PARAMS. */
   stepParams: 0x26,
-  /** The focused node of FL's browser, popup and form state (a TRIAL: the plug-in loader). */
-  browserNode: 0x1e,
   plugin: 0x20,
   pluginParams: 0x21,
   paramNames: 0x22,
@@ -100,13 +98,8 @@ export const TO_FL = {
   setMainVolume: 0x54,
   presetStep: 0x55,
   jumpMarker: 0x56,
-  addMarker: 0x57,
   setLoopMode: 0x58,
-  playlistView: 0x59,
   requestMarkers: 0x5a,
-  setSongPos: 0x5b,
-  /** Run the playlist probe (only with MK3D_PROBE=1); FL answers with PROBE lines. */
-  runProbe: 0x5c,
   /** Send PRESETS for the names `offset … offset + 7` (BROWSER scrolls its list). */
   presetWindow: 0x5d,
   /** Load preset `index` by stepping next/prev from the current one. */
@@ -127,12 +120,10 @@ export const TO_FL = {
   strip: 0x65,
   /** Transpose the selected channel's notes of the current pattern by `semitones` (docs/sysex.md, "TRANSPOSE"). */
   transpose: 0x66,
-  /** FL's browser: show it, step through the tree, open a folder, the node menu, preview (TRIAL, docs/sysex.md). */
-  browse: 0x67,
-  /** A plain FL key for the focused window, menu or plugin picker (TRIAL). */
+  /** Open or close FL's Plugin picker (a toggle). */
+  pluginPicker: 0x67,
+  /** A plain FL key for what has the focus: browses FL's Plugin picker. */
   uiKey: 0x68,
-  /** `ui.showPicker(show [, mode])`, FL's plugin picker (TRIAL). */
-  picker: 0x69,
   /** Fire (or release) LIVE scene `block` via `playlist.triggerLiveClip`, or `block` null to stop. */
   triggerLiveClip: 0x6a,
   /** Send STEP_PARAMS for one step (STEP's held step). */
@@ -185,33 +176,9 @@ export const MIXER_FLAGS = { selected: 0x01, muted: 0x02, solo: 0x04, armed: 0x0
 export const FEATURE_MISSING = {
   patternLength: 0x01,
   loop: 0x02,
-  /** Any of the browser functions the plug-in loader trial calls (`ui.navigateBrowser` …). */
-  browser: 0x04,
-  /** `ui.showPicker` */
-  picker: 0x08,
 } as const;
-/** BROWSE `action` (plug-in loader trial): wire value = index. */
-export const BROWSE_ACTIONS = [
-  "show",
-  "next",
-  "prev",
-  "toggle",
-  "menu",
-  "preview",
-  "load",
-  "itemMenu",
-  "pluginPicker",
-] as const;
-/** UI_KEY `key` (plug-in loader trial): wire value = index. */
-export const UI_KEYS = ["up", "down", "left", "right", "enter", "escape", "closePopup"] as const;
-/** BROWSER_NODE strings are cut to this many characters. */
-export const MAX_NODE_TEXT = 40;
-/** BROWSER_NODE `fileType` travels as `fileType + NODE_TYPE_BIAS` in a `u14`. */
-export const NODE_TYPE_BIAS = 8192;
-/** BROWSER_NODE flags. */
-export const NODE_FLAGS = { popup: 0x01, browserFocused: 0x02, otherFormFocused: 0x04 } as const;
-/** PICKER `mode` meaning "leave the second argument out". */
-export const PICKER_NO_MODE = -1;
+/** UI_KEY `key`: wire value = index. */
+export const UI_KEYS = ["up", "down", "left", "right", "enter", "escape"] as const;
 /** Longest pattern the length setter and DOUBLE ask for: 32 bars of 16 steps. */
 export const MAX_PATTERN_LENGTH_STEPS = 512;
 /** The common pattern lengths in steps (1, 2, 4, 8, 16 and 32 bars) the LENGTH knob steps through. */
@@ -267,9 +234,6 @@ export const UI_ACTIONS = [
   "quantizeStarts",
   "saveNew",
 ] as const;
-
-/** PLAYLIST_VIEW `what`: wire value = index. */
-export const PLAYLIST_VIEWS = ["zoom", "scroll"] as const;
 
 /** STRIP `kind`: wire value = index. */
 export const STRIP_KINDS = ["pitch", "mod", "perform"] as const;

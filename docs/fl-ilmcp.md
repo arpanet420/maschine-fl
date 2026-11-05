@@ -1,5 +1,9 @@
 # FL Studio 2026's hidden Python API (`ilmcp` and undocumented functions)
 
+**A research log.** The probe (`MK3D_PROBE`, RUN_PROBE, `_ilmcp`), the browser trial (BROWSE, PICKER, BROWSER_NODE) and the
+setters' PROBE lines below were removed on 2026-11-05 (`docs/review-2026-11-05.md`); they are in git history. The
+findings stand.
+
 Found 2026-10-18 while looking for a way to put a new instrument on an empty pad (PLAN.md, the
 owner's idea list). **Everything here is undocumented and NOT VERIFIED in FL** until the probe has
 run (below); any FL update may change or drop it. Keep every call behind `getattr`/try-except.
@@ -221,8 +225,8 @@ PROBE line `duplicatePatternData(n) -> …; before count/len/grids; after (patte
 opens and closes FL's Plugin picker. With it open, `ui.down/up` move through the plugins, `ui.left/right`
 change the category page and `ui.enter()` adds the highlighted plugin as a **new channel**. FL's hint bar and
 every getter say nothing about the highlighted plugin, so mk3d cannot show its name; the user looks at FL.
-BROWSER's display 2 `PLUG-INS` is exactly this (docs/mapping.md, BROWSER). Dead ends, removed from the UI:
+BROWSER's display 2 `PLUG-INS` is exactly this (docs/mapping.md, BROWSER). Dead ends:
 the FL browser tree (`navigateBrowser` works, but nothing loads a `.fst` into a new channel;
 `selectBrowserMenuItem` and `FPT_ItemMenu` open FL's File menu; Enter replaces the selected channel) and
-`ui.showPicker` (the playlist's picker panel: patterns / channels). The wire codes (BROWSE, UI_KEY, PICKER,
-BROWSER_NODE) stay, the unused actions are only handled by the script.
+`ui.showPicker` (the playlist's picker panel: patterns / channels). The trial code went on 2026-11-05: what stays
+is PLUGIN_PICKER and UI_KEY (docs/sysex.md).

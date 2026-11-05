@@ -112,7 +112,6 @@ describe("SCENE", () => {
     expect(h.stack.top?.page.id).toBe("scene");
     expect(h.light("scene")).toBe("bright");
     expect(h.sentOf("requestMarkers")).toHaveLength(1);
-    expect(h.sentOf("runProbe")).toHaveLength(0); // the probe is the ARRANGER's alone
     h.release("scene");
     expect(h.stack.top).toBeUndefined();
     expect(h.light("scene")).toBe("dim");

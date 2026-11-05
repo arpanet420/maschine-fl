@@ -65,7 +65,6 @@ describe("ARRANGER as the pattern overview", () => {
     expect(h.stack.main).toBe("arranger");
     expect(h.sentOf("showWindow")).toEqual([{ type: "showWindow", window: 2 }]);
     expect(h.sentOf("requestMarkers")).toEqual([]);
-    expect(h.sentOf("runProbe")).toEqual([]);
     expect(lastView(h)).toMatchObject({
       patternGrid: true,
       meters: false,
@@ -84,42 +83,6 @@ describe("ARRANGER as the pattern overview", () => {
     const h = stackHarness({ ui: { visible: [false, true, true, false, false], focused: 2 } });
     h.tap("arranger");
     expect(h.sentOf("showWindow")).toEqual([]);
-  });
-
-  it("sends RUN_PROBE only with MK3D_PROBE=1 (or the option), once per opening", () => {
-    const saved = process.env.MK3D_PROBE;
-    try {
-      delete process.env.MK3D_PROBE;
-      const off = stackHarness();
-      off.tap("arranger");
-      expect(off.sentOf("runProbe")).toEqual([]);
-
-      process.env.MK3D_PROBE = "1";
-      const env = stackHarness();
-      env.tap("arranger");
-      expect(env.sentOf("runProbe")).toHaveLength(1);
-      env.press("scene"); // an overlay's return is not an opening
-      env.release("scene");
-      expect(env.sentOf("runProbe")).toHaveLength(1);
-      env.tap("arranger"); // home
-      env.tap("arranger");
-      expect(env.sentOf("runProbe")).toHaveLength(2);
-
-      const overridden = stackHarness({ arranger: { probe: false } });
-      overridden.tap("arranger");
-      expect(overridden.sentOf("runProbe")).toEqual([]);
-
-      process.env.MK3D_PROBE = "0";
-      const zero = stackHarness();
-      zero.tap("arranger");
-      expect(zero.sentOf("runProbe")).toEqual([]);
-    } finally {
-      if (saved === undefined) delete process.env.MK3D_PROBE;
-      else process.env.MK3D_PROBE = saved;
-    }
-    const forced = stackHarness({ arranger: { probe: true } });
-    forced.tap("arranger");
-    expect(forced.sentOf("runProbe")).toHaveLength(1);
   });
 
   it("has the patternGrid flag in the VIEW only while ARRANGER is the main page", () => {
