@@ -47,6 +47,8 @@ import { GRID_RECT, drawFooter, drawPadGrid, windowText, type PadCell } from "./
 import { realTimers, type RepeatTimers } from "./repeatScheduler.js";
 
 const BANK = PAD_COUNT;
+const NOT_IN_THIS_FL = "Not available in this FL version";
+const TOO_HIGH_TO_RESIZE = "Patterns from 128 up cannot be resized";
 const PREVIOUS = 6;
 const NEXT = 7;
 /** Display 3, 4 and 5 (0-based 2, 3 and 4) in the PATTERN overlay. */
@@ -104,6 +106,16 @@ const lengthGauge = (length: number): number => {
 
 const patternName = (fl: FlState, index: number): string =>
   fl.patterns.get(index)?.name || `Pattern ${index + 1}`;
+
+/** Why the current pattern can't be doubled, at `length` steps; undefined when it can. */
+export function doubleRefusal(fl: FlState, length = fl.pattern.length): string | undefined {
+  const { number } = fl.pattern;
+  if (fl.missing.patternLength) return NOT_IN_THIS_FL;
+  if (number < 1) return "No pattern";
+  if (number > MAX_LENGTH_PATTERN) return TOO_HIGH_TO_RESIZE;
+  if (length * 2 > MAX_PATTERN_LENGTH_STEPS) return `${MAX_PATTERN_LENGTH_STEPS} steps is the most`;
+  return undefined;
+}
 
 export abstract class PatternBankPage implements Mode {
   abstract readonly name: ModeName;
@@ -445,7 +457,7 @@ export class PatternOverlay extends PatternBankPage {
 
   /** DOUBLE does nothing without a pattern the length of which can be set, or at the longest length. */
   private canDouble(mc: ModeContext): boolean {
-    return this.canResize(mc) && this.length(mc) * 2 <= MAX_PATTERN_LENGTH_STEPS;
+    return doubleRefusal(mc.fl, this.length(mc)) === undefined;
   }
 
   protected disabledLeftTabs(mc: ModeContext): readonly number[] {
@@ -581,8 +593,8 @@ export class PatternOverlay extends PatternBankPage {
   }
 
   protected hint(mc: ModeContext): string {
-    if (mc.fl.missing.patternLength) return "Not available in this FL version";
-    if (mc.fl.pattern.number > MAX_LENGTH_PATTERN) return "Patterns from 128 up cannot be resized";
+    if (mc.fl.missing.patternLength) return NOT_IN_THIS_FL;
+    if (mc.fl.pattern.number > MAX_LENGTH_PATTERN) return TOO_HIGH_TO_RESIZE;
     return "";
   }
 }

@@ -766,13 +766,30 @@ describe("ERASE", () => {
 });
 
 describe("SHIFT + DUPLICATE", () => {
-  it("clones the current pattern and opens no page", () => {
-    const { stack, state, press, release, sent } = harness({ pattern: 2 });
+  it("doubles the current pattern, opens no page and shows the card", () => {
+    const { stack, state, press, release, sent, mc } = harness({ pattern: 2, length: 16 });
     state.shift = true;
     expect(press("duplicate")).toBe(true);
     release("duplicate");
-    expect(sent).toEqual([{ type: "clonePattern", number: 2 }]);
+    expect(sent).toEqual([{ type: "doublePattern", pattern: 2 }]);
     expect(stack.top).toBeUndefined();
+    expect(stack.quickEdit.actionReadout(mc)).toMatchObject({
+      title: "DOUBLE",
+      detail: "16 -> 32 steps",
+    });
+  });
+
+  it("says why and sends nothing where FL can't double", () => {
+    for (const [options, why] of [
+      [{ pattern: 1, length: 512 }, "512 steps is the most"],
+      [{ pattern: 128, patternCount: 130 }, "Patterns from 128 up cannot be resized"],
+    ] as const) {
+      const { stack, state, press, sent, mc } = harness(options);
+      state.shift = true;
+      press("duplicate");
+      expect(sent).toEqual([]);
+      expect(stack.quickEdit.actionReadout(mc)).toMatchObject({ title: "DOUBLE", detail: why });
+    }
   });
 
   it("without SHIFT it opens the DUPLICATE overlay", () => {

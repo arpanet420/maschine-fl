@@ -23,7 +23,7 @@
 // - ERASE is a hold modifier, not a page: the stack tracks it (`mc.erase` for the pages). A pad no
 //   page takes while it is held never plays: in PAD MODE it clears the channel's steps in the
 //   current pattern, in KEYBOARD and CHORDS it does nothing. The STEP page clears the step itself.
-// - SHIFT + DUPLICATE is an action, not a page: clone the current pattern (Maschine's "Double").
+// - SHIFT + DUPLICATE is an action, not a page: double the current pattern, as Maschine does.
 // - VOLUME, SWING and TEMPO are the quick edit (src/modes/quickEdit.ts): a radio group that turns the
 //   4D encoder into an editor for every page; the stack gives it the turns, the LEDs and the
 //   read-out drawn over the page. Push and tilt still go to the pages.
@@ -59,6 +59,7 @@ import { bringUpWindow } from "./flWindows.js";
 import { groupBank, setBankLeds } from "./channelBank.js";
 import type { Mode, ModeContext, PageName } from "./mode.js";
 import { isPadMode, type PadMode, type PadState } from "./padState.js";
+import { doubleRefusal } from "./patternOverlay.js";
 import { QuickEdit, quickModeOf, type HeldTarget } from "./quickEdit.js";
 import { realTimers, type RepeatTimers } from "./repeatScheduler.js";
 import { isStripMode, NO_STRIP_MODE, stripModeOf, type StripControl } from "../strip.js";
@@ -524,14 +525,13 @@ export class PageStack {
   }
 
   /**
-   * SHIFT + DUPLICATE: clone the current pattern, no page (doubling is PATTERN's DOUBLE). SHIFT + FILE:
-   * save the project, no page. True = handled.
+   * SHIFT + DUPLICATE: double the current pattern, no page (as PATTERN's DOUBLE). SHIFT + FILE: save the
+   * project, no page. True = handled.
    */
   private shiftAction(button: ButtonId, mc: ModeContext): boolean {
     if (!mc.shift || !mc.fl.connected) return false;
     if (button === "duplicate") {
-      const number = mc.fl.pattern.number;
-      if (number > 0) mc.send({ type: "clonePattern", number });
+      this.doublePattern(mc);
       return true;
     }
     if (button === "file") {
@@ -541,6 +541,20 @@ export class PageStack {
       return true;
     }
     return false;
+  }
+
+  private doublePattern(mc: ModeContext): void {
+    const source = "SHIFT + DUPLICATE";
+    const { number, length } = mc.fl.pattern;
+    const refusal = doubleRefusal(mc.fl);
+    if (refusal) {
+      this.quickEdit.flash({ title: "DOUBLE", detail: refusal, source }, mc);
+      return;
+    }
+    mc.send({ type: "doublePattern", pattern: number });
+    this.log(`→ FL double pattern ${number}`);
+    const detail = `${length} -> ${length * 2} steps`;
+    this.quickEdit.flash({ title: "DOUBLE", detail, source }, mc);
   }
 
   private setPadMode(mode: PadMode, mc: ModeContext): void {

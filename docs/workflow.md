@@ -84,7 +84,7 @@ it; "Latch" = press to enter, press again to leave.
 | PATTERN                               | Patterns                        | **Built.** Pads = patterns 1–16 (banks with `<<` `>>`), press = select; `DOUBLE` (twice the length, every note copied, piano roll notes too), `DUPLICATE` (clone the current one) and `CREATE` (new empty); a free pad (`+`) creates its pattern; knob 4 `LENGTH` (16 32 64 … 512 steps a detent, SHIFT = 1 step; `setPatternLength`) and knob 1 `COLOR` (one page); no `DELETE` (FL has no API for it) | Hold  |
 | EVENTS                                | Note editor                     | **hard**: FL's MIDI scripts can't edit piano roll notes (piano roll scripts are a separate system). Not mapped yet                                            | Hold  |
 | VARIATION (Navigate)                  | Humanize/random / view switcher | VARIATION = NAVIGATE, press to open and press to close (**built**): show/focus FL's windows (mixer, rack, playlist, piano roll, browser, plug-in)           | Latch |
-| DUPLICATE (Double)                    | Copy pad to pad                 | **Built.** Hold + pad = clone that pattern (`patterns.clonePattern`; pin tab `DUPLICATE`). SHIFT + DUPLICATE = clone the current pattern, no page. Channels can't be cloned through the API | Hold  |
+| DUPLICATE (Double)                    | Copy pad to pad                 | **Built.** Hold + pad = clone that pattern (`patterns.clonePattern`; pin tab `DUPLICATE`). SHIFT + DUPLICATE = double the current pattern, no page. Channels can't be cloned through the API | Hold  |
 | SELECT                                | Select sound/group              | Hold + pad = select that channel; group button = bank                                                                                                         | Hold  |
 | SOLO                                  | Hold + pad = solo               | Hold + pad = solo that channel; on the Mixer page, hold + display button = solo that track                                                                    | Hold  |
 | MUTE (Choke)                          | Hold + pad = mute               | Hold + pad = mute that channel; on the Mixer page, hold + display button = mute that track                                                                    | Hold  |
@@ -154,7 +154,7 @@ it; "Latch" = press to enter, press again to leave.
 5. **Group vs sound levels**: FL has channels and mixer tracks but no groups; banks of 16
    channels stand in for groups.
 6. **Pattern delete.** FL's API has no delete-pattern call, so PATTERN has no `DELETE`. SHIFT +
-   DUPLICATE ("Double") only clones the pattern; PATTERN's own `DOUBLE` tab doubles the length and copies every
+   DUPLICATE ("Double") and PATTERN's `DOUBLE` tab double the length and copy every
    note, piano roll notes too (`patterns.duplicatePatternData`). The pattern length is `setPatternLength` (PATTERN's knob 4,
    docs/fl-ilmcp.md), not a hold-REC page.
 7. **SHIFT + pad actions without an FL call**: step undo/redo (pads 3, 4), nudge ◀ ▶ (7, 8) and clear

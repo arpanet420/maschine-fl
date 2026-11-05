@@ -1,7 +1,7 @@
 // DUPLICATE overlay (hold DUPLICATE; display button 1 is its pin tab). Pads 1–16 are the patterns of
 // the current bank, like the PATTERN overlay; a pad press clones that pattern (CLONE_PATTERN).
-// Display 7 and 8 (`<<` `>>`) page between the banks. SHIFT + DUPLICATE ("Double" in Maschine)
-// clones the current pattern without a page: the page stack does that. Doubling is PATTERN's DOUBLE.
+// Display 7 and 8 (`<<` `>>`) page between the banks. SHIFT + DUPLICATE doubles the current pattern
+// without a page, as in Maschine: the page stack does that.
 import { PatternBankPage } from "./patternOverlay.js";
 import type { ModeContext } from "./mode.js";
 

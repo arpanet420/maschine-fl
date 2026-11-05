@@ -83,8 +83,9 @@ is not built yet logs `page "<name>" is not built yet` once per press and change
   CHORDS it does nothing; the STEP page clears the step itself; an overlay that uses the pads (MUTE, PATTERN, …)
   still gets them. The pad's move and release are swallowed, and a note started before ERASE was
   pressed still ends.
-- **SHIFT + DUPLICATE** ("Double"): clones the current pattern (CLONE_PATTERN) and opens no page.
-  Doubling a pattern is `DOUBLE` on the PATTERN overlay.
+- **SHIFT + DUPLICATE** ("Double", as in Maschine): doubles the current pattern (DOUBLE_PATTERN, as `DOUBLE` on
+  the PATTERN overlay) and opens no page; the read-out card says `DOUBLE` and `16 -> 32 steps`, or why it can't.
+  Cloning a pattern is hold DUPLICATE + pad, or `DUPLICATE` on the PATTERN overlay.
 - **SHIFT + FILE**: saves the project (UI action `save`, FPT_Save) and opens no page; the read-out card
   says `SAVED` (small line `SHIFT + FILE`).
 - **FIXED VEL**: toggles fixed velocity (see "SETTINGS and FIXED VEL"); bright while on, dim while
@@ -375,7 +376,7 @@ Code: `src/modes/duplicateOverlay.ts`, built on the PATTERN overlay's bank (`Pat
   (`<<` `>>`) page between the banks. Pad LEDs and the grid are the PATTERN overlay's.
 - Left screen: pin tab `DUPLICATE`, the current pattern and its length (a name only when it isn't FL's
   default, which would repeat the number). Display 2–6 do nothing.
-- SHIFT + DUPLICATE clones the current pattern without the page (see "Pages").
+- SHIFT + DUPLICATE doubles the current pattern without the page (see "Pages").
 
 ## Mute overlay (hold MUTE)
 
@@ -976,7 +977,7 @@ clips of FL's performance mode are on the LIVE overlay (below).
 - **Pads 1–16** are the patterns of the pattern bank (colors and LEDs as PATTERN's pads: current bright,
   others dim, past the last pattern off; the bank follows the current pattern). A press selects the pattern
   (SELECT_PATTERN), and the grid then shows it. ERASE + pad does nothing (FL has no pattern delete).
-  DUPLICATE (held) and SHIFT + DUPLICATE clone the pattern as on every page, so ARRANGER does not repeat
+  DUPLICATE (held) clones a pattern and SHIFT + DUPLICATE doubles the current one as on every page, so ARRANGER does not repeat
   them. Moves and releases of a pad are swallowed: no pad plays a note.
 - **SCENE** works over this page as an overlay (below); the page's VIEW is sent again when it closes.
 - RUN_PROBE (the playlist probe) is no longer sent when ARRANGER opens; only with `MK3D_PROBE=1` in the
