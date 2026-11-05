@@ -6,8 +6,9 @@ Read CLAUDE.md, then PLAN.md (the master plan with checkpoint results), then thi
 
 - Every page in [mapping.md](mapping.md) is built except SAMPLING, EVENTS and MACRO. The README's "Status"
   section says what has been confirmed on the MK3 and what hasn't.
-- Bugs found on the hardware are in [bugs.md](bugs.md). The latest project review, with what it fixed, what is
-  left and the questions for the owner, is [review-2026-11-05.md](review-2026-11-05.md).
+- Bugs found on the hardware are in [bugs.md](bugs.md). The latest project review is
+  [review-2026-11-05.md](review-2026-11-05.md): everything in it is done, but none of it has run on the MK3 or in FL
+  yet, and it ends with the owner's test list. Take that first.
 - The Windows port has begun and waits for FL Studio and loopMIDI on the PC ([windows.md](windows.md)).
 - Protocol v2 between mk3d and the FL script: [sysex.md](sysex.md), with shared byte vectors in
   `test/fixtures/sysex-vectors.json` (TS and Python both test against them).

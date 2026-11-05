@@ -33,7 +33,7 @@ The buttons work as they do in Maschine, mapped to the nearest thing in FL Studi
 | **ARRANGER**                     | The current pattern as channels and steps, with the play head                                                                                                           |
 | **PATTERN** (hold)               | Pick, create, duplicate and double patterns, with the notes copied; length (16, 32, 64 …) and colour on the knobs                                                       |
 | **STEP**                         | Step sequencer for the selected channel, 16 steps per page. Hold a step to edit its velocity and pitch                                                                  |
-| **PAD MODE / KEYBOARD / CHORDS** | Play channels, a scale or chords (harmonizer and chord sets). KEYBOARD keeps its octave per channel. A pad lights up while FL plays its channel (PAD MODE) or its note (KEYBOARD) |
+| **PAD MODE / KEYBOARD / CHORDS** | Play channels, a scale or chords (harmonizer and chord sets). KEYBOARD keeps its octave per channel. A pad lights up while FL plays its channel (PAD MODE), its note (KEYBOARD) or its chord's lowest note (CHORDS) |
 | **NOTE REPEAT**                  | Straight, dotted and triplet rates, LOCK, HOLD and GATE RESET. In KEYBOARD and CHORDS it can also arpeggiate (types, octaves, presets, rhythms, inversions, key range)  |
 | **NAVIGATE** (VARIATION)         | Press to open: show or hide FL's Playlist, Piano roll, Channel rack, Mixer, Browser and plug-in window from the display buttons                                         |
 | **GRID** (SHIFT + FOLLOW)        | FL's snap on the pads, and snap on or off on display 2                                                                                                                  |
@@ -91,6 +91,7 @@ still takes the computer (see [Limits](#limits)).
 - NOTE REPEAT's LOCK and HOLD, holding a step to edit it, and touching a knob twice to reset it.
 - The LOOP overlay (holding SHIFT + RESTART to move the loop's ends), and touch strip PERFORM picking the
   plug-in's cutoff by name.
+- Everything from the [project review of 2026-11-05](docs/review-2026-11-05.md), which ends with the test list.
 
 **Known problems**
 

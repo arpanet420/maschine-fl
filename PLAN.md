@@ -505,13 +505,11 @@ feedback on the feel before the next mode is started.
 
 ### Phase 7 – Polish and operation
 
-- [ ] **Project review 2026-11-05** (`docs/review-2026-11-05.md`): what was fixed in it, what is left, and the
-      questions for the owner.
-- [ ] **Project review 2026-10-21** (`docs/review-2026-10-21.md`): prioritized findings and lessons;
-      section A (LIVE/ACTIVITY polling cost, the setup.md reload instruction, committing) comes
-      before the next hardware test.
-- [ ] Config file (`~/.config/mk3d/config.json`): velocity curve, pad note mapping, threshold values,
-      color theme.
+- [ ] **Project review 2026-11-05** (`docs/review-2026-11-05.md`): all done except its **test list**, which has never
+      run on the MK3 or in FL, and two questions for the owner (other meters, a licence).
+- [x] **Project review 2026-10-21** (`docs/review-2026-10-21.md`): closed; the 2026-11-05 review says what came of each item.
+- Dropped for now: a config file (`~/.config/mk3d/config.json`). SETTINGS and `pages.json` keep the velocity curve and
+  the pad settings, and nobody has asked for pad note mapping, thresholds or a theme.
 - [x] Note Repeat (hold overlay, see docs/mapping.md; synced to FL's tempo; the daemon can keep its own clock from BPM or
       use MIDI clock from FL if that is more stable).
 - [x] FL's performance mode as Maschine scenes: pads start clips per track (the API reports clips
@@ -582,7 +580,7 @@ feedback on the feel before the next mode is started.
       (`test/cli.test.ts`), `npm run build`. NOT verified: the Homebrew formula (only `ruby -c`), the service
       against real launchd and the MK3, possible Input Monitoring permission for `node` — the owner will try.
 - [x] Start screen and clear status on the screen: "Waiting for FL Studio…" when no HELLO has arrived
-      (`drawWaiting` in `src/main.ts`).
+      (`drawWaiting` in `src/modes/draw.ts`).
 - [ ] Robustness: FL is restarted, the device is unplugged, macOS sleeps and wakes.
 - [x] README with installation from scratch (Homebrew first, then from a clone; `docs/install.md`).
       The formula is untested, see above.
