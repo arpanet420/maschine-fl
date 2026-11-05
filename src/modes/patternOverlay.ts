@@ -271,7 +271,10 @@ export abstract class PatternBankPage implements Mode {
     const top = knobs ? TAB_HEIGHT + 10 : TAB_HEIGHT + 22;
     const size = knobs ? 54 : 72;
     ctx.fillStyle = flColorToCss(this.displayColor?.(mc) ?? pattern.color);
-    ctx.fillRect(14, top, 6, knobs ? 112 : 138);
+    // FL's default name says what the big number says.
+    const named = pattern.name !== "" && pattern.name !== `Pattern ${pattern.number}`;
+    const line = knobs ? 32 : 38;
+    ctx.fillRect(14, top, 6, (knobs ? 112 : 138) - (named ? 0 : line));
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
     ctx.fillStyle = theme.dimText;
@@ -280,21 +283,20 @@ export abstract class PatternBankPage implements Mode {
     ctx.fillStyle = theme.accent;
     ctx.font = font(size, "bold");
     ctx.fillText(String(pattern.number), 32, top + (knobs ? 10 : 14));
-    ctx.fillStyle = theme.text;
-    ctx.font = font(knobs ? 26 : 30, "bold");
-    ctx.fillText(
-      fitText(ctx, pattern.name || `Pattern ${pattern.number}`, FULL.width - 50),
-      34,
-      top + (knobs ? 66 : 92),
-    );
+    let y = top + (knobs ? 66 : 92);
+    if (named) {
+      ctx.fillStyle = theme.text;
+      ctx.font = font(knobs ? 26 : 30, "bold");
+      ctx.fillText(fitText(ctx, pattern.name, FULL.width - 50), 34, y);
+      y += line;
+    }
     ctx.fillStyle = theme.dimText;
     ctx.font = font(knobs ? 15 : 17);
-    ctx.fillText(`${pattern.length} steps`, 34, top + (knobs ? 98 : 130));
+    ctx.fillText(`${pattern.length} steps`, 34, y);
     const hint = this.hint?.(mc);
     if (hint) {
       ctx.fillStyle = theme.accent;
-      ctx.font = font(knobs ? 15 : 17);
-      ctx.fillText(fitText(ctx, hint, FULL.width - 50), 34, top + (knobs ? 120 : 160));
+      ctx.fillText(fitText(ctx, hint, FULL.width - 50), 34, y + (knobs ? 22 : 30));
     }
     if (knobs) drawKnobRow(ctx, KNOB_ROW, knobs);
   }

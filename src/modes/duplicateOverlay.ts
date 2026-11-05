@@ -13,8 +13,4 @@ export class DuplicateOverlay extends PatternBankPage {
     this.followNewPattern(mc);
     mc.send({ type: "clonePattern", number });
   }
-
-  protected hint(): string {
-    return "press a pad to duplicate";
-  }
 }

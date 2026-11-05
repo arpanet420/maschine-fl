@@ -4,12 +4,11 @@
 // history, the same actions as SHIFT + pad 1 and 2). Each press shows the read-out card the SHIFT +
 // pad actions show.
 //
-// Left screen: FL's undo state (position / count, FL's hint) and the last action done here. Right
-// screen: the undo hint, big.
+// Right screen, under UNDO and REDO: FL's undo state (position / count, FL's hint).
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import type { HwEvent } from "../hw/events.js";
 import type { LedState } from "../hw/leds.js";
-import { TAB_HEIGHT, clear, drawTabs, fitText, font, theme } from "../render/widgets.js";
+import { TAB_HEIGHT, clear, drawTabs, font, theme } from "../render/widgets.js";
 import { DISPLAY_BUTTONS } from "./channelPadPage.js";
 import { FULL, drawWrapped } from "./draw.js";
 import type { Mode, ModeContext } from "./mode.js";
@@ -39,8 +38,6 @@ const TABS = { ...FULL, height: TAB_HEIGHT };
 
 export class FilePage implements Mode {
   readonly name = "file";
-  /** The last action done on this page (empty = none yet). */
-  private last = "";
 
   enter(): void {
     // The undo state is always reported (UNDO_STATE); nothing to ask FL for.
@@ -57,7 +54,6 @@ export class FilePage implements Mode {
 
   private run(action: FileAction, mc: ModeContext): void {
     mc.send({ type: "ui", action });
-    this.last = TITLE[action];
     const flash: ActionFlash = { title: TITLE[action], detail: "", source: "FILE" };
     if (action === "undo" || action === "redo") flash.undo = true;
     mc.reportAction?.(flash, `→ FL ${LOG[action]}`);
@@ -69,38 +65,18 @@ export class FilePage implements Mode {
 
     clear(left, FULL);
     drawTabs(left, TABS, { tabs: ["FILE", "SAVE", "NEW VER"], active: [0] });
-    left.textAlign = "left";
-    left.textBaseline = "top";
-    left.fillStyle = theme.dimText;
-    left.font = font(15);
-    left.fillText("Undo history", 24, TAB_HEIGHT + 14);
-    left.fillStyle = theme.accent;
-    left.font = font(46, "bold");
-    left.fillText(undo.count > 0 ? `${undo.position} / ${undo.count}` : "–", 22, TAB_HEIGHT + 34);
-    left.fillStyle = theme.text;
-    left.font = font(18);
-    left.fillText(
-      fitText(left, undo.hint || "Nothing to undo", FULL.width - 48),
-      24,
-      TAB_HEIGHT + 100,
-    );
-    left.fillStyle = theme.dimText;
-    left.font = font(15);
-    left.fillText("Last here", 24, TAB_HEIGHT + 150);
-    left.fillStyle = this.last ? theme.text : theme.dimText;
-    left.font = font(24, "bold");
-    left.fillText(this.last || "Nothing yet", 24, TAB_HEIGHT + 172);
 
     clear(right, FULL);
     drawTabs(right, TABS, { tabs: ["UNDO", "REDO"] });
     right.textAlign = "left";
     right.textBaseline = "top";
-    right.fillStyle = theme.dimText;
-    right.font = font(15);
-    right.fillText("Undo hint", 24, TAB_HEIGHT + 14);
-    right.fillStyle = undo.hint ? theme.text : theme.dimText;
-    right.font = font(34, "bold");
-    drawWrapped(right, undo.hint || "–", 24, TAB_HEIGHT + 44, FULL.width - 48, 42, 4);
+    right.fillStyle = theme.accent;
+    right.font = font(46, "bold");
+    right.fillText(undo.count > 0 ? `${undo.position} / ${undo.count}` : "–", 22, TAB_HEIGHT + 24);
+    if (!undo.hint) return;
+    right.fillStyle = theme.text;
+    right.font = font(26, "bold");
+    drawWrapped(right, undo.hint, 24, TAB_HEIGHT + 92, FULL.width - 48, 34, 3);
   }
 
   leds(leds: LedState): void {

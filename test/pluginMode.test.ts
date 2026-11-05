@@ -470,7 +470,8 @@ describe("PluginMode render", () => {
     expect(texts.right).toEqual(expect.arrayContaining(["5 dB", "8 dB"]));
     expect(texts.left).toEqual(expect.arrayContaining(["0 dB", "4 dB"]));
     expect(texts.left).toEqual(expect.arrayContaining(["Diva", "Lead", "page 1 / 11"]));
-    expect(texts.right).toContain("main"); // the page name in the middle
+    expect(texts.left).toContain("main"); // the tab says which page; the middle doesn't repeat it
+    expect(texts.right).not.toContain("main");
   });
 
   it("shows the bank of the current page", () => {

@@ -19,9 +19,9 @@ import type { HwEvent } from "../hw/events.js";
 import { PAD_COUNT } from "../hw/ids.js";
 import type { LedState } from "../hw/leds.js";
 import { LED_OFF, type LedVariant } from "../hw/palette.js";
-import { TAB_HEIGHT, clear, drawTabs, font, theme } from "../render/widgets.js";
+import { TAB_HEIGHT, clear, drawTabs } from "../render/widgets.js";
 import { DISPLAY_BUTTONS } from "./channelPadPage.js";
-import { FULL, drawWrapped } from "./draw.js";
+import { FULL } from "./draw.js";
 import { flColorToCss, flColorToPalette } from "./format.js";
 import type { Mode, ModeContext, ModeName } from "./mode.js";
 import { drawPadGrid, type PadCell } from "./padGrid.js";
@@ -39,8 +39,6 @@ const AT_MARKER = 1e-3;
 export const MARKER_COLORS: readonly number[] = [
   0xe0707a, 0xfb9244, 0xeec54e, 0x4ae4a8, 0x5aa9e6, 0xa678de,
 ];
-
-export const NO_MARKERS_TEXT = "No markers";
 
 // ── Markers and the song position ───────────────────────────────────────────────
 
@@ -116,15 +114,6 @@ export function drawMarkerGrid(
     });
   }
   drawPadGrid(ctx, rect, cells);
-}
-
-/** The notice that stands where the grid would be, without markers. */
-export function drawNoMarkers(ctx: SKRSContext2D, rect: Rect): void {
-  ctx.fillStyle = theme.dimText;
-  ctx.font = font(20);
-  ctx.textAlign = "left";
-  ctx.textBaseline = "top";
-  drawWrapped(ctx, NO_MARKERS_TEXT, rect.x + 20, rect.y + 20, rect.width - 40, 28, 4);
 }
 
 // ── The shared page ────────────────────────────────────────────────────────

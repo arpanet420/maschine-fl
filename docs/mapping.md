@@ -373,8 +373,8 @@ Code: `src/modes/duplicateOverlay.ts`, built on the PATTERN overlay's bank (`Pat
 - Pads 1–16 are the patterns of the current bank (VIEW `patternOffset`, the bank of the current
   pattern when it opens); a pad press clones that pattern (CLONE_PATTERN, 1-based). Display 7 and 8
   (`<<` `>>`) page between the banks. Pad LEDs and the grid are the PATTERN overlay's.
-- Left screen: pin tab `DUPLICATE`, the current pattern, its length and the hint
-  `press a pad to duplicate`. Display 2–6 do nothing.
+- Left screen: pin tab `DUPLICATE`, the current pattern and its length (a name only when it isn't FL's
+  default, which would repeat the number). Display 2–6 do nothing.
 - SHIFT + DUPLICATE clones the current pattern without the page (see "Pages").
 
 ## Mute overlay (hold MUTE)
@@ -436,8 +436,7 @@ overlay, so nothing repeats there. GROUP A–H still pick the bank.
   - A tempo change moves the next slot without restarting the grid. One timer is set to the next due slot or note
   off (absolute times from `performance.now()`); a slot more than half an interval late is skipped,
   never played in a burst. Before each on, a note still sounding is ended.
-- **Screens**: left, tabs `NOTE RPT` `LOCK` `HOLD` `GATE RESET`, `Note Repeat`, the rate big, the tempo
-  and whether the grid is FL's or free, and Rate / Unit / Gate / Swing under knobs 1–4; right, the note
+- **Screens**: left, tabs `NOTE RPT` `LOCK` `HOLD` `GATE RESET`, the rate big, and Rate / Unit / Gate / Swing under knobs 1–4; right, the note
   values on display 5–8 and two beats of repeats (start and length of each note, odd repeats mint).
 - **`MK3D_REPEAT_LOG=1`** logs every slot that plays as `[repeat] n gap late beat reading`: the time
   since the slot before, how late the timer was, the grid position and how far the last SONG_POS was
@@ -457,7 +456,7 @@ button 1). PAD MODE stays Note Repeat. If the pad mode changes while the overlay
 one of two knob pages. Software only: no FL script change, nothing new to the MK3.
 
 - **It starts as Note Repeat**: the first Type, `Repeat`, plays every held note together on each slot,
-  without Octaves. The pin tab is then `NOTE RPT` and the heading `Note Repeat`. Knob 1 and the presets
+  without Octaves. The pin tab is then `NOTE RPT`. Knob 1 and the presets
   reach the arpeggio Types (pin tab `ARP`). A saved state without `typeVersion` always holds the old
   default Up, so its Type is not restored (once).
 - **What plays**: the notes of the held pads, one at a time, on the shared repeat grid (tempo-locked,
@@ -496,9 +495,9 @@ one of two knob pages. Software only: no FL script change, nothing new to the MK
   1/8, 2 oct, 60 %), `RANDOM 16T` (Random, 1/16T, 2 oct, 40 %): they set Type, Rate, Octaves and
   Gate at once (Swing stays); bright while the current settings equal the preset.
 - **Screens**: left, tabs `ARP` (`NOTE RPT` on Repeat) `LOCK` `HOLD` `GATE RESET`,
-  `Arpeggiator`, `Up · 1/16` big (`Note Repeat` and `1/16` on Repeat, Octaves shows `–`), the tempo line and Type / Rate / Unit / Octaves under knobs 1–4.
-  Right, the preset tabs, `Sequence`: one round as note names (`C3 D#3 G3 ...`, up to 3 rows, then
-  `+n more`) with the step that played last highlighted (empty: `Hold keys to arpeggiate`, `Hold keys to repeat` on Repeat), and
+  `Up · 1/16` big (`1/16` on Repeat, Octaves shows `–`) and Type / Rate / Unit / Octaves under knobs 1–4.
+  Right, the preset tabs, one round as note names (`C3 D#3 G3 ...`, up to 3 rows, then
+  `+n more`) with the step that played last highlighted (nothing while no key is held), and
   Gate / Swing / Sequence / Dynamic under knobs 5–8. Page 2 keeps the tabs and the sequence.
 - **LEDs**: the NOTE REPEAT button bright while open or locked; display 1 bright when pinned; display 2
   and 3 bright when on, dim otherwise; display 4 dim; display 5–8 the matching preset bright; the arrow
@@ -595,7 +594,8 @@ knob labels drop that prefix. Without a prefix in common the knob shows its full
 Left screen (display buttons 1–4 above, knobs 1–4 below):
 
 - Tabs: the names of pages 1–4 of the current bank of 8 pages; the current page is lit.
-- Middle: the plug-in's name big, the channel's name in its color and `page x / y`.
+- Middle: the plug-in's name big, the channel's name in its color, and `page x / y` only with more pages than
+  the 8 tabs show (`No parameters` without any).
 - Bottom: knobs 1–4 of the current page: label, arc and FL's value text.
 
 Right screen (display buttons 5–8 above, knobs 5–8 below):
@@ -776,7 +776,7 @@ right are lit where there is a tile to go to. Pads go to the page underneath; th
 
 - LEDs (from UI_STATE): bright = focused, dim = shown, off = hidden; PLUGIN bright while a plug-in
   window has the focus, dim with a selected channel. VARIATION bright while open.
-- Left screen: tabs `NAVIGATE` `PLAYLIST` `PIANO` `RACK`; the focused window in the first column, a tile
+- Left screen: tabs `NAVIGATE` `PLAYLIST` `PIANO` `RACK`; the first column empty, a tile
   with an icon of each of the first three windows under its button, drawn in the manner of FL's toolbar.
   Right screen: tabs `MIXER` `BROWSER` `PLUGIN` and their tiles. Each tile says `focused` (orange outline),
   `shown` or `hidden` (dark).
@@ -814,7 +814,8 @@ steps (16th notes, 4 beats a bar) from bar 1 and sent as ticks (`fl.ppq` ticks a
   sets the loop to that marker's section (up to the next marker, four bars for the last one; none
   for a marker whose time is unknown). The pad of the looped marker is bright, the others dim.
 - Left screen: pin tab `LOOP`, `ON`/`OFF`, `CLEAR`; the range big (`bar 5 – bar 9`, `5.3` for a
-  position off the bar line), the length (`4 bars`), what the 4D turn moves, the knob row. Right
+  position off the bar line), what the 4D turn moves in color (orange while the loop is on, white while
+  it is off, the other boundary dim), the knob row. Right
   screen: the marker grid with the looped section outlined in mint, or without markers a bar ruler
   (16 bars or more from the loop's start, the loop filled in orange).
 - FL without the functions (FEATURES): the page says `Not available in this FL version` and nothing
@@ -854,12 +855,10 @@ Plugin picker** (Generators and Effects, category tabs at the bottom; **verified
   (one per detent, at most ~15 per second), **4D tilt** up / down = up / down and left / right = left / right
   (the category page), **4D push** = UI_KEY enter, which adds the highlighted plugin as a **new channel**;
   display 8 `CLOSE` = BROWSE 8 again. FL gives nothing about the highlighted plugin, so mk3d cannot show its
-  name: the user looks at FL's screen. After the push mk3d assumes FL closed the picker (`pickerOpen` off),
+  name: the user looks at FL's screen, and the left screen only says `Picker open` or `Picker closed`. After the push mk3d assumes FL closed the picker (`pickerOpen` off),
   goes back to `PRESETS` (the new channel is FL's selected one, so the list follows it) and, when FL's
   channel count grows within ~3 s, shows the read-out card `ADDED` / the new channel's name.
-  Left screen: `PLUG-IN PICKER` and the help (`Turn 4D: browse`, `Tilt 4D < >: category`, `Push 4D: add as new
-  channel`, `Shown in FL Studio`); closed: `PUSH PLUG-INS (display 2) TO OPEN FL'S PLUGIN PICKER`. Right
-  screen: tab `CLOSE` on display 8, the selected channel and the channel count.
+  Right screen: tab `CLOSE` on display 8.
 - Leaving the page (or going back to `PRESETS`) while the picker is open sends UI_KEY escape (closes it
   without adding anything). Nothing else changes in FL on leaving.
 
@@ -887,9 +886,8 @@ preset.
   names). The cursor starts on the loaded preset and goes back to it when the channel, plugin or bank
   changes.
 - Left screen: the plugin and channel (`Sampler · Channel 3`), `LOADED` small and the loaded preset's
-  name big in orange, `18 / 128` under it. When the cursor is elsewhere: `PUSH 4D TO LOAD` and the
-  cursor's name and number. When the current preset is unknown: `–` and `Current preset unknown —
-  PREV/NEXT steps from FL's current one` (then the cursor can still browse).
+  name big in orange, `18 / 128` under it. When the current preset is unknown: `–` (the cursor can still
+  browse, and `PREV` and `NEXT` step from FL's current one).
 - Right screen: tabs `PREV` `NEXT` over display 5 and 6 and `LOAD` over display 8; 7 rows (`listing()` in the page: index, name,
   `cursor`, `loaded`): the cursor row is a filled bar in FL's selected colour (mint) with dark text, the
   loaded row has orange text and a `▶` marker (both on one row: bar and dark marker); a scroll bar on the
@@ -915,9 +913,8 @@ Display 1 is the tab `FILE` (always bright), **2 `SAVE`** (UI `save`, FPT_Save),
 (UI `saveNew`, FPT_SaveNew), **5 `UNDO`** and **6 `REDO`** (UI `undo`/`redo`, the same as SHIFT + pad 1
 and 2). Every press shows the SHIFT + pad read-out card (`SAVED`, `NEW VERSION`, `UNDO`, `REDO`; small
 line `FILE`; undo and redo with FL's hint and `position / count`) and is logged (`→ FL save project`,
-`→ FL save new version`, `→ FL undo`, `→ FL redo`). Left screen: tabs `FILE` `SAVE` `NEW VER`, FL's
-undo state (`position / count` and the hint) and the last action done on the page. Right screen: tabs
-`UNDO` `REDO` and the undo hint, big. LEDs: display 1 bright, 2, 3, 5 and 6 dim.
+`→ FL save new version`, `→ FL undo`, `→ FL redo`). Left screen: tabs `FILE` `SAVE` `NEW VER`, the read-out
+card while it is up. Right screen: tabs `UNDO` `REDO`, FL's undo state (`position / count` and the hint). LEDs: display 1 bright, 2, 3, 5 and 6 dim.
 
 ## SETTINGS and FIXED VEL (tool page SETTINGS, button FIXED VEL)
 
@@ -933,8 +930,7 @@ Code: `src/modes/settingsPage.ts`, `src/modes/padSettings.ts`. mk3d's own settin
   `--velocity-curve` win over them.
 - Left screen: tab `SETTINGS`, a graph of the velocity curve of the current settings (hit value on x,
   velocity 1–127 on y; with FIXED VEL on the curve is dimmed and the fixed line is drawn in mint), and
-  Full scale / Curve / Fixed vel under knobs 1–3. Right screen: tab `SCREEN`, how bright the screens are and
-  `Brightness` under knob 5 (5–100 %). The display buttons do nothing here and don't reach the page behind.
+  Full scale / Curve / Fixed vel under knobs 1–3. Right screen: `Brightness` under knob 5 (5–100 %), how bright the screens are. The display buttons do nothing here and don't reach the page behind.
 - **FIXED VEL** (button): fixed velocity on or off, bright while on. While it is on, **every pad note**
   (KEYBOARD, PAD MODE and NOTE REPEAT, the first note and every repeat) goes out with the fixed value
   instead of the hit's or the pressure's: `PadState` applies it where it sends a note on. The press
@@ -1003,7 +999,7 @@ past the last marker are off. The marker the song is in is the last one at or be
 into beats with the PPQ of MARKERS (16 steps per bar, as the STEP page assumes). Display 7 `<<` and
 8 `>>` (right screen) page between the banks, and show only when there is another bank. The right screen
 is a 4×4 grid of the marker names in FL's look, pad 1 bottom-left, the corner text `Bar n`, the current
-marker outlined in orange. Without markers the pads are off and the right screen says `No markers`
+marker outlined in orange. Without markers the pads are off, and the left screen says `No markers` on SCENE
 (add them in FL; ADD_MARKER is no longer on any page). The bank
 starts at the current marker's, and follows a marker mk3d jumped to once FL reports the jump. ERASE + pad
 does nothing (FL's script cannot delete a marker).
@@ -1015,7 +1011,7 @@ toggles quantized and immediate (underlined = immediate); the choice is saved in
 (`pages.scene.immediate`). A queued jump flashes its pad (pressed variant against dim, 250 ms) and
 outlines its cell in mint, and the left screen says `Queued: <name>`, until SONG_POS shows it happened
 (the song is in that marker again from an earlier position, or FL stopped). Left screen: the current
-marker big, the jump mode. Right screen: tabs `<<` `>>` and `1–16 of n` under the grid. SHIFT + SCENE
+marker big. Right screen: tabs `<<` `>>` and `1–16 of n` under the grid. SHIFT + SCENE
 is LIVE (below).
 
 NOT VERIFIED (docs/sysex.md): that `channels.isGridBitAssigned` tells piano roll channels from step

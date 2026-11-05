@@ -158,26 +158,14 @@ export class SettingsPage implements Mode {
     this.renderScreen(right, touched(SCREEN_KNOB));
   }
 
-  /** The right screen: the backlight under its own tab. */
+  /** The right screen: the backlight's knob. */
   private renderScreen(ctx: SKRSContext2D, touched: boolean): void {
     const s = this.settings;
     const position =
       (s.screenBrightness - SCREEN_BRIGHTNESS_MIN) /
       (SCREEN_BRIGHTNESS_MAX - SCREEN_BRIGHTNESS_MIN);
     clear(ctx, FULL);
-    drawTabs(ctx, { ...FULL, height: TAB_HEIGHT }, { tabs: ["SCREEN"], active: [0] });
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    ctx.fillStyle = theme.dimText;
-    ctx.font = font(15);
-    ctx.fillText("Screen brightness", 14, TAB_HEIGHT + 14);
-    ctx.fillStyle = theme.accent;
-    ctx.font = font(44, "bold");
-    ctx.fillText(`${s.screenBrightness}%`, 14, TAB_HEIGHT + 36);
-    const bar = { x: 14, y: TAB_HEIGHT + 92, width: 220, height: 10 };
-    clear(ctx, bar, theme.background);
-    clear(ctx, { ...bar, width: Math.round(bar.width * position) }, theme.accent);
-
+    drawTabs(ctx, { ...FULL, height: TAB_HEIGHT }, { tabs: [] });
     drawKnobRow(ctx, KNOB_ROW, [
       { label: "Brightness", valueText: `${s.screenBrightness}%`, value: position, touched },
     ]);
@@ -217,9 +205,6 @@ export class SettingsPage implements Mode {
     ctx.textAlign = "right";
     ctx.fillText("127", x - 6, y + 2);
     ctx.fillText("1", x - 6, y + height - 4);
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    ctx.fillText("velocity by hit value", x + width / 2, y + height + 3);
   }
 
   leds(leds: LedState): void {

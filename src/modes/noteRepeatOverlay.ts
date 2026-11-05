@@ -44,7 +44,6 @@ import type { PadState } from "./padState.js";
 import { clamp, knobStep } from "./knob.js";
 import {
   DEFAULT_SETTINGS,
-  FALLBACK_BPM,
   GATE_MAX,
   GATE_MIN,
   RATE_VALUES,
@@ -422,18 +421,9 @@ export class NoteRepeatOverlay implements Mode {
     });
     left.textAlign = "left";
     left.textBaseline = "top";
-    left.fillStyle = theme.dimText;
-    left.font = font(15);
-    left.fillText("Note Repeat", 24, TAB_HEIGHT + 10);
     left.fillStyle = theme.accent;
     left.font = font(60, "bold");
-    left.fillText(REPEAT_RATES[rate]?.label ?? "", 22, TAB_HEIGHT + 28);
-    left.fillStyle = theme.dimText;
-    left.font = font(14);
-    const fl = mc.fl;
-    const bpm = fl.tempo > 0 ? fl.tempo : FALLBACK_BPM;
-    const locked = fl.transport.playing ? "locked to FL's grid" : "free running";
-    left.fillText(`${Math.round(bpm)} BPM, ${locked}`, 24, TAB_HEIGHT + 104);
+    left.fillText(REPEAT_RATES[rate]?.label ?? "", 22, TAB_HEIGHT + 34);
     const touched = (knob: number) => mc.touchedKnobs.has(knob);
     const knobs: KnobProps[] = [
       {
@@ -475,11 +465,6 @@ export class NoteRepeatOverlay implements Mode {
     const top = TAB_HEIGHT + 40;
     const height = 70;
     const perBeat = width / beats;
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    ctx.fillStyle = theme.dimText;
-    ctx.font = font(15);
-    ctx.fillText("Two beats", x0, TAB_HEIGHT + 10);
     clear(ctx, { x: x0, y: top, width, height }, theme.background);
     ctx.fillStyle = theme.line;
     for (let beat = 0; beat <= beats; beat++) {

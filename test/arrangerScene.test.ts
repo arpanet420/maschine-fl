@@ -248,7 +248,7 @@ describe("SCENE", () => {
     const h = stackHarness();
     h.press("scene");
     for (let pad = 0; pad < 16; pad++) expect(h.padLed(pad)).toBe(0);
-    expect(drawnText(h).right.join(" ")).toContain("No markers");
+    expect(drawnText(h).left).toContain("No markers");
     h.pad(0);
     expect(jumps(h)).toEqual([]);
     expect(h.midi).toEqual([]);

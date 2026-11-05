@@ -32,7 +32,7 @@ const node = (patch: Partial<BrowserNodeInfo> = {}): BrowserNodeInfo => ({
   ...patch,
 });
 
-const CLOSED = "PUSH PLUG-INS (display 2) TO OPEN FL'S PLUGIN PICKER";
+const CLOSED = "Picker closed";
 
 const open = (source: "presets" | "plugins" = "plugins") => {
   const h = stackHarness();
@@ -177,20 +177,12 @@ describe("BROWSER sources", () => {
 });
 
 describe("PLUG-INS = FL's Plugin picker", () => {
-  it("display 2 sends pluginPicker and shows the help; pressed again it closes", () => {
+  it("display 2 sends pluginPicker and says it is open; pressed again it closes", () => {
     const h = open("presets");
     h.tap("display2");
     expect(h.sent).toEqual([{ type: "browse", action: "pluginPicker" }]);
     const { left, right } = draw(h);
-    expect(texts(left)).toEqual(
-      expect.arrayContaining([
-        "PLUG-IN PICKER",
-        "Turn 4D: browse",
-        "Tilt 4D < >: category",
-        "Push 4D: add as new channel",
-        "Shown in FL Studio",
-      ]),
-    );
+    expect(texts(left)).toContain("Picker open");
     expect(texts(right)).toContain("CLOSE");
     h.tap("display2");
     expect(h.sentOf("browse")).toHaveLength(2);
@@ -313,8 +305,6 @@ describe("PLUG-INS = FL's Plugin picker", () => {
     for (const label of ["PRESETS", "PLUG-INS"]) {
       expect(texts(right), label).not.toContain(label);
     }
-    for (const line of ["PLUG-IN PICKER", "Turn 4D: browse"]) {
-      expect(texts(right), line).not.toContain(line);
-    }
+    expect(texts(right)).not.toContain("Picker open");
   });
 });

@@ -288,7 +288,6 @@ export class PluginMode implements Mode {
       const touched = views.find((_, i) => mc.touchedKnobs.has(base + i));
       if (touched) drawBand(ctx, area, touched);
       else if (ctx === left) this.drawPluginInfo(ctx, area, target, mc, color, logo);
-      else this.drawPageInfo(ctx, area, page, color);
     }
   }
 
@@ -351,29 +350,15 @@ export class PluginMode implements Mode {
     ctx.fillStyle = color;
     ctx.font = font(17);
     ctx.fillText(fitText(ctx, fl.selectedChannel.name, textWidth), rect.x + 14, rect.y + 44);
+    // The tabs show the pages; only more of them than the tabs can hold needs saying.
     const count = this.pages(fl).length;
+    if (count > 0 && count <= PAGE_SIZE) return;
     ctx.fillStyle = theme.dimText;
     ctx.fillText(
       count === 0 ? "No parameters" : `page ${this.page + 1} / ${count}`,
       rect.x + 14,
       rect.y + Math.min(68, rect.height - 22),
     );
-  }
-
-  /** Right middle: the current page's name. */
-  private drawPageInfo(
-    ctx: SKRSContext2D,
-    rect: Rect,
-    page: PluginPage | undefined,
-    color: string,
-  ): void {
-    ctx.fillStyle = color;
-    ctx.fillRect(rect.x, rect.y, 4, rect.height);
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    ctx.fillStyle = theme.text;
-    ctx.font = font(30, "bold");
-    ctx.fillText(fitText(ctx, page?.name ?? "–", rect.width - 24), rect.x + 14, rect.y + 4);
   }
 
   leds(leds: LedState, mc: ModeContext): void {

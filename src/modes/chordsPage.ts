@@ -8,7 +8,7 @@
 // `pages.chords`. USER CHD, PADS ON and strumming are not built.
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import { fitText, font, theme } from "../render/widgets.js";
-import { CHORD_MODE_NAMES, SCALES, chordSetScale, pitchName } from "./chords.js";
+import { SCALES, chordSetScale, pitchName } from "./chords.js";
 import { FULL } from "./draw.js";
 import { KeyboardPage, type KeyboardOptions } from "./keyboardPage.js";
 import type { ModeContext } from "./mode.js";
@@ -42,7 +42,6 @@ export class ChordsPage extends KeyboardPage {
   }
 
   protected override renderLeft(ctx: SKRSContext2D, mc: ModeContext, color: string): void {
-    const { harmony } = this.pads;
     const y = this.renderChannel(ctx, mc, color);
     ctx.fillStyle = theme.dimText;
     ctx.font = font(13);
@@ -50,15 +49,5 @@ export class ChordsPage extends KeyboardPage {
     ctx.fillStyle = theme.accent;
     ctx.font = font(34, "bold");
     ctx.fillText(fitText(ctx, this.scaleText(), FULL.width - 50), 32, y + 12);
-    ctx.fillStyle = theme.dimText;
-    ctx.font = font(15);
-    const type =
-      harmony.mode === "set" ? "triads and sevenths" : (harmony.types[harmony.type]?.name ?? "");
-    const position = harmony.position > 0 ? `, position ${harmony.position}` : "";
-    ctx.fillText(
-      fitText(ctx, `${CHORD_MODE_NAMES[harmony.mode]}: ${type}${position}`, FULL.width - 50),
-      34,
-      y + 52,
-    );
   }
 }

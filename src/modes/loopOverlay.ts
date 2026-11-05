@@ -27,7 +27,6 @@ import {
   clear,
   drawKnobRow,
   drawTabs,
-  fitText,
   font,
   theme,
   type KnobProps,
@@ -377,38 +376,13 @@ export class LoopOverlay extends MarkerPadsPage {
     const x = 24;
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
-    ctx.fillStyle = theme.dimText;
-    ctx.font = font(15);
-    ctx.fillText("Loop", x, TAB_HEIGHT + 8);
     if (this.unavailable(mc.fl)) {
       ctx.fillStyle = theme.dimText;
       ctx.font = font(22);
       ctx.fillText("Not available in this FL version", x, TAB_HEIGHT + 40);
       return;
     }
-    ctx.fillStyle = loop.active ? theme.accent : theme.dimText;
-    ctx.font = font(38, "bold");
-    ctx.fillText(
-      fitText(
-        ctx,
-        `${positionStepsText(loop.start)} – ${positionStepsText(loop.end)}`,
-        FULL.width - 2 * x,
-      ),
-      x,
-      TAB_HEIGHT + 26,
-    );
-    ctx.fillStyle = theme.text;
-    ctx.font = font(20);
-    ctx.fillText(lengthText(loop.end - loop.start), x, TAB_HEIGHT + 76);
-    ctx.fillStyle = theme.dimText;
-    ctx.font = font(14);
-    const target =
-      this.boundary === "both" ? "the loop" : this.boundary === "start" ? "the start" : "the end";
-    ctx.fillText(
-      loop.active ? `4D turn moves ${target}` : "Loop is off (OFF = SHIFT + RESTART)",
-      x,
-      TAB_HEIGHT + 108,
-    );
+    this.drawRange(ctx, x, TAB_HEIGHT + 34, loop);
     const touched = (knob: number) => mc.touchedKnobs.has(knob);
     const knobs: KnobProps[] = [
       {
@@ -425,6 +399,29 @@ export class LoopOverlay extends MarkerPadsPage {
       },
     ];
     drawKnobRow(ctx, KNOB_ROW, knobs);
+  }
+
+  /** The range big, with what the 4D turn moves in color: the picked boundary, or both. */
+  private drawRange(ctx: SKRSContext2D, x: number, y: number, loop: Shown): void {
+    const moved = loop.active ? theme.accent : theme.text;
+    const parts = [
+      {
+        text: positionStepsText(loop.start),
+        color: this.boundary === "end" ? theme.dimText : moved,
+      },
+      { text: " – ", color: theme.dimText },
+      {
+        text: positionStepsText(loop.end),
+        color: this.boundary === "start" ? theme.dimText : moved,
+      },
+    ];
+    ctx.font = font(38, "bold");
+    let at = x;
+    for (const part of parts) {
+      ctx.fillStyle = part.color;
+      ctx.fillText(part.text, at, y);
+      at += ctx.measureText(part.text).width;
+    }
   }
 }
 
@@ -469,9 +466,6 @@ export function drawRuler(ctx: SKRSContext2D, rect: Rect, loop: Shown): void {
   const perBar = rect.width / bars;
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
-  ctx.fillStyle = theme.dimText;
-  ctx.font = font(15);
-  ctx.fillText("Bars", rect.x, TAB_HEIGHT + 10);
   clear(ctx, rect, theme.background);
   const x = (bar: number) => rect.x + clamp((bar - first) * perBar, 0, rect.width);
   const lx = x(startBar);

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { CHANNEL_NOTE_CHANNEL, NOTE_CHANNEL } from "../src/fl/protocol.js";
 import type { ButtonId } from "../src/hw/ids.js";
 import { DEFAULT_PAD_CONFIG, PadProcessor } from "../src/hw/pads.js";
-import { BrowserPage, UNKNOWN_TEXT } from "../src/modes/browserPage.js";
+import { BrowserPage } from "../src/modes/browserPage.js";
 import { PadSettings } from "../src/modes/padSettings.js";
 import { stackHarness, type StackHarness } from "../src/tools/stackHarness.js";
 
@@ -348,14 +348,13 @@ describe("BROWSER", () => {
     expect(rows.find((r) => r.cursor)?.name).toBe("Preset 20");
   });
 
-  it("with an unknown current preset: no loaded row, the explanation, PREV / NEXT step from FL's", () => {
+  it("with an unknown current preset: no loaded row, PREV / NEXT step from FL's", () => {
     const h = stackHarness();
     h.tap("browser");
     h.presets(300, null, names(0, 8), 0);
     const list = h.pages.browser.listing(h.mc);
     expect(list).toMatchObject({ loaded: null, cursor: 0, top: 0 });
     expect(list.rows.some((r) => r.loaded)).toBe(false);
-    expect(UNKNOWN_TEXT).toBe("Current preset unknown — PREV/NEXT steps from FL's current one");
     h.render();
     h.turn(2);
     expect(h.pages.browser.listing(h.mc).cursor).toBe(2);

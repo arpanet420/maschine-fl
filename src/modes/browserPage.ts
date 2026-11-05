@@ -14,8 +14,8 @@
 // loaded index and 8 names); mk3d draws from `fl.presets` and asks for another window of names
 // (PRESET_WINDOW) when the list scrolls beyond the ones it has.
 //
-// Left screen: the plugin and channel, `LOADED` and the loaded preset's name big in orange, `n / count`;
-// when the cursor is elsewhere `PUSH 4D TO LOAD` and the cursor's name. Right screen: tabs PREV / NEXT / LOAD,
+// Left screen: the plugin and channel, `LOADED` and the loaded preset's name big in orange, `n / count`.
+// Right screen: tabs PREV / NEXT / LOAD,
 // a list of 7 rows (cursor = filled bar, loaded = orange text and a marker, a scroll bar on the right
 // edge with a tick for the loaded preset) and, under it, knobs 5 and 8's `SCROLL`. No plugin or no presets:
 // a notice (`No presets for <plugin>`).
@@ -25,7 +25,7 @@
 // remembers `pickerOpen`. While it is open the 4D turn = UI_KEY down / up (at most ~15 per second), tilt =
 // up / down / left / right (left / right change the category page), 4D push = UI_KEY enter, which adds the
 // highlighted plugin as a new channel; display 8 `CLOSE` (or display 2 again) toggles the picker closed.
-// FL gives nothing about the highlighted plugin, so the name is not shown here: the user looks at FL.
+// FL gives nothing about the highlighted plugin, so the page only says whether the picker is open: the user looks at FL.
 // After the push mk3d assumes FL closed the picker, goes back to PRESETS and, when FL's channel count grows
 // within ~3 s, shows the `ADDED` read-out card with the new channel's name. Leaving the page (or going back
 // to PRESETS) while the picker is open sends UI_KEY escape, which closes it without adding anything.
@@ -65,23 +65,14 @@ const SOURCES: readonly BrowserSource[] = ["presets", "plugins"];
 export const SOURCE_TABS = ["PRESETS", "PLUG-INS"];
 /** Right screen tab of PLUG-INS (display 8). */
 export const PICKER_TABS = ["", "", "", "CLOSE"];
-/** Help lines of the open picker (left screen) and the notice while it is closed. */
-export const PICKER_TITLE = "PLUG-IN PICKER";
-export const PICKER_HELP = [
-  "Turn 4D: browse",
-  "Tilt 4D < >: category",
-  "Push 4D: add as new channel",
-  "Shown in FL Studio",
-];
-export const PICKER_CLOSED = "PUSH PLUG-INS (display 2) TO OPEN FL'S PLUGIN PICKER";
+/** What the page says of FL's picker, which is all it knows of it. */
+export const PICKER_OPEN = "Picker open";
+export const PICKER_CLOSED = "Picker closed";
 /** At most this many picker keys per second (a fast 4D turn), and how many may go at once. */
 const COMMANDS_PER_SECOND = 15;
 const COMMAND_BURST = 2;
 /** How long after the push a growing channel count counts as the added plugin. */
 const ADDED_MS = 3000;
-/** Left screen while FL's current preset matches none of the names. */
-export const UNKNOWN_TEXT = "Current preset unknown \u2014 PREV/NEXT steps from FL's current one";
-
 const ROW_HEIGHT = 31;
 const LIST_BOTTOM = TAB_HEIGHT + LIST_ROWS * ROW_HEIGHT;
 const KNOB_STRIP = { y: LIST_BOTTOM, width: 120, height: FULL.height - LIST_BOTTOM };
@@ -532,7 +523,7 @@ export class BrowserPage implements Mode {
   // ── Output ─────────────────────────────────────────────────────────────────
 
   render(left: SKRSContext2D, right: SKRSContext2D, mc: ModeContext): void {
-    if (this.source === "plugins") this.renderPicker(left, right, mc);
+    if (this.source === "plugins") this.renderPicker(left, right);
     else this.renderPresets(left, right, mc);
   }
 
@@ -540,43 +531,16 @@ export class BrowserPage implements Mode {
     drawTabs(left, TABS, { tabs: SOURCE_TABS, active: [SOURCES.indexOf(this.source)] });
   }
 
-  private renderPicker(left: SKRSContext2D, right: SKRSContext2D, mc: ModeContext): void {
-    const width = FULL.width - 48;
+  private renderPicker(left: SKRSContext2D, right: SKRSContext2D): void {
     clear(left, FULL);
     this.drawSourceTabs(left);
     clear(right, FULL);
+    drawTabs(right, TABS, { tabs: this.pickerOpen ? PICKER_TABS : [] });
     left.textAlign = "left";
     left.textBaseline = "top";
-    if (!this.pickerOpen) {
-      drawTabs(right, TABS, { tabs: [] });
-      left.fillStyle = theme.text;
-      left.font = font(22, "bold");
-      drawWrapped(left, PICKER_CLOSED, 24, TAB_HEIGHT + 60, width, 28, 4);
-      return;
-    }
-    drawTabs(right, TABS, { tabs: PICKER_TABS });
-    left.fillStyle = theme.accent;
+    left.fillStyle = this.pickerOpen ? theme.accent : theme.dimText;
     left.font = font(26, "bold");
-    left.fillText(PICKER_TITLE, 24, TAB_HEIGHT + 24);
-    PICKER_HELP.forEach((line, i) => {
-      left.fillStyle = i === PICKER_HELP.length - 1 ? theme.dimText : theme.text;
-      left.font = font(i === PICKER_HELP.length - 1 ? 16 : 18);
-      left.fillText(fitText(left, line, width), 24, TAB_HEIGHT + 76 + i * 32);
-    });
-    const { fl } = mc;
-    const index = fl.selectedChannel.index;
-    right.textAlign = "left";
-    right.textBaseline = "top";
-    right.fillStyle = theme.dimText;
-    right.font = font(13, "bold");
-    right.fillText("SELECTED CHANNEL", 24, TAB_HEIGHT + 24);
-    right.fillStyle = theme.text;
-    right.font = font(22, "bold");
-    const name = index === null ? "\u2013" : fl.selectedChannel.name || `Channel ${index + 1}`;
-    right.fillText(fitText(right, name, width), 24, TAB_HEIGHT + 46);
-    right.fillStyle = theme.dimText;
-    right.font = font(18);
-    right.fillText(`${fl.channelTotal} channels`, 24, TAB_HEIGHT + 86);
+    left.fillText(this.pickerOpen ? PICKER_OPEN : PICKER_CLOSED, 24, TAB_HEIGHT + 60);
   }
 
   private renderPresets(left: SKRSContext2D, right: SKRSContext2D, mc: ModeContext): void {
@@ -624,12 +588,6 @@ export class BrowserPage implements Mode {
       ctx.fillStyle = theme.dimText;
       ctx.font = font(34, "bold");
       ctx.fillText("–", 24, TAB_HEIGHT + 66);
-      ctx.fillStyle = theme.text;
-      ctx.font = font(18);
-      drawWrapped(ctx, UNKNOWN_TEXT, 24, TAB_HEIGHT + 118, width, 24, 3);
-      ctx.fillStyle = theme.dimText;
-      ctx.font = font(14);
-      ctx.fillText(`${list.count} presets`, 24, TAB_HEIGHT + 196);
       return;
     }
     ctx.fillStyle = theme.accent;
@@ -639,16 +597,6 @@ export class BrowserPage implements Mode {
     ctx.fillStyle = theme.dimText;
     ctx.font = font(20);
     ctx.fillText(`${list.loaded + 1} / ${list.count}`, 24, TAB_HEIGHT + 114);
-    if (list.cursor === list.loaded) return;
-    ctx.fillStyle = theme.selected;
-    ctx.font = font(14, "bold");
-    ctx.fillText("PUSH 4D TO LOAD", 24, TAB_HEIGHT + 162);
-    ctx.fillStyle = theme.text;
-    ctx.font = font(24, "bold");
-    ctx.fillText(fitText(ctx, this.nameAt(mc, list.cursor) || "…", width), 24, TAB_HEIGHT + 184);
-    ctx.fillStyle = theme.dimText;
-    ctx.font = font(16);
-    ctx.fillText(`${list.cursor + 1} / ${list.count}`, 24, TAB_HEIGHT + 216);
   }
 
   private drawList(ctx: SKRSContext2D, list: BrowserListing): void {

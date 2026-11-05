@@ -373,11 +373,10 @@ describe("the LOOP overlay", () => {
     h.loopState(true, 4 * BAR, 8 * BAR);
     openLoop(h);
     const text = drawnText(h);
-    expect(text.left).toContain("bar 5 – bar 9");
-    expect(text.left).toContain("4 bars");
+    expect(text.left).toEqual(expect.arrayContaining(["bar 5", " – ", "bar 9", "4 bars"]));
     expect(text.left).toContain("Start");
     expect(text.left).toContain("Length");
-    expect(text.right).toContain("Bars");
+    expect(text.right).not.toContain("Bars");
   });
 
   it("draws the marker grid with markers", () => {

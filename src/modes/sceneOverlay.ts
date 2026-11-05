@@ -18,7 +18,6 @@ import {
   MarkerPadsPage,
   currentMarker,
   drawMarkerGrid,
-  drawNoMarkers,
   markerColor,
   markerName,
   markerWindowText,
@@ -166,9 +165,7 @@ export class SceneOverlay extends MarkerPadsPage {
     this.renderLeft(left, mc);
     const { fl } = mc;
     this.drawRightTabs(right, mc);
-    if (fl.markerTotal === 0) {
-      drawNoMarkers(right, { ...GRID_RECT, y: TAB_HEIGHT + 4 });
-    } else {
+    if (fl.markerTotal > 0) {
       drawMarkerGrid(right, GRID_RECT, fl, this.bank, this.queued());
       drawFooter(right, markerWindowText(fl, this.bank));
     }
@@ -188,9 +185,6 @@ export class SceneOverlay extends MarkerPadsPage {
     const x = 24;
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
-    ctx.fillStyle = theme.dimText;
-    ctx.font = font(15);
-    ctx.fillText("Scene", x, TAB_HEIGHT + 12);
     const current = currentMarker(fl);
     if (fl.markerTotal === 0) {
       ctx.fillStyle = theme.dimText;
@@ -215,9 +209,9 @@ export class SceneOverlay extends MarkerPadsPage {
       );
     }
     const queued = this.queuedJump;
-    ctx.font = font(18);
     if (queued) {
       ctx.fillStyle = theme.selected;
+      ctx.font = font(18);
       ctx.fillText("Queued:", x, TAB_HEIGHT + 130);
       ctx.font = font(24, "bold");
       ctx.fillText(
@@ -225,21 +219,7 @@ export class SceneOverlay extends MarkerPadsPage {
         x,
         TAB_HEIGHT + 154,
       );
-    } else {
-      ctx.fillStyle = theme.dimText;
-      ctx.fillText(
-        this.immediate || !fl.transport.playing ? "A pad jumps now" : "A pad jumps at the next bar",
-        x,
-        TAB_HEIGHT + 130,
-      );
     }
-    ctx.fillStyle = theme.dimText;
-    ctx.font = font(14);
-    ctx.fillText(
-      this.immediate ? "NOW is on" : "NOW is off: jumps wait for the bar",
-      x,
-      TAB_HEIGHT + 190,
-    );
   }
 
   protected displayLeds(leds: LedState, mc: ModeContext): void {

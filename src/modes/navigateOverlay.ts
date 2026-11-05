@@ -143,21 +143,6 @@ export class NavigateOverlay implements Mode {
         }
       });
     });
-    this.drawFocus(left, mc);
-  }
-
-  /** In the first column on the left screen: which window has the focus. */
-  private drawFocus(ctx: SKRSContext2D, mc: ModeContext): void {
-    const x = 12;
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    ctx.fillStyle = theme.dimText;
-    ctx.font = font(13);
-    ctx.fillText("Focus", x, TILE_TOP);
-    const focused = focusedWindow(mc.fl);
-    ctx.fillStyle = focused ? theme.accent : theme.dimText;
-    ctx.font = font(18, "bold");
-    ctx.fillText(fitText(ctx, focused?.name ?? "none", 104), x, TILE_TOP + 18);
   }
 
   leds(leds: LedState, mc: ModeContext): void {

@@ -55,7 +55,6 @@ import { clamp, knobStep } from "./knob.js";
 import type { ModeContext } from "./mode.js";
 import { noteName, type PadState } from "./padState.js";
 import {
-  FALLBACK_BPM,
   GATE_MAX,
   GATE_MIN,
   REPEAT_RATES,
@@ -408,9 +407,6 @@ export class ArpPanel {
     });
     left.textAlign = "left";
     left.textBaseline = "top";
-    left.fillStyle = theme.dimText;
-    left.font = font(15);
-    left.fillText(repeats ? "Note Repeat" : "Arpeggiator", 24, TAB_HEIGHT + 10);
     left.fillStyle = theme.accent;
     left.font = font(44, "bold");
     left.fillText(
@@ -422,11 +418,6 @@ export class ArpPanel {
       22,
       TAB_HEIGHT + 34,
     );
-    left.fillStyle = theme.dimText;
-    left.font = font(14);
-    const bpm = mc.fl.tempo > 0 ? mc.fl.tempo : FALLBACK_BPM;
-    const locked = mc.fl.transport.playing ? "locked to FL's grid" : "free running";
-    left.fillText(`${Math.round(bpm)} BPM, ${locked}`, 24, TAB_HEIGHT + 104);
     if (this.knobPage === 1) {
       this.renderSecondPage(left, right, tabs, touched);
       return;
@@ -529,24 +520,7 @@ export class ArpPanel {
     const x0 = 20;
     const width = FULL.width - 40;
     const top = TAB_HEIGHT + 40;
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    ctx.fillStyle = theme.dimText;
-    ctx.font = font(15);
-    const repeats = this.settings.type === "repeat";
-    ctx.fillText(repeats ? "Notes" : "Sequence", x0, TAB_HEIGHT + 10);
     const { notes, lit } = this.engine.view();
-    if (notes.length === 0) {
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.font = font(18);
-      ctx.fillText(
-        repeats ? "Hold keys to repeat" : "Hold keys to arpeggiate",
-        FULL.width / 2,
-        top + 40,
-      );
-      return;
-    }
     const perRow = Math.floor((width + CELL_GAP) / (CELL_WIDTH + CELL_GAP));
     const shown = Math.min(notes.length, perRow * MAX_ROWS);
     ctx.textAlign = "center";
