@@ -47,8 +47,9 @@ are written down in `docs/protocol.md`.
 Three hardware facts come from [Deckard](https://github.com/Panic-Signals/Deckard) by Panic Signals, an
 open-source Maschine clone with its own MK3 driver: the screen backlight's feature reports, the display's
 repeat command and that the knobs need a flicker filter. Its code is not included and was not ported.
-How NOTE REPEAT's page is laid out, knob reset by two touches and the 0.4 s hold on a step follow what its
-documentation says about Maschine's behaviour.
+How NOTE REPEAT's page is laid out, knob reset by two touches, the 0.4 s hold on a step and how the
+Harmonizer's chord types work (named by scale degree and counted in scale steps with a scale, real intervals
+with Chromatic, a type kept for each) follow what its documentation says about Maschine's behaviour.
 
 ## Projects that were only read
 

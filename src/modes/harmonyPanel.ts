@@ -5,13 +5,7 @@ import type { SKRSContext2D } from "@napi-rs/canvas";
 import type { HwEvent } from "../hw/events.js";
 import { drawKnobRow, theme, type KnobProps } from "../render/widgets.js";
 import { FULL } from "./draw.js";
-import {
-  CHORD_MODE_NAMES,
-  CHORD_MODES,
-  CHORD_TYPES,
-  SCALES,
-  type HarmonySettings,
-} from "./chords.js";
+import { CHORD_MODE_NAMES, CHORD_MODES, SCALES, type HarmonySettings } from "./chords.js";
 import type { ModeContext } from "./mode.js";
 import { realTimers, type RepeatTimers } from "./repeatScheduler.js";
 
@@ -73,8 +67,8 @@ export class HarmonyPanel {
       s.typeActive
         ? {
             label: "Chord type",
-            valueText: CHORD_TYPES[s.type]?.name ?? "",
-            value: s.type / (CHORD_TYPES.length - 1),
+            valueText: s.types[s.type]?.name ?? "",
+            value: s.type / (s.types.length - 1),
             touched: touched(2),
           }
         : {

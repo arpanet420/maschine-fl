@@ -3,9 +3,11 @@
 //
 // - KEYBOARD with a scale: pad i plays scale degree i counted up from the base note (octave wrap
 //   included), Chromatic is `base + i` as it always was.
-// - CHORDS, harmonizer: each pad plays its KEYBOARD note and the notes stacked on it inside the
-//   scale. A stack is a list of scale-degree steps (Triad 1-3-5 = 0, 2, 4 degrees up) counted in
-//   the scale's own tones; Chromatic stacks the major scale from the pad's note.
+// - CHORDS, harmonizer, as Maschine's: each pad plays its KEYBOARD note and the notes stacked on it.
+//   With a scale the stack is counted in the scale's own notes and named by its degrees (1-3-5 = 0, 2
+//   and 4 scale steps up), so in a pentatonic scale 1-5 is not a perfect fifth (C gives C and A). With
+//   Chromatic a step is a semitone, and the types are real intervals and chords (Perfect 5 = 7). The
+//   type is kept for each of the two lists.
 // - CHORDS, chord set: pads 1–7 the diatonic triads I…vii, 8 = I an octave up, 9–15 the diatonic
 //   sevenths, 16 = I7 an octave up. The scale is the selected one when it has 7 notes, else Major.
 // - Position = inversion: the lowest n notes move up an octave. All notes are clamped to MIDI 0–127
@@ -68,19 +70,54 @@ export const CHORD_MODE_NAMES: Record<ChordMode, string> = {
 
 export interface ChordType {
   name: string;
-  /** Scale-degree steps up from the pad's degree; `count` is the scale's number of notes. */
+  /** Steps up from the pad's note (a step is a note of the scale); `count` is the scale's size. */
   steps(count: number): readonly number[];
 }
 
-export const CHORD_TYPES: readonly ChordType[] = [
-  { name: "Octave", steps: (count) => [0, count] },
-  { name: "Fifth", steps: () => [0, 4] },
-  { name: "Triad", steps: () => [0, 2, 4] },
-  { name: "Sus4", steps: () => [0, 3, 4] },
-  { name: "Seventh", steps: () => [0, 2, 4, 6] },
-  { name: "Ninth", steps: () => [0, 2, 4, 6, 8] },
+const OCTAVE: ChordType = { name: "Octave", steps: (count) => [0, count] };
+
+/** A chord in semitones, for Chromatic. */
+const semitones = (name: string, ...steps: number[]): ChordType => ({ name, steps: () => steps });
+
+/** A stack named by its scale degrees: `1-3-5` is 0, 2 and 4 scale steps up. */
+const degrees = (name: string): ChordType => {
+  const steps = name.split("-").map((degree) => Number(degree) - 1);
+  return { name, steps: () => steps };
+};
+
+/** The chord types of a scale. */
+const SCALE_CHORDS: readonly ChordType[] = [
+  OCTAVE,
+  ...["1-3", "1-5", "1-3-5", "1-4-5", "1-3-5-7", "1-3-5-7-9", "1-4-7"].map(degrees),
 ];
-export const DEFAULT_CHORD_TYPE = 2;
+
+/** The chord types of Chromatic: real intervals and chords. */
+const CHROMATIC_CHORDS: readonly ChordType[] = [
+  OCTAVE,
+  semitones("Perf 4", 0, 5),
+  semitones("Perf 5", 0, 7),
+  semitones("Major", 0, 4, 7),
+  semitones("Minor", 0, 3, 7),
+  semitones("Sus 4", 0, 5, 7),
+  semitones("Dim", 0, 3, 6),
+  semitones("Aug", 0, 4, 8),
+  semitones("Maj 7", 0, 4, 7, 11),
+  semitones("Min 7", 0, 3, 7, 10),
+  semitones("Dom 7", 0, 4, 7, 10),
+  semitones("Min 7b5", 0, 3, 6, 10),
+  semitones("Dim 7", 0, 3, 6, 9),
+  semitones("Maj 9", 0, 4, 7, 11, 14),
+  semitones("Dom 9", 0, 4, 7, 10, 14),
+];
+
+/** The chord types the knob steps through with this scale. */
+export const chordTypes = (scaleIndex: number): readonly ChordType[] =>
+  scaleIndex === CHROMATIC ? CHROMATIC_CHORDS : SCALE_CHORDS;
+
+const DEFAULT_SCALE_TYPE = SCALE_CHORDS.findIndex((type) => type.name === "1-3-5");
+const DEFAULT_CHROMATIC_TYPE = CHROMATIC_CHORDS.findIndex((type) => type.name === "Major");
+const defaultType = (scaleIndex: number): number =>
+  scaleIndex === CHROMATIC ? DEFAULT_CHROMATIC_TYPE : DEFAULT_SCALE_TYPE;
 
 const TRIAD = [0, 2, 4] as const;
 const SEVENTH = [0, 2, 4, 6] as const;
@@ -123,8 +160,8 @@ export function chordQuality(intervals: readonly number[]): string {
   else if (i1 === 3 && i2 === 7) triad = "m";
   else if (i1 === 3 && i2 === 6) triad = dim;
   else if (i1 === 4 && i2 === 8) triad = "+";
-  else if (i1 === 5) triad = "sus4";
-  else if (i1 === 2) triad = "sus2";
+  else if (i1 === 5 && i2 === 7) triad = "sus4";
+  else if (i1 === 2 && i2 === 7) triad = "sus2";
   else return "?";
   if (i3 === undefined) return triad;
   let name: string;
@@ -144,7 +181,7 @@ export function chordQuality(intervals: readonly number[]): string {
 }
 
 /**
- * A chord's name from its notes in root position: `Cm`, `D°`, `Ebmaj7`. A stack with no name (a Sus4
+ * A chord's name from its notes in root position: `Cm`, `D°`, `Ebmaj7`. A stack with no name (a 1-4-5
  * on the fourth degree of Major, most stacks in a pentatonic scale) shows its notes: `F B C`.
  */
 export function chordName(rootPosition: readonly number[]): string {
@@ -196,12 +233,10 @@ export function chordAt(music: PadMusic, pad: number): Chord {
       root: pad % 8 === 0 || octave,
     };
   }
-  const chromatic = scaleIndex === CHROMATIC;
-  const sc = chromatic ? scaleAt(MAJOR) : scaleAt(scaleIndex);
-  const root = chromatic ? base + pad : base;
-  const degree = chromatic ? 0 : pad;
-  const type = CHORD_TYPES[music.type] ?? (CHORD_TYPES[DEFAULT_CHORD_TYPE] as ChordType);
-  const stack = type.steps(sc.intervals.length).map((step) => scaleNote(root, sc, degree + step));
+  const sc = scaleAt(scaleIndex);
+  const stack = typeAt(scaleIndex, music.type)
+    .steps(sc.intervals.length)
+    .map((step) => scaleNote(base, sc, pad + step));
   const padNote = keyboardNote(base, scaleIndex, pad);
   return {
     notes: finish(stack, music.position),
@@ -209,6 +244,12 @@ export function chordAt(music: PadMusic, pad: number): Chord {
     root: isRootDegree(scaleIndex, padNote, pad),
   };
 }
+
+/** The chord type at `index` of the scale's list, the list's default if there is none. */
+const typeAt = (scaleIndex: number, index: number): ChordType => {
+  const types = chordTypes(scaleIndex);
+  return types[index] ?? (types[defaultType(scaleIndex)] as ChordType);
+};
 
 /** What the scale of the chord set is: the selected scale if it has 7 notes, else Major. */
 export function chordSetScale(scaleIndex: number): Scale {
@@ -230,17 +271,31 @@ const wholeIn = (value: unknown, count: number): number | undefined =>
 export class HarmonySettings {
   scale = CHROMATIC;
   mode: ChordMode = "harmonizer";
-  type = DEFAULT_CHORD_TYPE;
   position = 0;
+  /** The chord type kept for each list: Chromatic's, and the one of the other scales. */
+  private chromaticType = DEFAULT_CHROMATIC_TYPE;
+  private scaleType = DEFAULT_SCALE_TYPE;
   private readonly turns = [0, 0, 0, 0];
+
+  /** The chord type, an index in `types`. */
+  get type(): number {
+    return this.scale === CHROMATIC ? this.chromaticType : this.scaleType;
+  }
+
+  private set type(index: number) {
+    if (this.scale === CHROMATIC) this.chromaticType = index;
+    else this.scaleType = index;
+  }
+
+  /** The chord types the knob steps through now. */
+  get types(): readonly ChordType[] {
+    return chordTypes(this.scale);
+  }
 
   /** The highest position now: notes − 1 of the chord type, 3 for chord set (its sevenths). */
   get maxPosition(): number {
     if (this.mode === "set") return SET_MAX_POSITION;
-    const type = CHORD_TYPES[this.type] ?? (CHORD_TYPES[DEFAULT_CHORD_TYPE] as ChordType);
-    return (
-      type.steps(scaleAt(this.scale === CHROMATIC ? MAJOR : this.scale).intervals.length).length - 1
-    );
+    return typeAt(this.scale, this.type).steps(scaleAt(this.scale).intervals.length).length - 1;
   }
 
   /** The type knob does something now (not in chord set). */
@@ -265,7 +320,7 @@ export class HarmonySettings {
       this.mode =
         CHORD_MODES[Math.min(1, Math.max(0, CHORD_MODES.indexOf(this.mode) + steps))] ?? this.mode;
     } else if (knob === 2) {
-      this.type = Math.min(CHORD_TYPES.length - 1, Math.max(0, this.type + steps));
+      this.type = Math.min(this.types.length - 1, Math.max(0, this.type + steps));
     } else this.position += steps;
     this.position = Math.min(this.maxPosition, Math.max(0, this.position));
     return before !== this.snapshot();
@@ -275,13 +330,25 @@ export class HarmonySettings {
     return `${this.scale}/${this.mode}/${this.type}/${this.position}`;
   }
 
+  /** Chord types are saved by name: an index would change meaning if a list changes. */
   readonly persisted = {
-    save: () => ({ scale: this.scale, mode: this.mode, type: this.type, position: this.position }),
+    save: () => ({
+      scale: this.scale,
+      mode: this.mode,
+      scaleType: SCALE_CHORDS[this.scaleType]?.name,
+      chromaticType: CHROMATIC_CHORDS[this.chromaticType]?.name,
+      position: this.position,
+    }),
     load: (data: unknown) => {
       const saved = data as Record<string, unknown> | null;
+      const named = (types: readonly ChordType[], name: unknown, fallback: number): number => {
+        const index = types.findIndex((type) => type.name === name);
+        return index >= 0 ? index : fallback;
+      };
       this.scale = wholeIn(saved?.scale, SCALES.length) ?? CHROMATIC;
       this.mode = CHORD_MODES.find((mode) => mode === saved?.mode) ?? "harmonizer";
-      this.type = wholeIn(saved?.type, CHORD_TYPES.length) ?? DEFAULT_CHORD_TYPE;
+      this.scaleType = named(SCALE_CHORDS, saved?.scaleType, DEFAULT_SCALE_TYPE);
+      this.chromaticType = named(CHROMATIC_CHORDS, saved?.chromaticType, DEFAULT_CHROMATIC_TYPE);
       this.position = Math.min(this.maxPosition, wholeIn(saved?.position, 8) ?? 0);
     },
   };

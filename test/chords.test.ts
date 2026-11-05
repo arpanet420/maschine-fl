@@ -3,12 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  CHORD_TYPES,
   CHROMATIC,
   HarmonySettings,
   SCALES,
   chordAt,
   chordName,
+  chordTypes,
   invert,
   keyboardNote,
   scaleNote,
@@ -28,12 +28,15 @@ const tempPins = () => {
 };
 
 const scaleIndex = (name: string) => SCALES.findIndex((scale) => scale.name === name);
-const typeIndex = (name: string) => CHORD_TYPES.findIndex((type) => type.name === name);
+const typeIndex = (name: string) =>
+  chordTypes(scaleIndex("Minor")).findIndex((type) => type.name === name);
+const chromaticType = (name: string) =>
+  chordTypes(CHROMATIC).findIndex((type) => type.name === name);
 const music = (patch: Partial<PadMusic> = {}): PadMusic => ({
   base: 36,
   scale: scaleIndex("Minor"),
   mode: "harmonizer",
-  type: typeIndex("Triad"),
+  type: typeIndex("1-3-5"),
   position: 0,
   ...patch,
 });
@@ -107,22 +110,37 @@ describe("harmonizer", () => {
   it("stacks the chord types inside the scale on the pad's degree", () => {
     const at = (type: string, pad = 0) => notesOf({ type: typeIndex(type) }, pad);
     expect(at("Octave")).toEqual([36, 48]);
-    expect(at("Fifth")).toEqual([36, 43]);
-    expect(at("Triad")).toEqual([36, 39, 43]);
-    expect(at("Sus4")).toEqual([36, 41, 43]);
-    expect(at("Seventh")).toEqual([36, 39, 43, 46]);
-    expect(at("Ninth")).toEqual([36, 39, 43, 46, 50]);
-    expect(at("Triad", 1)).toEqual([38, 41, 44]); // D diminished in C minor
-    expect(at("Triad", 2)).toEqual([39, 43, 46]);
-    expect(at("Triad", 7)).toEqual([48, 51, 55]); // the octave root again
+    expect(at("1-3")).toEqual([36, 39]);
+    expect(at("1-5")).toEqual([36, 43]);
+    expect(at("1-3-5")).toEqual([36, 39, 43]);
+    expect(at("1-4-5")).toEqual([36, 41, 43]);
+    expect(at("1-3-5-7")).toEqual([36, 39, 43, 46]);
+    expect(at("1-3-5-7-9")).toEqual([36, 39, 43, 46, 50]);
+    expect(at("1-4-7")).toEqual([36, 41, 46]);
+    expect(at("1-3-5", 1)).toEqual([38, 41, 44]); // D diminished in C minor
+    expect(at("1-3-5", 2)).toEqual([39, 43, 46]);
+    expect(at("1-3-5", 7)).toEqual([48, 51, 55]); // the octave root again
   });
 
-  it("Chromatic stacks the major scale from the pad's note", () => {
-    const chromatic = { scale: CHROMATIC };
-    expect(notesOf(chromatic, 0)).toEqual([36, 40, 43]);
-    expect(notesOf(chromatic, 1)).toEqual([37, 41, 44]);
-    expect(notesOf({ ...chromatic, type: typeIndex("Ninth") }, 0)).toEqual([36, 40, 43, 47, 50]);
-    expect(notesOf({ ...chromatic, type: typeIndex("Octave") }, 5)).toEqual([41, 53]);
+  it("counts a scale's 1-5 in its own notes, so a pentatonic one is no perfect fifth", () => {
+    const pentatonic = { scale: scaleIndex("Major pent."), type: typeIndex("1-5") };
+    expect(notesOf(pentatonic, 0)).toEqual([36, 45]); // C and A, as in Maschine
+    expect(notesOf({ ...pentatonic, type: typeIndex("Octave") }, 0)).toEqual([36, 48]);
+  });
+
+  it("Chromatic has real intervals and chords from the pad's note", () => {
+    const at = (type: string, pad = 0) =>
+      notesOf({ scale: CHROMATIC, type: chromaticType(type) }, pad);
+    expect(at("Octave", 5)).toEqual([41, 53]);
+    expect(at("Perf 4")).toEqual([36, 41]);
+    expect(at("Perf 5")).toEqual([36, 43]);
+    expect(at("Perf 5", 3)).toEqual([39, 46]);
+    expect(at("Major", 1)).toEqual([37, 41, 44]);
+    expect(at("Minor")).toEqual([36, 39, 43]);
+    expect(at("Sus 4")).toEqual([36, 41, 43]);
+    expect(at("Maj 7")).toEqual([36, 40, 43, 47]);
+    expect(at("Dom 7")).toEqual([36, 40, 43, 46]);
+    expect(at("Dom 9")).toEqual([36, 40, 43, 46, 50]);
   });
 
   it("inversions move the lowest notes up an octave, clamped to the chord's notes − 1", () => {
@@ -138,27 +156,37 @@ describe("harmonizer", () => {
     expect(notesOf({ base: 112, scale: scaleIndex("Major"), position: 1 }, 3)).toEqual([
       121, 124, 127,
     ]);
-    expect(notesOf({ base: 0, scale: CHROMATIC, type: typeIndex("Fifth") }, 0)).toEqual([0, 7]);
+    expect(notesOf({ base: 0, scale: CHROMATIC, type: chromaticType("Perf 5") }, 0)).toEqual([
+      0, 7,
+    ]);
   });
 
   it("names the chord from its notes in root position", () => {
     expect(nameOf({}, 0)).toBe("Cm");
     expect(nameOf({}, 1)).toBe("D°");
     expect(nameOf({}, 2)).toBe("Eb");
-    expect(nameOf({ type: typeIndex("Seventh") }, 2)).toBe("Ebmaj7");
-    expect(nameOf({ type: typeIndex("Seventh") }, 1)).toBe("Dm7b5");
-    expect(nameOf({ type: typeIndex("Seventh") }, 6)).toBe("Bb7");
-    expect(nameOf({ type: typeIndex("Ninth") }, 0)).toBe("Cm9");
-    expect(nameOf({ type: typeIndex("Sus4") }, 0)).toBe("Csus4");
-    expect(nameOf({ type: typeIndex("Fifth") }, 0)).toBe("C5");
+    expect(nameOf({ type: typeIndex("1-3-5-7") }, 2)).toBe("Ebmaj7");
+    expect(nameOf({ type: typeIndex("1-3-5-7") }, 1)).toBe("Dm7b5");
+    expect(nameOf({ type: typeIndex("1-3-5-7") }, 6)).toBe("Bb7");
+    expect(nameOf({ type: typeIndex("1-3-5-7-9") }, 0)).toBe("Cm9");
+    expect(nameOf({ type: typeIndex("1-4-5") }, 0)).toBe("Csus4");
+    expect(nameOf({ type: typeIndex("1-5") }, 0)).toBe("C5");
     expect(nameOf({ type: typeIndex("Octave") }, 0)).toBe("C oct");
     expect(nameOf({ position: 1 }, 0)).toBe("Cm"); // an inversion keeps the name
-    expect(nameOf({ scale: CHROMATIC, type: typeIndex("Ninth") }, 0)).toBe("Cmaj9");
+    const chromatic = (type: string) => nameOf({ scale: CHROMATIC, type: chromaticType(type) }, 0);
+    expect(chromatic("Maj 9")).toBe("Cmaj9");
+    expect(chromatic("Dom 9")).toBe("C9");
+    expect(chromatic("Perf 5")).toBe("C5");
+    expect(chromatic("Perf 4")).toBe("C F");
+    expect(chromatic("Dim")).toBe("C°");
+    expect(chromatic("Aug")).toBe("C+");
+    expect(chromatic("Sus 4")).toBe("Csus4");
     expect(chordName([60, 64, 68])).toBe("C+");
     expect(chordName([60, 63, 66, 69])).toBe("C°7");
     // no name for the stack: its notes
     expect(chordName([65, 71, 72])).toBe("F B C");
     expect(chordName([60, 69])).toBe("C A");
+    expect(chordName([71, 76, 77])).toBe("B E F"); // a fourth and a flat fifth is no sus4
   });
 
   it("root pads are the roots of the scale (the C notes in Chromatic)", () => {
@@ -262,7 +290,7 @@ describe("harmony settings", () => {
   });
 
   it("the position follows the chord type and chord set's four notes", () => {
-    const s = new HarmonySettings(); // Triad
+    const s = new HarmonySettings(); // Major
     expect(s.maxPosition).toBe(2);
     s.turn(3, 120 * 9);
     expect(s.position).toBe(2);
@@ -279,12 +307,55 @@ describe("harmony settings", () => {
 
   it("saves, loads and ignores bad values", () => {
     const s = new HarmonySettings();
-    s.persisted.load({ scale: 4, mode: "set", type: 5, position: 3 });
-    expect(s.persisted.save()).toEqual({ scale: 4, mode: "set", type: 5, position: 3 });
-    s.persisted.load({ scale: 99, mode: "strum", type: -1, position: "x" });
-    expect(s.persisted.save()).toEqual({ scale: 0, mode: "harmonizer", type: 2, position: 0 });
+    const saved = {
+      scale: 4,
+      mode: "set",
+      scaleType: "1-3-5-7",
+      chromaticType: "Perf 5",
+      position: 3,
+    };
+    s.persisted.load(saved);
+    expect(s.persisted.save()).toEqual(saved);
+    s.persisted.load({
+      scale: 99,
+      mode: "strum",
+      scaleType: "Triad",
+      chromaticType: -1,
+      position: "x",
+    });
+    expect(s.persisted.save()).toEqual({
+      scale: 0,
+      mode: "harmonizer",
+      scaleType: "1-3-5",
+      chromaticType: "Major",
+      position: 0,
+    });
     s.persisted.load(null);
     expect(s.persisted.save().scale).toBe(0);
+  });
+
+  it("keeps a chord type for Chromatic and one for the scales", () => {
+    const s = new HarmonySettings();
+    s.turn(2, -120); // Chromatic: Major -> Perf 5
+    expect(s.types[s.type]?.name).toBe("Perf 5");
+    s.turn(0, 120); // Major scale
+    expect(s.types[s.type]?.name).toBe("1-3-5");
+    s.turn(2, 120);
+    expect(s.types[s.type]?.name).toBe("1-4-5");
+    s.turn(0, 120); // Minor scale: the same list
+    expect(s.types[s.type]?.name).toBe("1-4-5");
+    s.turn(0, -240); // back to Chromatic
+    expect(s.types[s.type]?.name).toBe("Perf 5");
+  });
+
+  it("keeps the position within the chord type of the list it changes to", () => {
+    const s = new HarmonySettings();
+    s.turn(3, 120 * 2); // Major: 3 notes, position 2
+    s.turn(2, -120 * 9); // Octave: 2 notes
+    expect(s.position).toBe(1);
+    s.turn(0, 120); // a scale: 1-3-5
+    expect(s.maxPosition).toBe(2);
+    expect(s.position).toBe(1);
   });
 });
 
@@ -393,12 +464,13 @@ describe("CHORDS page", () => {
     const h = stackHarness();
     h.tap("chords");
     step(h, 0, 2);
-    step(h, 2, 2); // Seventh
+    step(h, 2, 2); // 1-3-5-7
     step(h, 3, 1);
     expect(h.pads.harmony.persisted.save()).toEqual({
       scale: 2,
       mode: "harmonizer",
-      type: 4,
+      scaleType: "1-3-5-7",
+      chromaticType: "Major",
       position: 1,
     });
     step(h, 1, 1);
@@ -455,7 +527,7 @@ describe("CHORDS page", () => {
     h.pad(1);
     h.midi.length = 0;
     step(h, 0, 2); // Minor
-    step(h, 2, 3); // Ninth
+    step(h, 2, 3); // 1-4-7
     step(h, 1, 1); // chord set
     h.tap("display6"); // base + 12
     h.state.shift = true;
@@ -601,7 +673,13 @@ describe("scale and chord settings are persisted with the page state", () => {
     step(first, 3, 1);
     first.advance(500);
     const saved = JSON.parse(readFileSync(pinsPath, "utf8")) as { pages: { chords: unknown } };
-    expect(saved.pages.chords).toEqual({ scale: 5, mode: "harmonizer", type: 4, position: 1 });
+    expect(saved.pages.chords).toEqual({
+      scale: 5,
+      mode: "harmonizer",
+      scaleType: "1-3-5-7",
+      chromaticType: "Major",
+      position: 1,
+    });
     const second = stackHarness({ pinsPath });
     expect(second.pads.harmony.persisted.save()).toEqual(saved.pages.chords);
     second.tap("chords");
@@ -625,13 +703,14 @@ describe("scale and chord settings are persisted with the page state", () => {
     const pinsPath = tempPins();
     writeFileSync(
       pinsPath,
-      JSON.stringify({ pages: { chords: { scale: 40, mode: 7, type: "x", position: 99 } } }),
+      JSON.stringify({ pages: { chords: { scale: 40, mode: 7, type: 4, position: 99 } } }),
     );
     const h = stackHarness({ pinsPath });
     expect(h.pads.harmony.persisted.save()).toEqual({
       scale: 0,
       mode: "harmonizer",
-      type: 2,
+      scaleType: "1-3-5",
+      chromaticType: "Major",
       position: 0,
     });
   });

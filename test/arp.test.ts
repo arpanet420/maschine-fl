@@ -398,7 +398,7 @@ describe("ARP overlay", () => {
     const minor = () => {
       const h = arpHarness();
       h.pads.mode = "chords";
-      h.pads.harmony.scale = 2; // Minor, harmonizer, Triad: pad 0 = C minor
+      h.pads.harmony.scale = 2; // Minor, harmonizer, 1-3-5: pad 0 = C minor
       h.press("noteRepeat");
       return h;
     };

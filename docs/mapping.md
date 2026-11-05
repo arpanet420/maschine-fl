@@ -172,13 +172,16 @@ takes no pad: the pads play chords through `PadState`.
 
 - Display 1 is the page tab `CHORDS`. Display 5–8 are `OCT-` `OCT+` `SEMI-` `SEMI+` as on KEYBOARD
   (they move the root). Knobs 1–4 under the left screen's columns: **Scale** (as KEYBOARD),
-  **Chord mode** (`Harmonizer` / `Chord set`), **Chord type** (`Octave` 1-8, `Fifth` 1-5, `Triad`
-  1-3-5, `Sus4` 1-4-5, `Seventh` 1-3-5-7, `Ninth` 1-3-5-7-9; `—` in chord set) and **Position**
+  **Chord mode** (`Harmonizer` / `Chord set`), **Chord type** (`—` in chord set; "Harmonizer" below) and **Position**
   (inversion 0…notes−1: the lowest n notes move up an octave; chord set allows 0…3 and a triad
   stops at 2). Knobs 5–8 do nothing.
-- **Harmonizer**: every pad plays its KEYBOARD note and the notes stacked on it inside the scale.
-  A stack is counted in scale degrees of the scale's own notes (Triad = degrees 0, 2, 4 above the
-  pad's, Octave = one octave up); with Chromatic the major scale is stacked from the pad's note.
+- **Harmonizer**, with Maschine's two kinds of list. The knob keeps a chord type for each kind.
+  - **A scale**: `Octave`, `1-3`, `1-5`, `1-3-5` (default), `1-4-5`, `1-3-5-7`, `1-3-5-7-9`, `1-4-7`. Every pad
+    plays its KEYBOARD note and the notes stacked on it, counted in the scale's own notes: `1-3-5` is 0, 2 and
+    4 scale steps up. So a `1-5` in a pentatonic scale is no perfect fifth (C gives C and A), as in Maschine.
+  - **Chromatic**: real intervals and chords in semitones, from the pad's note: `Octave`, `Perf 4`, `Perf 5`,
+    `Major` (default), `Minor`, `Sus 4`, `Dim`, `Aug`, `Maj 7`, `Min 7`, `Dom 7`, `Min 7b5`, `Dim 7`, `Maj 9`,
+    `Dom 9`. Maschine also has Quartal and Trichord here; `Dim`, `Aug` and `Maj 9` are ours.
 - **Chord set**: pads 1–7 the diatonic triads I…vii of the scale from the base note (Major when the
   scale is Chromatic, pentatonic or Blues, else the selected scale), pad 8 = I an octave up, pads
   9–15 the diatonic sevenths, pad 16 = I7 an octave up.

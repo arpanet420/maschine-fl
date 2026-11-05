@@ -569,11 +569,11 @@ async function main(): Promise<void> {
   await writeScene("keyboard-cminor", h);
   h.touched.delete(0);
 
-  // CHORDS, harmonizer: C Minor, Seventh chords, one inversion, a pad held.
+  // CHORDS, harmonizer: C Minor, 1-3-5-7 chords, one inversion, a pad held.
   h = stackHarness({ selected: 2 });
   h.tap("chords");
   h.knob(0, 240); // Minor
-  h.knob(2, 240); // Triad -> Seventh
+  h.knob(2, 240); // 1-3-5 -> 1-3-5-7
   h.knob(3, 120); // position 1
   h.pad(2);
   await writeScene("chords-harmonizer", h);
