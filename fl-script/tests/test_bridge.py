@@ -4,7 +4,9 @@ Run: npm run test:fl  (python3 -I -m unittest discover -s fl-script/tests -v)
 Works on Python 3.9 and 3.12.
 """
 
+import contextlib
 import importlib.util
+import io
 import json
 import os
 import sys
@@ -166,6 +168,7 @@ class FakeFL(object):
         self.pattern_names = {}
         self.pattern_len_steps = 16
         self.patch_name = None  # what plugins.getName(FPN_Patch) says instead of the current preset
+        self.current_preset_name = ""  # what plugins.getName(FPN_Preset, GPN_GetCurrentPreset) says
         self.focused_widget = None  # midi.wid* of the focused FL window
         self.focused_form_id = -1  # channel rack index for a generator window
         self.open_editors = set()  # channels whose plugin window is open
@@ -541,7 +544,7 @@ class FakeFL(object):
         def get_name(index, slotIndex=-1, flag=0, paramIndex=0, useGlobalIndex=False):
             plugin = fl.plugin(index)
             if flag == fl.script_midi.FPN_Preset:
-                return plugin["presets"][paramIndex]
+                return fl.current_preset_name if paramIndex == -1 else plugin["presets"][paramIndex]
             if flag == fl.script_midi.FPN_Patch:
                 if fl.patch_name is not None:
                     return fl.patch_name
@@ -1431,9 +1434,6 @@ class EditorFollowTests(BridgeTestCase):
         self.assertEqual(self.bridge.follow_opened, set())
 
     def test_follow_logs_one_line(self):
-        import contextlib
-        import io
-
         self.focus_generator(0)
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
@@ -2028,6 +2028,22 @@ class PresetsTests(BridgeTestCase):
         self.fl.channels[0]["name"] = "Preset 042"
         self.view()
         self.assertEqual(self.presets_frames(self.settle())[0][1], 7)
+
+    def test_the_name_fl_gives_as_current_is_the_next_try(self):
+        self.start()
+        self.fl.patch_name = "SQ Computer Instrument"
+        self.fl.channels[0]["name"] = "Bass"
+        self.fl.current_preset_name = "Preset 011"
+        self.view()
+        self.assertEqual(self.presets_frames(self.settle())[0][1], 11)
+
+    def test_the_channel_name_wins_over_the_name_fl_gives_as_current(self):
+        self.start()
+        self.fl.patch_name = "SQ Computer Instrument"
+        self.fl.channels[0]["name"] = "Preset 042"
+        self.fl.current_preset_name = "Preset 011"
+        self.view()
+        self.assertEqual(self.presets_frames(self.settle())[0][1], 42)
 
     def test_the_current_stays_unknown_when_neither_name_matches(self):
         self.start()
@@ -4786,7 +4802,9 @@ class WatchLogTests(BridgeTestCase):
         self.assertEqual(self.probes(self.drain()), [])
         self.script.OnSysEx(self.event(2))
         self.script.OnSysEx(self.event(2))
-        self.assertEqual(self.probes(self.drain()), ["OnSysEx without PME_System_Safe: pmeFlags 0x2"])
+        self.assertEqual(
+            self.probes(self.drain()), ["OnSysEx while FL says it isn't safe: pmeFlags 0x2, safeToEdit None"]
+        )
 
     def test_an_event_without_flags_is_left_alone(self):
         self.start()
@@ -4810,6 +4828,145 @@ class WatchLogTests(BridgeTestCase):
         self.clock.advance(5)
         self.script.OnRefresh(self.fl.script_midi.HW_Dirty_FocusedWindow)
         self.assertEqual(self.probes(self.drain()), [])
+
+
+class ManualCheckTests(BridgeTestCase):
+    """What FL's scripting manual says that our first version had differently (docs/fl-api-notes.md)."""
+
+    def probes(self, frames):
+        return [bytes(f[5:-2]).decode("ascii") for f in self.frames_with(frames, 0x17)]
+
+    def sent(self):
+        self.drain()
+        return self.take()
+
+    def test_on_dirty_channel_takes_the_flag_the_manual_gives_it(self):
+        self.start()
+        for args in ((0, 4), (0,), (-1, 0)):
+            self.bridge.dirty.clear()
+            self.script.OnDirtyChannel(*args)
+            self.assertIn("channels", self.bridge.dirty)
+
+    def test_a_full_refresh_reads_everything_again(self):
+        self.start()
+        self.drain()
+        self.fl.channels[0]["name"] = "Renamed"
+        self.script.OnDoFullRefresh()
+        self.assertIn(b"Renamed", b"".join(self.sent()))
+
+    def test_refresh_flags_the_manual_lists_for_channels_and_performance_mode(self):
+        self.start()
+        self.bridge.dirty.clear()
+        self.bridge.mark_refresh(self.script.midi.HW_ChannelEvent)
+        self.assertIn("channels", self.bridge.dirty)
+        self.assertNotIn("live_grid", self.bridge.dirty)
+        self.bridge.dirty.clear()
+        self.bridge.mark_refresh(self.script.midi.HW_Dirty_Performance)
+        self.assertIn("live_grid", self.bridge.dirty)
+        self.assertNotIn("channels", self.bridge.dirty)
+
+    def run_init(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.script.OnInit()
+        return out.getvalue()
+
+    def test_init_says_when_no_output_port_is_linked(self):
+        self.assertNotIn("no output port", self.run_init())
+        self.script.device.isAssigned = lambda: 1
+        self.assertNotIn("no output port", self.run_init())
+        self.script.device.isAssigned = lambda: 0
+        self.assertIn("no output port", self.run_init())
+
+    def test_mk3d_is_told_which_fl_this_is(self):
+        self.script.ui.getVersion = lambda: "26.1.5"
+        self.script.general.getVersion = lambda: 44
+        self.script.OnInit()
+        self.assertEqual(self.probes(self.sent()), ["FL 26.1.5, scripting API 44"])
+        self.send(self.script.frame(0x41, b""))
+        self.assertEqual(self.probes(self.sent()), ["FL 26.1.5, scripting API 44"])
+
+    def test_no_version_line_without_the_calls(self):
+        self.script.OnInit()
+        self.assertEqual(self.probes(self.sent()), [])
+
+    def test_safe_to_edit_saying_no_is_logged_once(self):
+        self.start()
+        self.drain()
+        self.script.general.safeToEdit = lambda: 0
+        event = Event(sysex=self.script.frame(0x4F, b""))
+        event.pmeFlags = self.script.midi.PME_System_Safe
+        self.script.OnSysEx(event)
+        self.script.OnSysEx(event)
+        expected = "OnSysEx while FL says it isn't safe: pmeFlags 0x%x, safeToEdit 0" % event.pmeFlags
+        self.assertEqual(self.probes(self.sent()), [expected])
+
+    def test_safe_to_edit_saying_yes_is_quiet(self):
+        self.start()
+        self.drain()
+        self.script.general.safeToEdit = lambda: 1
+        self.script.OnSysEx(Event(sysex=self.script.frame(0x4F, b"")))
+        self.assertEqual(self.probes(self.sent()), [])
+
+    def with_used_patterns(self, used):
+        calls = []
+
+        def is_default(number):
+            calls.append(number)
+            return number not in used
+
+        self.script.patterns.isPatternDefault = is_default
+        self.fl.pattern_count = len(used)
+        self.fl.pattern = 1
+        self.bridge.used_patterns_seen = None
+        return calls
+
+    def test_patterns_with_a_gap_count_up_to_the_last_one(self):
+        self.start()
+        self.with_used_patterns({1, 5})
+        self.assertEqual(self.bridge.pattern_count(), 5)
+
+    def test_the_selected_pattern_counts_even_if_it_is_empty(self):
+        self.start()
+        self.with_used_patterns({1, 2})
+        self.fl.pattern = 7
+        self.assertEqual(self.bridge.pattern_count(), 7)
+
+    def test_a_pattern_fl_counts_but_calls_default_still_counts(self):
+        # jumpToPattern raised patternCount for a pattern nobody had touched (seen 2026-10-18).
+        self.start()
+        self.with_used_patterns({1, 2})
+        self.fl.pattern_count = 3
+        self.assertEqual(self.bridge.pattern_count(), 3)
+
+    def test_the_scan_runs_once_until_something_changes(self):
+        self.start()
+        calls = self.with_used_patterns({1, 5})
+        self.bridge.pattern_count()
+        scanned = len(calls)
+        self.assertEqual(scanned, 5)
+        self.bridge.pattern_count()
+        self.assertEqual(len(calls), scanned)
+        self.bridge.mark_refresh(self.script.midi.HW_Dirty_Patterns)
+        self.bridge.pattern_count()
+        self.assertEqual(len(calls), scanned * 2)
+        self.fl.pattern_count = 3
+        self.bridge.pattern_count()
+        self.assertGreater(len(calls), scanned * 2)
+
+    def test_a_count_that_never_adds_up_stops_at_the_limit(self):
+        self.start()
+        calls = self.with_used_patterns(set())
+        self.fl.pattern_count = 4
+        self.assertEqual(self.bridge.pattern_count(), 4)
+        self.assertEqual(len(calls), self.script.PATTERN_SCAN_LIMIT)
+
+    def test_without_is_pattern_default_it_is_patterncount(self):
+        self.start()
+        self.fl.pattern_count = 9
+        self.fl.pattern = 1
+        self.bridge.used_patterns_seen = None
+        self.assertEqual(self.bridge.pattern_count(), 9)
 
 
 class PluginPickerTests(BridgeTestCase):

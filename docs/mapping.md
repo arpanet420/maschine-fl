@@ -825,8 +825,8 @@ steps (16th notes, 4 beats a bar) from bar 1 and sent as ticks (`fl.ppq` ticks a
 Code: `src/modes/gridOverlay.ts`. FOLLOW alone keeps its STEP-page meaning. Display 1 is the pin tab
 `GRID`. The pads are FL's snap values, a press sets one (SET_SNAP): Line 0, Cell 1, None 3,
 1/6 step 4, 1/4 step 5, 1/3 step 6, 1/2 step 7, Step 8, 1/6 beat 9, 1/4 beat 10, 1/3 beat 11,
-1/2 beat 12, Beat 13, Bar 14, Events 16, Markers 17 (the stub's Bar/Events/Markers clash with the
-bar fractions: NOT VERIFIED). The pads keep working under SHIFT, which is usually still down from
+1/2 beat 12, Beat 13, Bar 14, Events 16, Markers 17, the numbers in FL's own `midi.py` (each pad
+in FL: NOT VERIFIED). The pads keep working under SHIFT, which is usually still down from
 opening it. LEDs: the current snap bright white, the others dim white. Left screen: the current
 snap's name big; right screen: a 4×4 grid of the names that mirrors the pads, the current one
 outlined, the ones that don't quantize dim.

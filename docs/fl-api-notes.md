@@ -10,8 +10,9 @@ The status of each row:
 | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Seen   | Seen in FL 2026 (26.1.5), on the MK3 or in mk3d's log, on that date                                                                                               |
 | Used   | A page that depends on it works and nobody complained, but nobody looked at this detail                                                                          |
-| Stubs  | Only checked against Image-Line's API stubs in `reference/FL-Studio-API-Stubs` (names, argument order, defaults, "Included since API version") and FL's `midi.py` |
-| Open   | The stubs don't settle it and nobody has looked. The row says what the script does meanwhile                                                                      |
+| Manual | [FL's scripting manual](https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/midi_scripting.htm) says so (read 2026-11-05), or FL's own `midi.py` has the value. Not tried beyond what the row says |
+| Stubs  | Only checked against the API stubs in `reference/FL-Studio-API-Stubs` (names, argument order, defaults, "Included since API version"), which are a third party's reading of FL |
+| Open   | Neither settles it and nobody has looked. The row says what the script does meanwhile                                                                             |
 
 Every call in the script is wrapped in try/except, and hidden or newer functions go through `getattr`. A wrong
 assumption gives a wrong value, not a crash.
@@ -26,7 +27,11 @@ assumption gives a wrong value, not a crash.
 | `getChannelColor`, `getTrackColor`, `getPatternColor`          | `0x--RRGGBB`, which is what the wire carries, so nothing is swapped (`fl_color`). The stubs say `0x--BBGGRR`; FL's own `utils.ColorToRGB` agrees with us                                         | Seen 2026-10-18        |
 | `event.sysex` in `OnSysEx`                                     | Includes the `F0 … F7` framing                                                                                                                                                                  | Seen 2026-10-18        |
 | `channels.selectedChannel(True)`                               | −1 when nothing is selected                                                                                                                                                                     | Stubs                  |
-| `patterns.patternCount`                                        | Counts every pattern. It may count only patterns with content; `jumpToPattern` creating a pattern did raise it (`patternCount 3 -> 4`)                                                           | Open                   |
+| `mixer.trackCount()`                                           | Counts Master and the hidden Current track, so inserts = count − 2 and the wire's total is count − 1                                                                                             | Manual                 |
+| `mixer.getTrackPeaks(i, 0 / 1)`                                | 0 to 1, above when clipping (the manual's "< 1" is a slip). `enc_peak` clamps                                                                                                                    | Manual                 |
+| `OnDirtyChannel(index, flag)`                                  | Two arguments in the manual (`CE_New` … `CE_Select`), one in the stubs and in what scripts define: ours takes either. If FL passed two to a one-argument function it would raise before our `try` | Manual                 |
+| `device.isAssigned()`                                          | True when the linked output is there. `OnInit` says in FL's Script output when it isn't, the usual setup slip                                                                                     | Manual                 |
+| `patterns.patternCount`, `isPatternDefault(n)`                 | The count is of patterns that aren't default, and they needn't be adjacent: 1 and 5 count as 2 (stubs). So the script scans `isPatternDefault` upward for the last one (`used_patterns`, at most `PATTERN_SCAN_LIMIT`, only when the count changes or `HW_Dirty_Patterns` comes). Never below the count: `jumpToPattern` creating a pattern raised it (`patternCount 3 -> 4`), maybe while the new one still counts as default. True means empty (manual; Novation's script reads it the same way) | Manual; a gap in FL: Open |
 | `transport.stop()` then `transport.start()` (CC 108, RESTART)  | `start()` plays from where `stop()` leaves the position, which FL normally resets to the start                                                                                                   | Used                   |
 
 ## Channels
@@ -35,9 +40,9 @@ All channel indexes are group-local (`useGlobalIndex` stays False), except where
 
 | Call                                                                                    | What we assume                                                                                                                                                                  | Status                                  |
 | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-| `muteChannel`, `soloChannel`                                                            | Toggles, so "set to value" compares with `isChannelMuted` / `isChannelSolo` first and toggles only when needed                                                                  | Seen 2026-10-19 (MUTE and SOLO)         |
+| `muteChannel`, `soloChannel`                                                            | Toggles, so "set to value" compares with `isChannelMuted` / `isChannelSolo` first and toggles only when needed. The manual also gives both a `value` (solo since API 30, same for the mixer's and playlist's mute and solo); compare-and-toggle works, so it stays | Seen 2026-10-19 (MUTE and SOLO)         |
 | `soloChannel`                                                                           | `isChannelSolo` reflects it right away, which that compare relies on. Its effect on other channels: FL may un-solo them                                                          | Used                                    |
-| `getChannelPitch(i, 0)`, `getChannelPitch(i, 2)`                                        | 0 = factor of the range, 2 = the range in semitones (stubs: "not guaranteed to be correct"). We clamp the pitch to −1…1, since FL may report more when automated                 | Open                                    |
+| `getChannelPitch(i, 0)`, `getChannelPitch(i, 2)`                                        | 0 = −1…1, 1 = semitones, 2 = the range. We clamp the pitch to −1…1, since FL may report more when automated                                                                       | Manual                                  |
 | `setChannelPitch(i, value, 0)`                                                          | Applies to a VST channel, which ignores raw pitch bend from this port, so the touch strip's PITCH uses it (±2 st in the log)                                                     | Seen 2026-10-18                         |
 | `device.getLinkedValue(getRecEventId(i) + REC_Chan_FCut / FRes)`                        | The filter knobs as 0–1. `processRECEvent(REC_GetValue)` read 0 for them in FL 26.1.5, so it isn't used                                                                          | Seen 2026-10-18 (the 0); reading: Used |
 | `processRECEvent(id, round(value × FromMIDI_Max), REC_MIDIController)`                  | Writes a filter knob on the 0…`FromMIDI_Max` (2³⁰) scale                                                                                                                         | Used                                    |
@@ -56,25 +61,25 @@ scan`), which would show whether `getParamName` is what confuses this.
 
 | Call                                                     | What we assume                                                                                                                                                                            | Status |
 | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
-| `ui.getFocused(midi.widPluginGenerator)`, `ui.getFocusedFormID()` | True for a generator window, and the form id is its channel rack index                                                                                                            | Stubs  |
-| `OnRefresh` with `HW_Dirty_FocusedWindow`                | Delivered when the focus moves. `plugins.getParamName` may also fire it (NI's script says so), which would feed the bookkeeping below                                                       | Open   |
-| `showEditor(i, 1)`, `showEditor(i, 0)`                   | 1 on an open window does nothing, 0 closes it (API v3+)                                                                                                                                    | Open   |
-| `channels.focusEditor(i)`                                | Brings that window to the front                                                                                                                                                            | Open   |
+| `ui.getFocused(midi.widPluginGenerator)`, `ui.getFocusedFormID()` | True for a generator window, and the form id is its channel rack index (−1 for an invalid plug-in; an effect's id is `(track << 6 + slot) << 16`). Whether the index is group-local isn't said | Manual |
+| `OnRefresh` with `HW_Dirty_FocusedWindow`                | Delivered when the focus moves (the manual's table calls this flag "channel selection changed", which looks like a slip). `plugins.getParamName` may also fire it (NI's script says so), which would feed the bookkeeping below | Open   |
+| `showEditor(i, 1)`, `showEditor(i, 0)`                   | 1 shows, 0 hides (API 3). That 1 on an open window does nothing is our reading                                                                                                             | Manual |
+| `channels.focusEditor(i)`                                | Brings that window to the front                                                                                                                                                            | Manual |
 | `follow_opened`, `seen_open` (ours)                      | They learn only from focus changes and SHOW_EDITOR, so a window closed with the mouse stays in the set: a later follow may skip closing it, or close one opened by hand. Accepted            | —      |
 
 ## Patterns
 
 | Call                                                                       | What we assume                                                                                                                                                                                 | Status                                                  |
 | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| `patterns.clonePattern(number)`                                            | Takes the 1-based number the other `patterns.*` calls use (the stub only says "index of pattern"), and API v25 closes the piano roll. FL selects the clone; if not and the count grew, we select `number + 1` | Seen 2026-10-19 (duplicate works); selection: Used |
+| `patterns.clonePattern(number)`                                            | Takes the 1-based number the other `patterns.*` calls use (the stub only says "index of pattern"), and API v25 closes the piano roll. FL selects the clone; if not and the count grew, we select `number + 1`. The manual adds a destination since API 43, unused | Seen 2026-10-19 (duplicate works); selection: Used |
 | `patterns.jumpToPattern(k)`                                                | Creates a missing pattern                                                                                                                                                                      | Seen 2026-10-18 (`patternCount 3 -> 4`)                 |
 | `patterns.findFirstNextEmptyPat(FFNEP_DontPromptName)`                     | Creates and selects a new empty pattern without asking for a name, also when all have content. NEW_PATTERN and CREATE_PATTERN's fallback                                                       | Open                                                    |
-| `patterns.setPatternLength(pattern, length)`                               | Steps, 1-based pattern. Hidden in the stubs; official since FL 26.1                                                                                                                            | Seen 2026-10-18 (`setPatternLength(2, 33)` reads back 33) |
-| `patterns.duplicatePatternData(p)`                                         | Hidden. Copies every note, piano roll notes too, and leaves the length at what the content spans, so DOUBLE sets the length afterwards                                                         | Seen 2026-10-18                                         |
+| `patterns.setPatternLength(pattern, length)`                               | Steps, 1-based pattern. In the manual since API 39, which says beats, as it and the stubs do for `getPatternLength`; FL 26.1.5 counts steps                                                       | Seen 2026-10-18 (`setPatternLength(2, 33)` reads back 33) |
+| `patterns.duplicatePatternData(p)`                                         | In the manual since API 45. Copies every note, piano roll notes too, and leaves the length at what the content spans, so DOUBLE sets the length afterwards                                       | Seen 2026-10-18                                         |
 | `patterns.setPatternColor(pattern, color)`                                 | The wire's `0xRRGGBB` passes through unchanged, as for the colors we read                                                                                                                      | Used (PATTERN's knob 1, tried in FL)                    |
 | `getGridBit` / `setGridBit` copy (DOUBLE when `duplicatePatternData` is missing) | Copies step parameters too. Adds short notes on piano roll channels, so it's only the fallback                                                                                            | Seen 2026-10-18 (the short notes)                       |
 
-FL has no call to delete a pattern, so mk3d has no such command.
+FL has no call to delete a pattern, so mk3d has no such command. `patterns.clearPattern(i)` (API 44) empties one; unused so far.
 
 ## Steps and the clipboard
 
@@ -98,12 +103,12 @@ name. The others are marked Used.
 
 | Call                                                                                       | What we assume                                                                                                                                                         | Status                 |
 | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------- |
-| `processRECEvent(REC_Tempo, round(bpm × 1000), REC_UpdateValue \| REC_UpdateControl)`       | Changes the tempo and FL's display (the stub's own example uses `REC_Control \| REC_UpdateControl`)                                                                       | Used                   |
-| `device.getLinkedValue(REC_MainShuffle)` and `REC_MIDIController \| REC_UpdateControl`      | Reads the main swing as 0–1 and writes on the 0…`FromMIDI_Max` scale, which FL maps onto the knob's whole 0–100 %                                                         | Used                   |
+| `processRECEvent(REC_Tempo, round(bpm × 1000), REC_UpdateValue \| REC_UpdateControl)`       | Changes the tempo and FL's display (the stub's own example uses `REC_Control \| REC_UpdateControl`). The manual has `mixer.setCurrentTempo` since API 38; this works, so it stays | Used                   |
+| `device.getLinkedValue(REC_MainShuffle)` and `REC_MIDIController \| REC_UpdateControl`      | Reads the main swing as 0–1 and writes on the 0…`FromMIDI_Max` scale, which FL maps onto the knob's whole 0–100 %. The manual has `channels.getShuffle/setShuffle` since API 42; this works, so it stays | Used                   |
 | The same for `REC_MainVol`                                                                 | The toolbar's main volume, not the Master fader. A failing read leaves it out of TRANSPORT, so mk3d shows no value rather than 0                                          | Seen 2026-10-19        |
-| `ui.getSnapMode`, `ui.setSnapMode(value)`                                                  | GRID sends the numbers of `midi.__snap_modes`. The stub gives Bar, Events and Markers (14, 16, 17) the same numbers as 1/6, 1/3 and 1/2 bar. `setSnapMode` works through `ui.snapMode(delta)` in the stub and may skip the "disabled" step around 2 | Open                   |
+| `ui.getSnapMode`, `ui.setSnapMode(value)`                                                  | GRID sends FL's own numbers: its `midi.py` has Line 0, Cell 1, None 3, the step fractions 4–7, Step 8, the beat fractions 9–12, Beat 13, Bar 14, Events 16 and Markers 17, and no bar fractions. The stubs' clash isn't FL's. The manual's table stops at Bar, and `setSnapMode` is a plain set (API 24), `snapMode` the ±1 | Manual; each pad in FL: Open |
 | `channels.quickQuantize(i, startOnly)`                                                     | 0 quantizes the whole note, 1 only its start (the stub says "???", default 1). Without a piano roll open FL may do nothing or act on the channel's current pattern           | Open                   |
-| `ui.getVisible(0…4)`, `ui.getFocused(0…4)`, `ui.getFocused(5)`                             | UI_STATE. 5 is true when a plug-in window has the focus (`midi.widPlugin` is listed only for `ui.getFocused`)                                                               | Used                   |
+| `ui.getVisible(0…4)`, `ui.getFocused(0…4)`, `ui.getFocused(5)`                             | UI_STATE. 0 mixer, 1 channel rack, 2 playlist, 3 piano roll, 4 browser. 5 is true when a plug-in window has the focus (`midi.widPlugin` only works in `ui.getFocused`)     | Manual                 |
 | `ui.hideWindow`, `ui.showWindow`, `ui.setFocused`                                          | FL raises a window only when it opens it, so one open behind another is closed and reopened in one press (the F-keys take two, `setFocused` alone about three; an Image-Line forum post reports the same). The browser isn't closed first | Seen 2026-11-04 (bug 5) |
 | `ui.up/down/left/right/enter/escape()`                                                     | Called with no arguments (the value argument is undocumented)                                                                                                             | Seen 2026-10-19 (the picker) |
 
@@ -113,7 +118,7 @@ name. The others are marked Used.
 | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
 | `general.undoUp()`, `general.undoDown()`                                              | Undo and redo. The stubs warn that FL 21 and later may have flipped the visual order; the owner's try says the direction is right                                                                                    | Seen 2026-10-19 |
 | `general.saveUndo(name, UF_PR)`, once before the first `setGridBit`                   | One undo entry per batch. Saved before the edit                                                                                                                                                                      | Seen 2026-10-19 |
-| `ui.setHintMsg(name)`, with the same name                                             | FL's hint bar says what the MK3 just did                                                                                                                                                                             | Open            |
+| `ui.setHintMsg(name)`, with the same name                                             | FL's hint bar says what the MK3 just did                                                                                                                                                                             | Manual          |
 | Nothing read during a batch (ours)                                                    | FL may call `OnRefresh` or `OnIdle` from inside `saveUndo` or `setGridBit`, so `service()` reads nothing until the batch ends and everything goes out once, never half done                                          | —               |
 | `getUndoHistoryPos`, `getUndoHistoryCount`, `getUndoLevelHint`, `getUndoHistoryLast`  | UNDO_STATE sends the first three. The stub says Pos "seems to behave the same as Count" and that Last is the current position (0 = newest), while the hint is built from Last + 1 and Count. What each one means hasn't been read from a log | Open            |
 
@@ -123,6 +128,7 @@ name. The others are marked Used.
 | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
 | `plugins.getPresetCount`, `nextPreset`, `prevPreset`                     | Whether the count is 0 for plug-ins without programs, and whether next and previous wrap (the script assumes they do when it guesses the index after a step), is open for VST, VST3 and FL's own plug-ins | Open                              |
 | `plugins.getName(i, -1, FPN_Patch)`, `FPN_Preset`                        | **Found on hardware (Diva):** for a VST, `FPN_Patch` doesn't match the preset names, but FL names the channel after the current program. The current preset is the one named like `FPN_Patch`, else like the channel, else the last guess | Seen 2026-10-18                   |
+| `plugins.getName(i, -1, FPN_Preset, GPN_GetCurrentPreset)`               | The name of the current preset, per the manual. Tried third, after the patch name and the channel name, so what works on Diva can't get worse; a plug-in where those two say nothing gets the right highlight | Manual; in FL: Open               |
 | `channels.getChannelName(i)` after a preset step                         | Follows the program for other plug-ins than Diva                                                                                                                                                     | Open                              |
 | Reading a bank of up to `PRESET_SCAN_LIMIT` (1024) names                 | Whole, once, in one callback, cached until the channel, plug-in or count changes. Bigger banks are read only around the known index. How long it takes is open                                         | Open                              |
 | `FPN_Patch` right after `nextPreset` / `prevPreset`                      | FL may rename late, so the script keeps its own index for `PRESET_SETTLE_SECONDS` after a step or load                                                                                                | Used                              |
@@ -158,7 +164,7 @@ FL has no scenes; a marker stands for one. The API has no marker count and no ma
 
 | Call                                                                                        | What we assume                                                                                                                                                                                 | Status                                                 |
 | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `arrangement.selectionSet(start, end)`, `selectionClear()`, `selectionIsActive()`, `selectionStart()`, `selectionEnd()` | Hidden (the first three). Absolute ticks, the unit of MARKERS: the log showed `song loop: 0…1536 ticks`. `selectionClear()` for start = end = 0. Read on every pass (three cheap getters) and sent when it changed, on REQUEST_LOOP and after SET_LOOP | Seen 2026-10-18; the tap 2026-10-21; the overlay: Open |
+| `arrangement.selectionSet(start, end)`, `selectionClear()`, `selectionIsActive()`, `selectionStart()`, `selectionEnd()` | The first three are in neither the manual nor the stubs. Absolute ticks, the unit of MARKERS: the log showed `song loop: 0…1536 ticks`. `selectionClear()` for start = end = 0. Read on every pass (three cheap getters) and sent when it changed, on REQUEST_LOOP and after SET_LOOP | Seen 2026-10-18; the tap 2026-10-21; the overlay: Open |
 
 A function that is missing is reported once in FEATURES (mk3d shows `Not available in this FL version`) and
 nothing is called.
@@ -187,22 +193,60 @@ nothing is called.
 | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
 | `playlist.getLiveBlockStatus(track, block, LB_Status_Default)`, `getLiveBlockColor`           | Real data only while performance mode is on; otherwise every block reads as empty. Bits 1 filled, 2 scheduled, 4 playing: 3 queued, 5 playing with a switch pending, 7 playing | Seen 2026-10-21 |
 | `playlist.triggerLiveClip(track, block, TLC_MuteOthers \| TLC_Fill \| TLC_ColumnMode …)`      | As Image-Line's Akai Fire script does it, with `TLC_Release` on the pad's release: it fires the column on every track with a clip there and stops the others             | Seen 2026-10-21 |
-| `playlist.getLiveTrigSnap(track)`                                                             | 5 is `LiveSnap_Four` (4 beats). The stubs list 0 off, 1 ¼ beat, 2 ½ beat, 3 1 beat, 4 2 beats, 5 4 beats, 6 auto                                                         | Seen 2026-10-21 |
-| `playlist.liveDisplayZone(left, top, right, bottom, ms)`                                      | FL outlines the pads' window for 2 s when LIVE opens or moves: blocks 0-based with `right` left out, tracks 1-based with `bottom` included. A temporary zone needs no clearing | Open            |
-| `playlist.getLiveStatus(i, mode)`                                                             | Not used. It raised "Index out of range" in our probe, possibly because the probe passed `LB_Status_Simplest`, which the stubs allow only for `getLiveBlockStatus`        | Seen 2026-10-20 |
+| `playlist.getLiveTrigSnap(track)`                                                             | 5 is `LiveSnap_Four` (4 beats). The manual lists 0 off, 1 ¼ beat, 2 ½ beat, 3 1 beat, 4 2 beats, 5 4 beats, 6 auto                                                       | Seen 2026-10-21 |
+| `playlist.liveDisplayZone(left, top, right, bottom, ms)`                                      | FL outlines the pads' window for 2 s when LIVE opens or moves, and a duration makes the zone temporary (manual). Our coordinates: blocks 0-based with `right` left out, tracks 1-based with `bottom` included | Open            |
+| `playlist.getLiveStatus(i, mode)`                                                             | Not used. It raised "Index out of range" in our probe, which passed `LB_Status_Simplest`; the manual gives it only Default and Simple                                      | Manual          |
 
 ## The Plugin picker
 
 `transport.globalTransport(FPT_F8, 1)` toggles FL's Plugin picker. Up and down scroll it, Enter adds the plug-in as
 a new channel. Seen 2026-10-19 ([fl-ilmcp.md](fl-ilmcp.md)).
 
-## Not used yet, worth knowing
+The manual also documents `ui.showPicker(mode, category)` since API 41: mode 0 the Plugin picker, 1 the Project picker;
+category 0 generators or patterns, 1 effects or channels. That explains our 2026-10-19 trial, which called mode 1 and
+saw patterns and channels. `showPicker(0, 0)` might open the picker on generators alone. Not tried: F8 works and toggles.
 
-- **`patterns.getBlockSetStatus(left block, top track, right block, bottom track)`**, as Image-Line's Akai Fire
-  script calls it for its overview mode: 0 empty, 1 has clips, 2 playing. It could give LIVE a cheap zoomed-out
-  overview of a large playlist. Our own guessed calls were removed with the probe (2026-11-05).
-- **`PME_System_Safe`:** the Fire triggers clips only when `event.pmeFlags & PME_System_Safe` is set. Our script
-  makes system changes from `OnSysEx` without looking. No failure seen. It tells mk3d's log once per load if the
-  flag is ever missing (`OnSysEx without PME_System_Safe`).
-- Image-Line's Fire also uses `playlist.getTrackActivityLevel`, and `channels.showGraphEditor` + `getStepParam` for
-  held steps. STEP does that with `getCurrentStepParam` and `setStepParameterByIndex`.
+`transport.globalTransport` takes the event's `pmeFlags` in FL's own scripts and in the manual; we let it default to
+`PME_System`, which has worked since the first version.
+
+## Is it safe to edit?
+
+The Fire triggers clips only when `event.pmeFlags & PME_System_Safe` is set, Novation's script asks
+`general.safeToEdit()` (API 29) first, and the manual's flag table says critical things can't be done while a modal
+window is open. Our script makes changes from `OnSysEx` without looking: what FL refuses raises, and the setter logs
+it. No failure seen. mk3d's log says once per load if either ever says no (`OnSysEx while FL says it isn't safe`).
+
+The manual spells the event's property `pmeflags`; every script of FL's reads `pmeFlags`, so ours does too.
+
+## What the manual has that we don't use
+
+Compared function by function on 2026-11-05: the manual lists about 355 functions in the modules we import, the
+script calls about 125. Most of the rest is no use to a pad controller. These might be, the most useful first. None
+has been tried.
+
+| What it would give the MK3 | Calls | Notes |
+| -------------------------- | ----- | ----- |
+| FL shows what the MK3 covers: a red frame around the channel bank, the STEP page's steps and the MIXER's 8 tracks | `ui.crDisplayRect(left, top, right, bottom, ms, flags)`, `ui.miDisplayRect(first, last, ms, flags)`, `ui.scrollWindow(window, index)` to keep them in view | Almost every controller script does this, Image-Line's and the vendors'. One call when a bank moves. LIVE has it since 2026-11-05 (`liveDisplayZone`) |
+| Effects on the MK3: a PLUG-IN page for mixer slots, with mix level, bypass and EQ | `plugins.*(track, slot)` (every call takes a slot), `mixer.isTrackPluginValid`, `getTrackPluginId`, `get/setPluginMixLevel` (API 37), `enableTrackSlots`, `focusEditor`, `getActiveEffectIndex`, `get/setEqGain`, `Frequency`, `Bandwidth` (API 35) | The biggest thing the API allows that mk3d doesn't do |
+| Capture: what was just played becomes notes | `general.dumpScoreLog(seconds, silent)`, `clearLog` | FL's Dump score log. Maschine has nothing closer on this hardware. Novation's script calls it |
+| Knob moves recorded as automation | `general.processRECEvent(id, value, REC_MIDIController)`, which includes `REC_Store`, on `getRecEventId(i) + REC_Chan_Vol` and so on, and `mixer.getTrackPluginId(t, 0) + REC_Mixer_Vol` | We set values with `setChannelVolume`, `setTrackVolume` and `setParamValue`, which may not record. Open in FL. docs/workflow.md's AUTO row |
+| FPC's pads on PAD MODE or KEYBOARD: their notes and colours | `plugins.getPadInfo(i, -1, PAD_Count / PAD_Semitone / PAD_Color / PAD_Empty / PAD_Muted, pad)`, `plugins.getColor(i, -1, GC_Semitone, pad)` | Only for FPC. Novation's script calls `getPadInfo` |
+| Erase a whole pattern, piano roll notes too | `patterns.clearPattern(i)` (API 44) | `setGridBit` can't reach piano roll notes |
+| Other meters than 4/4 | `general.getRecPPB()` ÷ `getRecPPQ()` = the numerator, `setNumerator`, `setDenominator` (API 38) | Bars on the screens assume 4 beats |
+| REC's other states | `ui.isStartOnInputEnabled`, `ui.isLoopRecEnabled`, `ui.getStepEditMode`, `OnWaitingForInput`, `FPT_WaitForInput`, `FPT_LoopRecord`, `FPT_Overdub`, `FPT_StepEdit` | FL's Rec button menu from the MK3 |
+| NOTE REPEAT and ARP on FL's clock | `device.setMasterSync(1)` sends FL's MIDI clock out of the port | Worth it only if our timer ever drifts |
+| Open the piano roll on the selected channel | `ui.openEventEditor(getRecEventId(i) + REC_Chan_PianoRoll, EE_PR)` | NAVIGATE's tile opens whichever channel FL last showed |
+| FL's hints on a screen | `OnSendTempMsg(text, ms)`, `ui.getHintMsg()` | The manual's way to feed a controller's display. The owner's no-filler rule probably says no |
+| Save state on FILE | `general.getChangedFlag()`, `getProjectTitle` (API 38) | A mark when there are unsaved changes |
+| FL's own controller links | `device.linkToLastTweaked` (API 21), `findEventID`, `getLinkedValueString`, `getLinkedParamName`, `getLinkedInfo`, `HW_Dirty_RemoteLinks` | What MackieCU does; a different model from our pages |
+| Pattern groups | `patterns.getActivePatternGroup`, `getPatternGroupCount`, `getPatternGroupName`, `getPatternsInGroup` (API 28) | PATTERN ignores FL's groups; nobody has asked |
+| Smaller things | `patterns.getBlockSetStatus` (0 empty, 1 filled, 2 playing: a zoomed-out LIVE), `arrangement.liveSelection`, `transport.getSongLength` (LOOP's upper bound), `transport.setPlaybackSpeed`, `markerJumpJog`, `continuousMove`, `playlist.selectTool` (API 40), `incLive*`, `channels.getGridBitWithLoop`, `midi.pRepeat` (step parameter 8), renames and colours (`setChannelName`, `setChannelColor`, `mixer.setTrackName`, `setPatternName`) | |
+
+Also from the manual, for setup rather than the MK3:
+
+- `# supportedDevices=MK3 Bridge` in the script's header makes FL link the script to a device of that name by itself.
+  The header has it since 2026-11-05. Not seen yet: try it on a machine where FL hasn't met the port, like the Windows PC.
+- View → Script output → **Interpreter** runs any call by hand once a script is selected: the quickest way to settle
+  an Open row above without adding code.
+- A custom module's only documented place is FL's shared `Python/Lib`, which we can't write to. Scripts that keep
+  modules next to `device_*.py` do exist (Novation's, Arturia's), and that's what splitting our script would rely on.

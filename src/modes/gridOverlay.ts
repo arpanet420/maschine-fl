@@ -10,10 +10,9 @@
 // The pads belong to this page even while SHIFT is still held from opening it (`usesShiftPads`):
 // the SHIFT + pad actions of the stack stay out of the way.
 //
-// NOT VERIFIED (docs/sysex.md): the numbers. The stub's `midi.Snap_*` lists Bar, Events and Markers
-// with the same values as 1/6, 1/3 and 1/2 bar (14, 16, 17); mk3d uses 14, 16 and 17 for those three
-// and leaves the bar fractions out. The manual doesn't name the step and beat fractions as quantizing
-// or Events and Markers at all: `quantizes` counts the fractions and not those two, not tried in FL.
+// The numbers are the ones in FL's own `midi.py`; pressing each pad in FL is NOT VERIFIED. FL's manual doesn't
+// name the step and beat fractions as quantizing or Events and Markers at all: `quantizes` counts the
+// fractions and not those two, not tried in FL.
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import type { HwEvent } from "../hw/events.js";
 import { PAD_COUNT } from "../hw/ids.js";

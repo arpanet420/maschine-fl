@@ -52,8 +52,13 @@ Options → **MIDI Settings**:
 3. Leave **Maschine MK3** (the MK3's own class-compliant MIDI port) **disabled** in both lists.
    mk3d drives the device directly; that port would double the input.
 
+The script's header asks FL to link it to a device called `MK3 Bridge` by itself (`# supportedDevices`), so on a new
+machine the Controller type may already be set. That hasn't been seen yet, and the output's Port number still is yours
+to set.
+
 FL's Script output window (View → Script output) should show `MK3 Bridge: ready, port 10`, and
-mk3d's log should show `FL Studio connected`.
+mk3d's log should show `FL Studio connected` and which FL it found (`FL 26.1.5, scripting API 44`). If the Script output
+also says `no output port`, step 2 is missing.
 
 ## 4. Recording into the piano roll
 

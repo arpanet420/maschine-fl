@@ -1,4 +1,5 @@
 # name=MK3 Bridge
+# supportedDevices=MK3 Bridge
 # Bridge between FL Studio and the mk3d daemon (Maschine MK3), protocol v2 (docs/sysex.md).
 #
 # Notes on MIDI channel 1 pass straight through to the selected channel. Notes on MIDI channel 2
@@ -13,7 +14,8 @@
 #
 # The protocol codecs and the Bridge class do not depend on a running FL Studio apart from the
 # built-in modules imported below, so fl-script/tests/test_bridge.py loads this file with fake
-# modules. Keep this a single file: FL loads it through a symlink from its Hardware folder.
+# modules. One file so far: a module next to it would import (Arturia's and Novation's scripts have
+# them), but FL's Reload may not pick up a change in one, which nobody has tried.
 #
 # What this script assumes about FL's API, and how much of that has been seen in FL, is in
 # docs/fl-api-notes.md.
@@ -138,6 +140,7 @@ MAX_FRAMES_PER_CALLBACK = 8
 CHANNEL_WINDOW = 16
 MIXER_WINDOW = 8
 PATTERN_WINDOW = 16
+PATTERN_SCAN_LIMIT = 256  # how far used_patterns looks for the last pattern in use
 STEP_WINDOW = 16
 MAX_WATCHED_PARAMS = 8
 MAX_PARAM_NAMES = 8  # names per PARAM_NAMES frame
@@ -888,6 +891,12 @@ def _attr(default, module, name, *args):
     return _safe(default, function, *args)
 
 
+def _optional(default, module, name, *args):
+    """Like _attr, for a call we can do without: a version that lacks it isn't worth a line in FL's output."""
+    function = getattr(module, name, None)
+    return default if function is None else _safe(default, function, *args)
+
+
 def _step_param_functions():
     """(channels.getCurrentStepParam, channels.setStepParameterByIndex), None for a missing one."""
     names = ("getCurrentStepParam", "setStepParameterByIndex")
@@ -962,6 +971,7 @@ class Bridge(object):
         self.scan = None
         self.names_pending = False  # send the names (again) once the scan is done
         self.pme_logged = False  # note_pme_flags has said its line
+        self.used_patterns_seen = None  # (patternCount, the highest pattern in use) of the last scan
         # The selected channel's presets, read while VIEW has the presets flag: {"key": (channel,
         # plugin name, count), "names": [...] or None (banks over PRESET_SCAN_LIMIT), "current": index
         # or None}. The names are read once per key; only the patch name is read on every pass.
@@ -1100,15 +1110,28 @@ class Bridge(object):
             self.mark("grid", "undo_state")
 
     def note_pme_flags(self, event):
-        """Image-Line's Akai Fire script triggers clips only with PME_System_Safe set, and we make system
-        changes from OnSysEx without looking. No failure has been seen, so this only tells mk3d's log,
-        once per script load, if the flag is ever missing."""
+        """Image-Line's Akai Fire script triggers clips only with PME_System_Safe set, Novation's asks
+        general.safeToEdit() first, and we make system changes from OnSysEx without looking. No failure
+        has been seen, and what FL refuses raises and is logged, so this only tells mk3d's log, once per
+        script load, if either ever says no."""
+        if self.pme_logged:
+            return
         safe = getattr(midi, "PME_System_Safe", None)
         flags = getattr(event, "pmeFlags", None)
-        if self.pme_logged or safe is None or flags is None or flags & safe:
+        editable = _optional(None, general, "safeToEdit")
+        flag_missing = safe is not None and flags is not None and not flags & safe
+        if not flag_missing and (editable is None or editable == 1):
             return
         self.pme_logged = True
-        self.queue_probe("OnSysEx without PME_System_Safe: pmeFlags 0x%x" % flags)
+        shown = "none" if flags is None else "0x%x" % flags
+        self.queue_probe("OnSysEx while FL says it isn't safe: pmeFlags %s, safeToEdit %s" % (shown, editable))
+
+    def note_versions(self):
+        """Which FL this is, for mk3d's log."""
+        version = _optional(None, ui, "getVersion")
+        api = _optional(None, general, "getVersion")
+        if version is not None or api is not None:
+            self.queue_probe("FL %s, scripting API %s" % (version, api))
 
     def note_focus_during_scan(self):
         """NI's script says getParamName can focus a plug-in's window, which would feed the bookkeeping of
@@ -1132,6 +1155,10 @@ class Bridge(object):
             _log_once("note_focus", error)
         if flags & midi.HW_Dirty_FocusedWindow:
             self.mark("ui_state")
+        if flags & midi.HW_Dirty_Patterns:
+            self.used_patterns_seen = None
+        if flags & getattr(midi, "HW_Dirty_Performance", 0):
+            self.mark("live_grid")
         self.mark("transport", "song_pos")
         mixer_flags = (
             midi.HW_Dirty_Mixer_Sel
@@ -1141,6 +1168,7 @@ class Bridge(object):
         )
         channel_flags = (
             midi.HW_Dirty_ChannelRack
+            | getattr(midi, "HW_ChannelEvent", 0)
             | midi.HW_Dirty_ChannelRackGroup
             | midi.HW_Dirty_GraphEditor
             | midi.HW_Dirty_ControlValues
@@ -1473,13 +1501,17 @@ class Bridge(object):
     def detect_preset(self, index, names, guess):
         """The index of the current preset: the one whose name is FL's patch name, else the one named
         like the channel (FL names the channel after a VST's program: the patch name did not match
-        for Diva), else the last guess (None when there is none). Equal names resolve to the one
-        nearest the guess."""
+        for Diva), else the one FL's manual names as current (FPN_Preset with GPN_GetCurrentPreset, not
+        tried yet, so it comes after the two that work), else the last guess (None when there is none).
+        Equal names resolve to the one nearest the guess."""
         patch = str(_safe("", plugins.getName, index, -1, getattr(midi, "FPN_Patch", 3))).strip()
         matches = [k for k, name in enumerate(names) if name == patch] if patch else []
         if not matches:
             channel = str(_safe("", channels.getChannelName, index)).strip()
             matches = [k for k, name in enumerate(names) if name == channel] if channel else []
+        if not matches:
+            named = self.preset_name(index, getattr(midi, "GPN_GetCurrentPreset", -1))
+            matches = [k for k, name in enumerate(names) if name == named] if named else []
         if not matches:
             return guess
         if guess is None:
@@ -1803,9 +1835,30 @@ class Bridge(object):
         self.last_snap = snap
         self.submit("UI_STATE", {"type": "uiState", "snap": snap, "visible": visible, "focused": focused})
 
+    def used_patterns(self):
+        """The highest pattern number in use. patternCount counts the patterns that aren't in their default
+        state and they needn't be next to each other: 1 and 5 count as 2. isPatternDefault finds the last one.
+        Scanned when the count changes or FL says patterns changed, not on every pass."""
+        count = int(_safe(0, patterns.patternCount))
+        seen = self.used_patterns_seen
+        if seen is not None and seen[0] == count:
+            return seen[1]
+        highest = count
+        is_default = getattr(patterns, "isPatternDefault", None)
+        if callable(is_default):
+            found = 0
+            for number in range(1, PATTERN_SCAN_LIMIT + 1):
+                if found >= count:
+                    break
+                if not _safe(True, is_default, number):
+                    found += 1
+                    highest = max(highest, number)
+        self.used_patterns_seen = (count, highest)
+        return highest
+
     def pattern_count(self):
         current = int(_safe(1, patterns.patternNumber))
-        return max(int(_safe(0, patterns.patternCount)), current)
+        return max(self.used_patterns(), current)
 
     def read_pattern(self):
         number = int(_safe(1, patterns.patternNumber))
@@ -2275,7 +2328,9 @@ class Bridge(object):
             self.names_pending = True  # mk3d forgets everything on HELLO
             self.marker_outbox = []
             self.marker_scan = True  # scanned when FL is stopped, else the cache is sent
+            self.used_patterns_seen = None
             self.submit("HELLO", {"type": "hello", "version": PROTOCOL_VERSION})
+            self.note_versions()
             self.mark_all()
             self.last_full = None
         elif kind == "view":
@@ -3049,9 +3104,12 @@ def OnInit():
         _log_once("setHasMeters", error)
     try:
         _bridge.submit("HELLO", {"type": "hello", "version": PROTOCOL_VERSION})
+        _bridge.note_versions()
         _bridge.mark_all()
         _bridge.service()
         _log("ready, port", device.getPortNumber())
+        if not _optional(True, device, "isAssigned"):
+            _log("no output port: give MK3 Bridge FB the same Port number as MK3 Bridge in FL's MIDI Settings")
     except Exception as error:
         _log_once("OnInit", error)
 
@@ -3153,7 +3211,8 @@ def OnRefresh(flags):
         _log_once("OnRefresh", error)
 
 
-def OnDirtyChannel(index):
+def OnDirtyChannel(*args):
+    """FL's manual says (index, flag), its stubs and older scripts (index). A mismatch would raise before the try."""
     try:
         _bridge.mark(*CHANNEL_READERS)
     except Exception as error:
@@ -3165,6 +3224,14 @@ def OnDirtyMixerTrack(index):
         _bridge.mark(*MIXER_READERS)
     except Exception as error:
         _log_once("OnDirtyMixerTrack", error)
+
+
+def OnDoFullRefresh():
+    try:
+        _bridge.mark_all()
+        _bridge.service()
+    except Exception as error:
+        _log_once("OnDoFullRefresh", error)
 
 
 def OnProjectLoad(status):

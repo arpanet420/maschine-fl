@@ -1,12 +1,14 @@
 # FL Studio 2026's hidden Python API (`ilmcp` and undocumented functions)
 
-**A research log.** The probe (`MK3D_PROBE`, RUN_PROBE, `_ilmcp`), the browser trial (BROWSE, PICKER, BROWSER_NODE) and the
-setters' PROBE lines below were removed on 2026-11-05 (`docs/review-2026-11-05.md`); they are in git history. The
-findings stand.
+**A research log from 2026-10-18 and 19.** The probe (`MK3D_PROBE`, RUN_PROBE, `_ilmcp`), the browser trial (BROWSE,
+PICKER, BROWSER_NODE) and the setters' read-back PROBE lines were removed on 2026-11-05
+([review-2026-11-05.md](review-2026-11-05.md)); they are in git history. The findings stand. What the script uses today
+and how far each call has been checked is in [fl-api-notes.md](fl-api-notes.md).
 
-Found 2026-10-18 while looking for a way to put a new instrument on an empty pad (PLAN.md, the
-owner's idea list). **Everything here is undocumented and NOT VERIFIED in FL** until the probe has
-run (below); any FL update may change or drop it. Keep every call behind `getattr`/try-except.
+Found while looking for a way to put a new instrument on an empty pad (`PLAN.md`, the owner's idea list). "Hidden" meant
+not in the stubs. On 2026-11-05 FL's [online manual](https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/midi_scripting.htm)
+turned out to document most of it; the table below says which. What's still undocumented may change or go in any FL
+update, so it stays behind `getattr` and try/except.
 
 ## How it was found (repeatable)
 
@@ -40,32 +42,31 @@ docstrings; probably "Image-Line MCP", FL's AI/assistant hooks) and the piano ro
 
 ## Hidden functions in the documented modules
 
-| Module | Functions (likely args) |
-|---|---|
-| `patterns` | **`setPatternLength(pattern, length)`**, `incrementPatternLength(…)`, **`clearPattern([pattern])`**, **`duplicatePatternData(…)`**, **`movePattern(…)`**, `setLoopStarterRootNote` |
-| `channels` | **`getSwing()` / `setSwing(f)`** (channel swing), `fillEachNSteps(channel, n, …)`, `rerollLoopStarterLoop/Steps/Sample` (FL's Loop Starter) |
-| `mixer` | **`getPluginMixLevel(track, slot)` / `setPluginMixLevel(track, slot, value)`**, **`getPluginMuteState` / `setPluginMuteState(track, slot, …)`** (FX slot mix and bypass), `setCurrentTempo(bpm)`, `getTrackCount` |
-| `arrangement` | **`selectionSet(start, end)`, `selectionClear()`, `selectionIsActive()`** (the playlist time selection = the song loop range) |
-| `general` | **`setNumerator`, `setDenominator`** (time signature), `setRecPPQ`, `getProjectTitle/Author/Genre` |
-| `playlist` | `selectTool(i)` |
-| `ui` | `showPicker(i [, i])` |
-| `device` | `flrMidiNote(…)`, `flrMidiCC(…)`, `releaseCC` |
+The stubs don't have these. The numbers are the API version the manual gives.
+
+| Module | In the manual now | Still undocumented (likely arguments) |
+|---|---|---|
+| `patterns` | `setPatternLength`, `incrementPatternLength`, `movePattern` (39), `clearPattern` (44), `duplicatePatternData` (45) | `setLoopStarterRootNote` |
+| `channels` | `rerollLoopStarterLoop` (39) | `getSwing()` / `setSwing(f)` (channel swing), `fillEachNSteps(channel, n, …)`, `rerollLoopStarterSteps`, `rerollLoopStarterSample` |
+| `mixer` | `getPluginMixLevel`, `setPluginMixLevel` (37), `setCurrentTempo`, `getTrackCount` (38) | `getPluginMuteState`, `setPluginMuteState(track, slot, …)` (FX slot bypass) |
+| `arrangement` | | `selectionSet(start, end)`, `selectionClear()`, `selectionIsActive()` (the playlist time selection = the song loop range) |
+| `general` | `setNumerator`, `setDenominator`, `setRecPPQ`, `getProjectTitle`, `getProjectAuthor`, `getProjectGenre` (38) | |
+| `playlist` | `selectTool` (40) | |
+| `ui` | `showPicker(mode, category)` (41): mode 0 the Plugin picker, 1 the Project picker | |
+| `device` | | `flrMidiNote(…)`, `flrMidiCC(…)`, `releaseCC` |
 
 ## What it could unlock (ideas, in rough order of value)
 
 1. **Real notes on the screens and editing them** (`runPRScript`): a piano roll script reads the
    selected channel's notes in the current pattern, including notes drawn in the piano roll, and can
    add, move, delete, quantize and transpose them. That makes Maschine's EVENTS page, a real note
-   view in ARRANGER and recording-to-pattern edits possible. Open question: how the notes get back
-   to our script (a shared Python module if piano roll scripts share the interpreter, else a temp
-   file); the probe tries both.
-2. **New instrument on an empty pad / plug-in loader** (`getBrowserNames` + `addChannel`): browse
-   FL's plugin database on the MK3 and load; also SHIFT + BROWSER (Maschine's plug-in loader).
-   `addEffect` gives a mixer FX loader; `get/setPluginMixLevel` + `setPluginMuteState` FX slot
-   mix knobs and bypass buttons on the Mixer page.
-3. **Pattern length and clear** (`setPatternLength` **built**, `clearPattern`, `duplicatePatternData`,
-   `movePattern`): pattern length on the PATTERN overlay's knob 4, pattern clear/delete via ERASE,
-   double (SHIFT + DUPLICATE) as real data copies, reordering patterns.
+   view in ARRANGER and recording-to-pattern edits possible. Out of reach: see the probe results.
+2. **New instrument on an empty pad / plug-in loader** (`getBrowserNames` + `addChannel`, out of reach; the Plugin
+   picker does it, below). `get/setPluginMixLevel` + `setPluginMuteState` could give FX slot mix knobs and bypass
+   buttons on the Mixer page.
+3. **Pattern length and clear** (`setPatternLength` and `duplicatePatternData` **built**, `clearPattern`,
+   `movePattern`): pattern length on the PATTERN overlay's knob 4, double (SHIFT + DUPLICATE) as real data copies,
+   pattern clear via ERASE, reordering patterns.
 4. **Song loop range** (`arrangement.selectionSet`, **built**): Maschine's loop page (SHIFT + RESTART held),
    and SCENE could loop the section between two markers.
 5. **Per-channel swing** (`channels.setSwing`) for the SWING quick edit with a pad held;
@@ -95,91 +96,26 @@ docstrings; probably "Image-Line MCP", FL's AI/assistant hooks) and the piano ro
   (adding channels and effects, the browser tree, piano roll scripts) is out of reach for mk3d.**
   What remains usable is the hidden functions of the documented modules (table above).
 
-## What mk3d uses now (2026-10-18, all NOT VERIFIED until the owner has tried them)
+## What came of it
 
-- **`patterns.setPatternLength(pattern, length)`**: PATTERN overlay, knob 4 `LENGTH` (SET_PATTERN_LENGTH
-  `u7 pattern`, `u14 length`) and display 3 `DOUBLE` (DOUBLE_PATTERN). **Verified in FL 2026 by the owner
-  (2026-10-18): the unit is steps**, the log showed `setPatternLength(2, 33) -> getPatternLength(2) = 33`
-  (so `STEPS_PER_UNIT = 1`). FL 2026's release notes list the functions as official (26.1: "MIDI scripting:
-  setPatternLength, incrementPatternLength and getPatternLength…"), so they are no longer "hidden". The
-  script calls `getattr`, sets, reads `getPatternLength` back and sends a PROBE line.
-- **DOUBLE (`DOUBLE_PATTERN`)**: `general.saveUndo("MK3: double pattern", UF_PR)` once, then FL's hidden
-  `patterns.duplicatePatternData(p)`, which copies every note including piano roll notes (owner's try,
-  2026-10-18), and `setPatternLength(p, 2L)`, since the function alone leaves the length at what the content
-  spans. Without that function: `setPatternLength(p, 2L)` (at most 512 steps), then for every channel `getGridBit` / `setGridBit` copy steps 0…L−1 to L…2L−1 and the
-  step parameters (`channels.getCurrentStepParam` / `setStepParameterByIndex`, params 0–7: pitch, velocity,
-  release, fine pitch, pan, mod X, mod Y, shift) of the steps that are on; what fails is skipped. A few channels
-  per service pass; the grid goes out once at the end; PROBE `doublePattern(1) 16 -> 32, channels 5`. That path
-  doesn't double notes drawn in the piano roll (`setGridBit` does not write them; reading them step by step does
-  work, see PLAYED_NOTES in docs/sysex.md) (NOT VERIFIED live: the step
-  parameter copy, the pacing).
-- **CREATE_PATTERN (an empty pad while PATTERN is held)**: `patterns.jumpToPattern(k)` creates a missing pattern
-  (stub docs; NOT VERIFIED live). The script reads `patternNumber` back; if FL did not select `k` it falls back to
-  `findFirstNextEmptyPat(FFNEP_DontPromptName)`. PROBE `createPattern(7): jumpToPattern -> patternNumber 7,
-  patternCount 5 -> 7` or `createPattern(7): jump left 1; findFirstNextEmptyPat -> pattern 6, count 5 -> 6`.
-- **`arrangement.selectionSet(start, end)`, `selectionClear()`, `selectionIsActive()`** with the documented
-  `selectionStart()` / `selectionEnd()`: the song loop, SHIFT + RESTART (tap = on/off, hold = LOOP
-  overlay). Ticks are assumed to be absolute ticks, the unit of MARKERS; the PROBE line after each set
-  (`selectionSet(0, 1536) -> active=1 start=0 end=1536`) shows what FL made of it. LOOP_STATE reports
-  the range back (read on every service pass) and lights RESTART.
-- `patterns.setPatternColor(pattern, color)` is documented, not hidden: PATTERN's knob 1 `COLOR`
-  (SET_PATTERN_COLOR); its PROBE line shows the colour byte order FL read back.
-- A function missing in another FL version is reported once in FEATURES; mk3d then shows `Not
-  available in this FL version` and sends nothing (the script never calls what `getattr` does not find).
+- **`patterns.setPatternLength`**: PATTERN's knob 4 `LENGTH` and DOUBLE. The owner's try on 2026-10-18 showed the unit is
+  steps (`setPatternLength(2, 33)` reads back 33), though the manual says beats.
+- **`patterns.duplicatePatternData`**: DOUBLE (SHIFT + DUPLICATE). `getGridBit` reads recorded notes but `setGridBit`
+  doesn't write them, so copying steps left the second half empty. This function copies every note, piano roll notes
+  too, and leaves the length at what the content spans.
+- **`patterns.jumpToPattern`** creates a missing pattern: an empty pad while PATTERN is held.
+- **`arrangement.selectionSet`, `selectionClear`, `selectionIsActive`**: the song loop, SHIFT + RESTART.
+- **`patterns.setPatternColor`** is documented: PATTERN's knob 1 `COLOR`.
+- A function missing in another FL version is reported once in FEATURES; mk3d then shows `Not available in this FL
+  version` and sends nothing.
 - Still unused: `clearPattern`, `movePattern`, swing, time signature, FX slot mix.
 
-## Plugin loader trial (2026-10-19, NOT VERIFIED)
+## The plug-in loader: how we got to the Plugin picker
 
-`ilmcp.addChannel` only exists in FL's Gopher assistant sessions (the probe could not import it), and the
-documented script API has no "add plugin" call, so mk3d tries two undocumented-in-practice routes. Both
-are wired as one FL call per command (BROWSE, UI_KEY, PICKER; docs/sysex.md), each answered with
-BROWSER_NODE and one PROBE line (`<- FL probe: browse(next) -> "Diva" type -1 popup 0 form "Browser" id 4 hint "..."`).
-Try them from the BROWSER page: display 2 `PLUG-INS`, display 3 `PICKER` (docs/mapping.md, BROWSER).
-
-1. **FL's browser.** Walk the tree to `Plugin database > Installed > Generators > ...` with the 4D (BROWSE next /
-   previous, `ui.navigateBrowser(41 / 40, False)`), open folders with push or `OPEN` (`ui.toggleBrowserNode(-1)`),
-   and on a plugin node push (or `MENU`): `ui.selectBrowserMenuItem()`. The stubs say it selects the highlighted
-   menu item; FL's own Fire script used it to open the node's context menu, which has "Open in new channel".
-   The menu is driven with the 4D (down / up / push = UI_KEY) and `ENTER`, `ESC` closes it
-   (`ui.closeActivePopupMenu()`). `ENTER` on the node itself (`ui.enter()`) may also load it.
-2. **FL's plugin picker.** `ui.showPicker(i [, i])` (hidden; the parser format is `i|i`, the second argument
-   defaults to −1; FL 2026 release notes: "added a function to show or hide the plugin picker" and "the plugin
-   picker can now be focused from a script"). Picking a generator there adds it as a new channel. The
-   meaning of the arguments is unknown: PICKER shows with `showPicker(1)`, and SHIFT + display 3 cycles
-   `showPicker(1, 0)` ... `(1, 3)`.
-
-**What to report** (the daemon log, with the screen): for each step the PROBE line (the caption and file
-type of the node, whether a popup was open, which form had the focus, the hint text) and whether a new
-channel appeared:
-- Does `navigateBrowser(41 / 40)` move FL's browser selection, and does the caption follow? Which file type
-  do folders, plugins and presets report (the page treats -100 or lower as a folder)?
-- Does `toggleBrowserNode(-1)` open / close the folder under the cursor?
-- What does `selectBrowserMenuItem()` do on a plugin node: open a popup menu (`popup 1`), or load the plugin
-  at once? In the popup, does down / up / enter reach the items, and does "Open in new channel" add a channel?
-- What does `showPicker(1)` do, and each of `showPicker(1, 0..3)`; does the picker take the focus (the form
-  caption / flags in BROWSER_NODE), and do down / up / left / right / enter pick an instrument?
-- Which of the functions are `missing` (FEATURES `browser` / `picker`, and `missing:` in the PROBE line)?
-
-If neither route adds a channel the loader stays a trial and the BROWSER page keeps only the presets source.
-
-## Status and next steps
-
-- The probe (`MK3D_PROBE=1 npm run mk3d`, reload the FL script, press ARRANGER) logs, read-only:
-  `ilmcp: <dir>`, the browser root and a few folders, the hidden getters above, and **one run of a
-  reading piano roll script** (it opens the piano roll if closed and changes nothing; it may add an
-  undo step). It never calls `addChannel`, `addEffect` or any setter.
-- After the probe: try `addChannel` and `setPatternLength` once with the owner watching, then build
-  the features above one by one, each with a feature check so older FL versions fall back cleanly.
-
-## DOUBLE and piano roll notes (2026-10-18)
-
-DOUBLE copies steps with `getGridBit`/`setGridBit`. On the owner's try the second half stayed empty:
-the notes were recorded, i.e. piano roll notes. `getGridBit` reads them at step positions, but
-`setGridBit` does not write into a channel that holds piano roll notes. **SHIFT + DOUBLE** is a
-trial of the hidden `patterns.duplicatePatternData(pattern)` (one `i` argument; its disassembly runs
-an internal FL action on the main thread; what it does is NOT VERIFIED): one undo point, then a
-PROBE line `duplicatePatternData(n) -> …; before count/len/grids; after (pattern m) …`.
-
+`ilmcp.addChannel` only exists in FL's Gopher assistant sessions and the script API has no "add plug-in" call, so we
+tried FL's browser (BROWSE: `ui.navigateBrowser`, `toggleBrowserNode`, `selectBrowserMenuItem`) and the picker
+(`ui.showPicker`). The results below are in the order they came. The manual now explains one of the dead ends:
+`showPicker(1, …)` is the **Project** picker, which is why it showed patterns and channels. We never tried mode 0.
 
 ### Round 1 results (owner, 2026-10-19)
 
@@ -187,7 +123,7 @@ PROBE line `duplicatePatternData(n) -> …; before count/len/grids; after (patte
   browser. `navigateBrowser(41/40)` and `toggleBrowserNode(-1)` changed nothing, and after `showWindow` +
   `setFocused(widBrowser)` FL still reported no focused window. Round 2: next/prev call `setFocused(widBrowser)`
   first, and the PROBE line logs what `navigateBrowser` returns (`browse(next) returned "…" -> …`).
-- **Picker:** `showPicker(1)` opens a form FL calls `PlugList`; `showPicker(0)` closes it. It mostly showed the
+- **Picker:** `showPicker(1)` opens a form FL calls `PlugList`; `showPicker(0)` seemed to close it. It mostly showed the
   project's patterns and channels (FL's project picker), and once FL's plugins. With it focused, `ui.down/up`
   moved through the project's patterns and channels and **created a pattern (7)** at the end of the list. The hint
   bar showed category names (`Unsorted`, `All`). `getFocusedFormID()` is −1 throughout. Next: SHIFT + display 3
@@ -201,7 +137,7 @@ PROBE line `duplicatePatternData(n) -> …; before count/len/grids; after (patte
 - **`selectBrowserMenuItem()` opens FL's main File menu** (`New (Empty)`, `New from template`, `Open...`, `Save`),
   not the item's menu, as the stubs warn. `ui.enter()` on its own did nothing (the browser had lost the focus).
 - **`showPicker(1, mode)`**: modes 0–3 show the picker panel's All / patterns / channels; no plugins. The picker
-  route is dropped.
+  route is dropped. (Our `mode` is the manual's `category`, and our 1 is its Project picker.)
 - Round 3: BROWSE action 6 `load` = `setFocused(widBrowser)` + `ui.enter()`. FL's release notes: "Browser's F5/F6
   (or extra mouse buttons, or ENTER or middle click) now sends to the focused plugin (or the selected Channel if
   there's none)". So it **replaces the selected channel's plugin** (Maschine's browser also loads into the focused
@@ -228,5 +164,5 @@ every getter say nothing about the highlighted plugin, so mk3d cannot show its n
 BROWSER's display 2 `PLUG-INS` is exactly this (docs/mapping.md, BROWSER). Dead ends:
 the FL browser tree (`navigateBrowser` works, but nothing loads a `.fst` into a new channel;
 `selectBrowserMenuItem` and `FPT_ItemMenu` open FL's File menu; Enter replaces the selected channel) and
-`ui.showPicker` (the playlist's picker panel: patterns / channels). The trial code went on 2026-11-05: what stays
+`ui.showPicker(1, …)` (the Project picker: patterns / channels). The trial code went on 2026-11-05: what stays
 is PLUGIN_PICKER and UI_KEY (docs/sysex.md).

@@ -41,9 +41,11 @@ class ScriptFuzzTests(test_bridge.BridgeTestCase):
         elif roll < 0.86:
             script.OnRefresh(rnd.getrandbits(20))
         elif roll < 0.89:
-            script.OnDirtyChannel(rnd.randint(-1, 40))
+            script.OnDirtyChannel(rnd.randint(-1, 40), rnd.randint(0, 4))
         elif roll < 0.92:
             script.OnDirtyMixerTrack(rnd.randint(-1, 20))
+        elif roll < 0.93:
+            script.OnDoFullRefresh()
         elif roll < 0.94:
             script.OnProjectLoad(rnd.randint(0, 100))
         elif roll < 0.96:
