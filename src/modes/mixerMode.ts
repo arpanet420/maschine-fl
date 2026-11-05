@@ -19,7 +19,7 @@ import {
   stripCells,
 } from "../render/mixerStrip.js";
 import { SCREEN_COLUMNS, TAB_HEIGHT, clear, theme } from "../render/widgets.js";
-import { FULL } from "./draw.js";
+import { FULL, NAV_LIT } from "./draw.js";
 import { flColorToCss, isDefaultColor, flColorToPalette, panText, pct } from "./format.js";
 import { RenderSoon, clamp, isLive, knobStep } from "./knob.js";
 import { GROUP_BUTTONS } from "./channelBank.js";
@@ -432,6 +432,8 @@ export class MixerMode implements Mode {
     }
     leds.setLight("arrowLeft", this.offset > 0 ? "dim" : "off");
     leds.setLight("arrowRight", this.offset + BANK < fl.mixerTotal ? "dim" : "off");
+    leds.setNav("left", selected > 0 ? NAV_LIT : LED_OFF);
+    leds.setNav("right", selected + 1 < fl.mixerTotal ? NAV_LIT : LED_OFF);
     leds.setLight("mute", !fl.connected ? "off" : this.held.has("mute") ? "bright" : "dim");
     leds.setLight("solo", !fl.connected ? "off" : this.held.has("solo") ? "bright" : "dim");
   }

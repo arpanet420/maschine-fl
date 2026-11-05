@@ -16,8 +16,10 @@
 // - PAD MODE, KEYBOARD and CHORDS are tool pages that also set the pad mode (PadState); SHIFT + the
 //   button sets the mode without the page. GROUP A–H pick the channel bank unless a page takes them.
 // - SHIFT is read when a page button is pressed; the release goes to what the press opened.
-// - The top page gets every event first, then the main page under it. Pads the stack does not
-//   handle are left to the caller (main.ts plays them as notes).
+// - A page on top owns the knobs, the 4D encoder, the arrows and the display buttons: what it does
+//   not use does nothing, and none of it reaches the main page under it (so its LEDs are dark too).
+//   GROUP A–H it does not use still pick the channel bank. Pads go to the top page, then to the main
+//   page; pads the stack does not handle are left to the caller (main.ts plays them as notes).
 // - ERASE is a hold modifier, not a page: the stack tracks it (`mc.erase` for the pages). A pad no
 //   page takes while it is held never plays: in PAD MODE it clears the channel's steps in the
 //   current pattern, in KEYBOARD and CHORDS it does nothing. The STEP page clears the step itself.
@@ -48,10 +50,11 @@ import type { SKRSContext2D } from "@napi-rs/canvas";
 import { settingsDir } from "../platform.js";
 import type { FlSection } from "../fl/flState.js";
 import type { HwEvent } from "../hw/events.js";
-import type { ButtonId } from "../hw/ids.js";
+import type { ButtonId, NavDirection } from "../hw/ids.js";
 import { PAD_COUNT } from "../hw/ids.js";
 import { isColorLed, isMonoLed, type LedState, type LightLevel } from "../hw/leds.js";
 import { LED_OFF, paletteWhite } from "../hw/palette.js";
+import { DISPLAY_BUTTONS } from "./channelPadPage.js";
 import { bringUpWindow } from "./flWindows.js";
 import { groupBank, setBankLeds } from "./channelBank.js";
 import type { Mode, ModeContext, PageName } from "./mode.js";
@@ -60,6 +63,8 @@ import { QuickEdit, quickModeOf, type HeldTarget } from "./quickEdit.js";
 import { realTimers, type RepeatTimers } from "./repeatScheduler.js";
 import { isStripMode, NO_STRIP_MODE, stripModeOf, type StripControl } from "../strip.js";
 import { runShiftAction, shiftActionAvailable, shiftActionOf } from "./shiftPads.js";
+
+const NAV_DIRECTIONS: readonly NavDirection[] = ["up", "down", "left", "right"];
 
 /** Two touches of a knob this close, with no turn between, reset it (`Mode.resetKnob`). */
 const KNOB_DOUBLE_TOUCH_MS = 400;
@@ -340,9 +345,9 @@ export class PageStack {
     this.knobTouches.delete(knob);
     if (!mc.fl.connected) return;
     const top = this.topMode();
-    const reset =
-      top?.resetKnob?.(knob, this.topContext(mc)) ??
-      this.mainMode()?.resetKnob?.(knob, this.mainContext(mc));
+    const reset = top
+      ? top.resetKnob?.(knob, this.topContext(mc))
+      : this.mainMode()?.resetKnob?.(knob, this.mainContext(mc));
     if (reset) mc.requestRender();
   }
 
@@ -545,11 +550,11 @@ export class PageStack {
     mc.requestRender();
   }
 
-  /** The top page first, then the main page under it. */
+  /** The page shown gets the event: the page on top, else the main page. Pads don't come here. */
   private dispatch(event: HwEvent, mc: ModeContext): boolean {
     if (!mc.fl.connected) return false;
     const top = this.topMode();
-    if (top?.onEvent(event, this.topContext(mc))) return true;
+    if (top) return top.onEvent(event, this.topContext(mc));
     return this.mainMode()?.onEvent(event, this.mainContext(mc)) ?? false;
   }
 
@@ -749,7 +754,11 @@ export class PageStack {
   leds(leds: LedState, mc: ModeContext): void {
     if (this.pads) setBankLeds(leds, mc.fl);
     this.mainMode()?.leds(leds, this.mainContext(mc));
-    this.topMode()?.leds(leds, this.topContext(mc));
+    const top = this.topMode();
+    if (top) {
+      this.darkenMainControls(leds, mc);
+      top.leds(leds, this.topContext(mc));
+    }
     this.pageButtonLeds(leds, mc.fl.connected);
     if (mc.fl.connected && this.lockedPage()) leds.setLight("noteRepeat", "bright");
     this.quickEdit.leds(leds, mc.fl.connected);
@@ -762,6 +771,15 @@ export class PageStack {
     }
     // ERASE: bright while held.
     leds.setLight("erase", !mc.fl.connected ? "off" : this.eraseHeld ? "bright" : "dim");
+  }
+
+  /** With a page on top the main page's controls do nothing, so its LEDs on them go. Its pads stay. */
+  private darkenMainControls(leds: LedState, mc: ModeContext): void {
+    for (const id of DISPLAY_BUTTONS) leds.setLight(id, "off");
+    leds.setLight("arrowLeft", "off");
+    leds.setLight("arrowRight", "off");
+    for (const direction of NAV_DIRECTIONS) leds.setNav(direction, LED_OFF);
+    if (this.pads) setBankLeds(leds, mc.fl);
   }
 
   /** While SHIFT is held the pads show the action row: available dim white, pressed bright. */

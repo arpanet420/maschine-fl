@@ -568,10 +568,10 @@ describe("STEP page: screens and fall-through", () => {
     expect(() => h.render()).not.toThrow();
   });
 
-  it("leaves knobs and the encoder to the main page", () => {
+  it("takes the 4D's turn and leaves a knob it doesn't use alone", () => {
     const { pages, mc } = harness();
     expect(pages.step.onEvent({ type: "encoder", index: 0, delta: 3 }, mc)).toBe(false);
-    expect(pages.step.onEvent({ type: "nav", action: "turn", delta: 1 }, mc)).toBe(false);
+    expect(pages.step.onEvent({ type: "nav", action: "turn", delta: 1 }, mc)).toBe(true);
     expect(pages.step.onEvent({ type: "encoderTouch", index: 0, touched: true }, mc)).toBe(false);
   });
 

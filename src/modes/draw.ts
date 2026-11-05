@@ -2,6 +2,8 @@
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import { DISPLAY_HEIGHT, DISPLAY_WIDTH, type Rect } from "../hw/display.js";
 import type { FlState } from "../fl/flState.js";
+import type { LedState } from "../hw/leds.js";
+import { LED_OFF, paletteColor } from "../hw/palette.js";
 import { drawTransport, fitText, font, theme } from "../render/widgets.js";
 import type { KnobProps } from "../render/widgets.js";
 
@@ -15,6 +17,16 @@ export const TRANSPORT_RECT: Rect = {
   width: DISPLAY_WIDTH,
   height: TRANSPORT_HEIGHT,
 };
+
+/** A 4D arrow that does something on this page: dim orange. */
+export const NAV_LIT = paletteColor(1, "dim");
+
+/** The 4D's up and down where they pick the channel: lit where there is a channel to go to. */
+export function setChannelNavLeds(leds: LedState, selected: number | null, total: number): void {
+  const at = selected ?? -1;
+  leds.setNav("up", at > 0 ? NAV_LIT : LED_OFF);
+  leds.setNav("down", at + 1 < total ? NAV_LIT : LED_OFF);
+}
 
 export function drawTransportBar(
   ctx: SKRSContext2D,

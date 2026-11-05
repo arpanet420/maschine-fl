@@ -2,14 +2,14 @@
 // set by the press, or by SHIFT + PAD MODE without the page). The pads are the 16 channels of the
 // current bank and play them (the global pad handler in main.ts does that: this page takes no pad
 // and leaves the pad LEDs to it); the page shows the bank. Display buttons 7 and 8 (`<<` `>>`) and
-// GROUP A–H pick the bank.
+// GROUP A–H pick the bank, the 4D the channel.
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import type { HwEvent } from "../hw/events.js";
 import type { LedState } from "../hw/leds.js";
 import { TAB_HEIGHT, drawTabs, fitText, font, theme } from "../render/widgets.js";
 import { bankCount, bankLetter, currentBank } from "./channelBank.js";
 import { ChannelPadPage } from "./channelPadPage.js";
-import { FULL } from "./draw.js";
+import { FULL, setChannelNavLeds } from "./draw.js";
 import { flColorToCss } from "./format.js";
 import type { ModeContext } from "./mode.js";
 
@@ -22,6 +22,7 @@ export class PadModePage extends ChannelPadPage {
 
   onEvent(event: HwEvent, mc: ModeContext): boolean {
     if (event.type === "pad") return false; // the pads play their channels
+    if (event.type === "nav") return this.pads.channelNav(event, mc);
     return super.onEvent(event, mc);
   }
 
@@ -78,5 +79,6 @@ export class PadModePage extends ChannelPadPage {
     leds.setLight("display1", "bright"); // a tool page is always latched
     leds.setLight("display7", this.hasPrevious(mc) ? "dim" : "off");
     leds.setLight("display8", this.hasNext(mc) ? "dim" : "off");
+    setChannelNavLeds(leds, mc.fl.selectedChannel.index, mc.fl.channelTotal);
   }
 }

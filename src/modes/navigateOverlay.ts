@@ -18,7 +18,8 @@ import type { HwEvent } from "../hw/events.js";
 import type { LedState } from "../hw/leds.js";
 import { TAB_HEIGHT, clear, columns, drawTabs, fitText, font, theme } from "../render/widgets.js";
 import { DISPLAY_BUTTONS } from "./channelPadPage.js";
-import { FULL } from "./draw.js";
+import { LED_OFF } from "../hw/palette.js";
+import { FULL, NAV_LIT } from "./draw.js";
 import type { Mode, ModeContext } from "./mode.js";
 
 type WindowKind = "mixer" | "rack" | "playlist" | "piano" | "browser" | "plugin";
@@ -168,6 +169,8 @@ export class NavigateOverlay implements Mode {
       const state = windowState(def, mc);
       leds.setLight(id, state === "focused" ? "bright" : state === "shown" ? "dim" : "off");
     }
+    leds.setNav("left", this.cursor > 0 ? NAV_LIT : LED_OFF);
+    leds.setNav("right", this.cursor < WINDOWS.length - 1 ? NAV_LIT : LED_OFF);
   }
 }
 

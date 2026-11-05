@@ -35,11 +35,11 @@ import { MAX_PRESET_NAMES } from "../fl/protocol.js";
 import type { FlCommand } from "../fl/sysex.js";
 import type { HwEvent } from "../hw/events.js";
 import type { LedState } from "../hw/leds.js";
-import { paletteColor } from "../hw/palette.js";
+import { LED_OFF } from "../hw/palette.js";
 import { TAB_HEIGHT, clear, drawTabs, fitText, font, theme } from "../render/widgets.js";
 import { pageStart } from "./channelMode.js";
 import { DISPLAY_BUTTONS } from "./channelPadPage.js";
-import { FULL, drawWrapped } from "./draw.js";
+import { FULL, NAV_LIT, drawWrapped } from "./draw.js";
 import { clamp } from "./knob.js";
 import type { Mode, ModeContext, ViewCommand } from "./mode.js";
 
@@ -730,7 +730,7 @@ export class BrowserPage implements Mode {
     if (this.source === "plugins") {
       const id = DISPLAY_BUTTONS[CLOSE_BUTTON];
       if (id) leds.setLight(id, this.pickerOpen ? "dim" : "off");
-      const lit = this.pickerOpen ? paletteColor(1, "dim") : 0;
+      const lit = this.pickerOpen ? NAV_LIT : LED_OFF;
       for (const direction of ["up", "down", "left", "right"] as const) leds.setNav(direction, lit);
       return;
     }
@@ -747,10 +747,8 @@ export class BrowserPage implements Mode {
     if (load)
       leds.setLight(load, cursor !== null && loaded !== null && cursor !== loaded ? "dim" : "off");
     // 4D: tilt up/down move the cursor like the turn; left/right are unused
-    const lit = usable ? paletteColor(1, "dim") : 0;
+    const lit = usable ? NAV_LIT : LED_OFF;
     leds.setNav("up", lit);
     leds.setNav("down", lit);
-    leds.setNav("left", 0);
-    leds.setNav("right", 0);
   }
 }

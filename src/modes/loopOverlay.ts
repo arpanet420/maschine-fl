@@ -21,7 +21,7 @@ import type { FlSection, FlState } from "../fl/flState.js";
 import { MAX_LOOP_TICKS, STEPS_PER_BAR } from "../fl/protocol.js";
 import type { HwEvent } from "../hw/events.js";
 import type { LedState } from "../hw/leds.js";
-import type { LedVariant } from "../hw/palette.js";
+import { paletteColor, type LedVariant } from "../hw/palette.js";
 import {
   TAB_HEIGHT,
   clear,
@@ -33,7 +33,7 @@ import {
   type KnobProps,
 } from "../render/widgets.js";
 import type { Rect } from "../hw/display.js";
-import { FULL } from "./draw.js";
+import { FULL, NAV_LIT } from "./draw.js";
 import { lengthText, positionStepsText } from "./format.js";
 import { PENDING_MS, clamp } from "./knob.js";
 import {
@@ -345,6 +345,9 @@ export class LoopOverlay extends MarkerPadsPage {
     leds.setLight("display1", mc.pinned ? "bright" : "dim");
     leds.setLight("display2", active ? "bright" : "dim");
     leds.setLight("display3", "dim");
+    // 4D tilt left and right pick the loop's start and end for the turn.
+    leds.setNav("left", this.boundary === "start" ? paletteColor(1, "bright") : NAV_LIT);
+    leds.setNav("right", this.boundary === "end" ? paletteColor(1, "bright") : NAV_LIT);
   }
 
   render(left: SKRSContext2D, right: SKRSContext2D, mc: ModeContext): void {

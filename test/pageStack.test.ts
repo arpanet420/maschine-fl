@@ -2,12 +2,12 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCanvas } from "@napi-rs/canvas";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { FlState } from "../src/fl/flState.js";
 import type { FlCommand } from "../src/fl/sysex.js";
 import type { HwEvent } from "../src/hw/events.js";
 import type { ButtonId } from "../src/hw/ids.js";
-import { LedState, MONO_LEDS, COLOR_LEDS } from "../src/hw/leds.js";
+import { LedState, MONO_LEDS, COLOR_LEDS, NAV_LEDS } from "../src/hw/leds.js";
 import { paletteWhite } from "../src/hw/palette.js";
 import type { Mode, ModeContext, PageName, ViewCommand } from "../src/modes/mode.js";
 import { PageStack } from "../src/modes/pageStack.js";
@@ -73,6 +73,7 @@ class FakePage implements Mode {
   }
   render(): void {}
   leds: (leds?: LedState) => void = () => undefined;
+  resetKnob?: () => boolean;
 }
 
 const dirs: string[] = [];
@@ -85,7 +86,11 @@ const tempFile = () => {
   return join(dir, "mk3d", "pages.json");
 };
 
-function setup(extra: Partial<Record<PageName, FakePage>> = {}, pinsPath?: string) {
+function setup(
+  extra: Partial<Record<PageName, FakePage>> = {},
+  pinsPath?: string,
+  now?: () => number,
+) {
   const channel = new FakePage("channel");
   const plugin = new FakePage("plugin");
   const pattern = new FakePage("pattern", { patch: { patternOffset: 16 } });
@@ -93,7 +98,7 @@ function setup(extra: Partial<Record<PageName, FakePage>> = {}, pinsPath?: strin
   channel.sendsView = true;
   const pages = { channel, plugin, pattern, mute, ...extra };
   const log: string[] = [];
-  const stack = new PageStack({ pages, pinsPath, log: (line) => log.push(line) });
+  const stack = new PageStack({ pages, pinsPath, now, log: (line) => log.push(line) });
   const fl = new FlState();
   fl.apply({ type: "hello", version: 2 });
   const sent: FlCommand[] = [];
@@ -504,7 +509,7 @@ describe("PageStack: pages that are not built", () => {
 });
 
 describe("PageStack: events", () => {
-  it("gives the top page an event first, then the main page", () => {
+  it("gives an event to the page on top and never to the main page under it", () => {
     const pattern = new FakePage("pattern", {
       handles: (e) => e.type === "encoder" && e.index === 1,
     });
@@ -512,11 +517,78 @@ describe("PageStack: events", () => {
     press("pattern");
     stack.onEvent({ type: "encoder", index: 1, delta: 1 }, mc);
     expect(pattern.events).toHaveLength(1);
-    expect(pages.channel.events).toHaveLength(0);
-    // an encoder the overlay doesn't take reaches the main page
+    // what the overlay doesn't use does nothing: knobs, the 4D, arrows and display buttons
     expect(stack.onEvent({ type: "encoder", index: 0, delta: 1 }, mc)).toBe(false);
-    expect(pattern.events).toHaveLength(2);
+    expect(stack.onEvent({ type: "nav", action: "turn", delta: 1 }, mc)).toBe(false);
+    expect(stack.onEvent({ type: "nav", action: "push", pressed: true }, mc)).toBe(false);
+    expect(stack.onEvent({ type: "button", id: "arrowRight", pressed: true }, mc)).toBe(false);
+    expect(stack.onEvent({ type: "button", id: "display5", pressed: true }, mc)).toBe(false);
+    expect(pattern.events).toHaveLength(6);
+    expect(pages.channel.events).toHaveLength(0);
+  });
+
+  it("gives the main page its events again when the page on top is gone", () => {
+    const { pages, press, release, stack, mc } = setup();
+    press("pattern");
+    release("pattern");
+    stack.onEvent({ type: "encoder", index: 0, delta: 1 }, mc);
     expect(pages.channel.events).toHaveLength(1);
+  });
+
+  it("gives a pad the page on top doesn't take to the main page", () => {
+    const channel = new FakePage("channel", { handles: (e) => e.type === "pad" });
+    const { press, stack, mc } = setup({ channel });
+    press("pattern");
+    const pad = { type: "pad", pad: 0, phase: "down", pressure: 1 } as const;
+    expect(stack.onEvent(pad, mc)).toBe(true);
+    expect(channel.events).toHaveLength(1);
+  });
+
+  it("resets a touched knob only on the page shown", () => {
+    const channel = new FakePage("channel");
+    const reset = vi.fn(() => true);
+    channel.resetKnob = reset;
+    let now = 1000;
+    const { press, release, stack, mc } = setup({ channel }, undefined, () => now);
+    const touchTwice = () => {
+      stack.onEvent({ type: "encoderTouch", index: 0, touched: true }, mc);
+      now += 100;
+      stack.onEvent({ type: "encoderTouch", index: 0, touched: true }, mc);
+      now += 1000;
+    };
+    press("pattern");
+    touchTwice();
+    expect(reset).not.toHaveBeenCalled();
+    release("pattern");
+    touchTwice();
+    expect(reset).toHaveBeenCalledTimes(1);
+  });
+
+  it("darkens the main page's controls under a page on top, not its pads", () => {
+    const channel = new FakePage("channel");
+    channel.leds = (leds) => {
+      leds?.setLight("arrowRight", "dim");
+      leds?.setLight("display3", "dim");
+      leds?.setNav("up", 9);
+      leds?.setPad(0, 9);
+    };
+    const { press, release, stack, mc } = setup({ channel });
+    const lit = () => {
+      const leds = new LedState();
+      stack.leds(leds, mc);
+      return {
+        arrow: leds.buttonLeds[MONO_LEDS.arrowRight],
+        display: leds.buttonLeds[MONO_LEDS.display3],
+        nav: leds.buttonLeds[NAV_LEDS.up],
+        pad: leds.padLeds.includes(9),
+      };
+    };
+    expect(lit()).toMatchObject({ nav: 9, pad: true });
+    expect(lit().arrow).toBeGreaterThan(0);
+    press("pattern");
+    expect(lit()).toEqual({ arrow: 0, display: 0, nav: 0, pad: true });
+    release("pattern");
+    expect(lit().arrow).toBeGreaterThan(0);
   });
 
   it("gets no events and no page buttons' enter while FL is disconnected", () => {

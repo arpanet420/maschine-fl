@@ -19,7 +19,7 @@ import {
   theme,
 } from "../render/widgets.js";
 import type { KnobProps } from "../render/widgets.js";
-import { FULL, drawBand, drawTransportBar } from "./draw.js";
+import { FULL, drawBand, drawTransportBar, setChannelNavLeds } from "./draw.js";
 import { flColorToCss, panText, pct } from "./format.js";
 import { clamp, isLive, knobStep, RenderSoon } from "./knob.js";
 import type { Mode, ModeContext, ViewCommand } from "./mode.js";
@@ -541,5 +541,6 @@ export class ChannelMode implements Mode {
     leds.setLight("display8", "off");
     leds.setLight("arrowLeft", this.offset > 0 ? "dim" : "off");
     leds.setLight("arrowRight", this.offset + WINDOW < fl.channelTotal ? "dim" : "off");
+    setChannelNavLeds(leds, selected, fl.channelTotal);
   }
 }

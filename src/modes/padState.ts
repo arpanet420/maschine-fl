@@ -22,13 +22,14 @@
 import type { FlState } from "../fl/flState.js";
 import { midiBytes } from "../fl/midiPorts.js";
 import { MAX_CHANNEL_NOTE } from "../fl/protocol.js";
-import type { PadEvent } from "../hw/events.js";
+import type { NavEvent, PadEvent } from "../hw/events.js";
 import { PAD_COUNT } from "../hw/ids.js";
 import type { LedState } from "../hw/leds.js";
 import { LED_OFF, paletteColor, type LedVariant } from "../hw/palette.js";
 import { bankCount, bankFirst, bankOf, currentBank } from "./channelBank.js";
 import { flColorToPalette } from "./format.js";
 import { HarmonySettings, chordAt, isRootDegree, keyboardNote, type Chord } from "./chords.js";
+import { clamp, isLive, type PendingValue } from "./knob.js";
 import type { ModeContext } from "./mode.js";
 import { PadSettings } from "./padSettings.js";
 import { hitVelocity } from "./repeatScheduler.js";
@@ -78,6 +79,8 @@ export class PadState {
   private readonly held = new Map<number, Held>();
   /** The notes the arpeggiator has on now. */
   private readonly arpSounding = new Set<number>();
+  /** The channel the 4D last asked for: FL hasn't reported it yet, the next step goes on from it. */
+  private chosen: PendingValue<number> | undefined;
   /** How many held pads and arpeggiator steps have each note on (two chords can share a note). */
   private readonly noteUsers = new Map<number, number>();
   /** Scale, chord mode, chord type and position (KEYBOARD and CHORDS; saved by the CHORDS page). */
@@ -89,6 +92,7 @@ export class PadState {
     readonly settings: PadSettings = new PadSettings(),
     /** The selected channel: each has its own base note. */
     private readonly channel: () => number | null = () => null,
+    private readonly now: () => number = Date.now,
   ) {}
 
   // ── Keyboard base note ─────────────────────────────────────────────────────
@@ -159,6 +163,34 @@ export class PadState {
         : bankFirst(bank);
     if (index === fl.selectedChannel.index) return;
     this.lastInBank.set(bank, index);
+    mc.send({ type: "selectChannel", index });
+  }
+
+  /**
+   * The 4D on a page that shows the selected channel (KEYBOARD, CHORDS, PAD MODE, STEP): a turn or a
+   * tilt up or down picks the channel, as on CHANNEL. True = the page uses this part of the 4D.
+   */
+  channelNav(event: NavEvent, mc: ModeContext): boolean {
+    if (event.action === "turn") {
+      this.stepChannel(event.delta, mc);
+      return true;
+    }
+    if (event.action !== "tilt" || (event.direction !== "up" && event.direction !== "down")) {
+      return false;
+    }
+    if (event.pressed) this.stepChannel(event.direction === "up" ? -1 : 1, mc);
+    return true;
+  }
+
+  /** `delta` channels on from the selected one, stopping at both ends. */
+  private stepChannel(delta: number, mc: ModeContext): void {
+    const { fl } = mc;
+    if (fl.channelTotal === 0) return;
+    const chosen = this.chosen;
+    const current = chosen && isLive(chosen, this.now()) ? chosen.value : fl.selectedChannel.index;
+    const index = current === null ? 0 : clamp(current + delta, 0, fl.channelTotal - 1);
+    if (index === current) return;
+    this.chosen = { value: index, at: this.now() };
     mc.send({ type: "selectChannel", index });
   }
 

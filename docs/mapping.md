@@ -56,8 +56,10 @@ is not built yet logs `page "<name>" is not built yet` once per press and change
   KEYBOARD and CHORDS also set the pad mode when they open ("Pad modes"); SHIFT + any of them sets
   the mode and opens no page. Their LEDs are a radio group (see below).
 - **SHIFT is read at press time**; the release goes to the page the press opened.
-- **Events**: the top page gets them first; what an overlay doesn't handle goes to the main page,
-  so knobs keep working under a peek. Pads go the same way; a pad no page takes plays a note. A
+- **Events**: a control acts on the page it is on. The page on top owns the knobs, the 4D encoder,
+  the arrows, the display buttons and FOLLOW: what it doesn't use does nothing, none of it reaches the
+  main page, and the main page's LEDs on them go dark. GROUP A–H it doesn't use still pick the
+  channel bank. Pads go to the top page, then the main page; a pad no page takes plays a note. A
   pad's move and release follow the page that took its press, even after that page closed.
 - **Screens and LEDs**: the top page draws both screens. Its LEDs go over the main page's, then the
   page buttons: the button of the page on top and a main page under an overlay are bright, the other
@@ -156,8 +158,10 @@ page lights its button only while it is open, except GRID: FOLLOW is dim while i
   pent., Minor pent., Blues. The base note is the root: pad 1 plays it and the scale's root pads
   (degrees 1, 8, 15 of a 7-note scale) are the bright ones. The knob and its value sit under
   display 1's column on the left screen; the left screen also shows the range (first–last pad's
-  note) and the scale as `C Minor`; the grid shows each pad's note name. Knobs 2–4 are not the
-  page's. The scale is shared with CHORDS and saved (`pages.chords`).
+  note) and the scale as `C Minor`; the grid shows each pad's note name. The other knobs do nothing.
+  The scale is shared with CHORDS and saved (`pages.chords`).
+- **4D encoder**: a turn or a tilt up or down picks the channel, here and on CHORDS and PAD MODE; up and down
+  are lit where there is one to go to. Its push and tilt left and right do nothing.
 
 ## CHORDS page (tool page, CHORDS)
 
@@ -171,7 +175,7 @@ takes no pad: the pads play chords through `PadState`.
   **Chord mode** (`Harmonizer` / `Chord set`), **Chord type** (`Octave` 1-8, `Fifth` 1-5, `Triad`
   1-3-5, `Sus4` 1-4-5, `Seventh` 1-3-5-7, `Ninth` 1-3-5-7-9; `—` in chord set) and **Position**
   (inversion 0…notes−1: the lowest n notes move up an octave; chord set allows 0…3 and a triad
-  stops at 2). Knobs 5–8 are not the page's.
+  stops at 2). Knobs 5–8 do nothing.
 - **Harmonizer**: every pad plays its KEYBOARD note and the notes stacked on it inside the scale.
   A stack is counted in scale degrees of the scale's own notes (Triad = degrees 0, 2, 4 above the
   pad's, Octave = one octave up); with Chromatic the major scale is stacked from the pad's note.
@@ -198,8 +202,7 @@ takes no pad: the pads play chords through `PadState`.
 **Held step.** A dark step goes on at the press. A lit step goes off on the release, unless it was held
 for 400 ms or a knob turned meanwhile. Held that long, the left screen shows `Step n`, knob 1 **Velocity**
 and knob 2 **Pitch** (60 counts a semitone), read with REQUEST_STEP_PARAMS and written with SET_STEP_PARAM
-(FL's `getCurrentStepParam` and `setStepParameterByIndex`; NOT VERIFIED in FL). The other knobs go on to the
-page underneath.
+(FL's `getCurrentStepParam` and `setStepParameterByIndex`; NOT VERIFIED in FL). The other knobs do nothing.
 
 Code: `src/modes/stepPage.ts`. Latched: STEP opens it, STEP again leaves it. The pad mode
 (KEYBOARD or PAD MODE) underneath is not changed and comes back when it closes. STEP's LED is
@@ -231,7 +234,8 @@ bright while open; the PAD MODE / KEYBOARD radio pair stays lit as it is.
   16 steps as a 4×4 grid that mirrors the pads (step 1 bottom-left) in FL's step colors: off A/B
   shades and on colors alternate by rows of 4 (design.md), the step number in each corner and the
   play head outlined in orange. Steps past the pattern length are empty.
-- Knobs, the 4D encoder and the other buttons fall through to the main page. The page needs
+- **4D encoder**: a turn or a tilt up or down picks the channel; up and down are lit where there is one to go
+  to. Its push and tilt left and right do nothing. The other knobs do nothing. The page needs
   FL's PATTERN (length) and STEP_GRID messages; the grid shows steps as off until FL's STEP_GRID
   for the selected channel and pattern arrives.
 
@@ -241,8 +245,7 @@ bright while open; the PAD MODE / KEYBOARD radio pair stays lit as it is.
   (SELECT_CHANNEL). GROUP A–H pick the bank. The selected channel's pad is bright, the others dim,
   off past the last channel.
 - Left screen: pin tab `SELECT`, the selected channel's number, name and the bank. Right screen:
-  the grid with the selected channel outlined. Display 2–8 do nothing; knobs, arrows and the 4D
-  encoder fall through.
+  the grid with the selected channel outlined. Display 2–8, knobs, arrows and the 4D encoder do nothing.
 
 ## Solo overlay (hold SOLO)
 
@@ -281,9 +284,8 @@ bright while open; the PAD MODE / KEYBOARD radio pair stays lit as it is.
   mirrors the pads (number, name, color stripe, the current pattern outlined in orange) and the bank
   text `1–16 of 20`.
 - **Knobs** (Maschine's pattern page, `PatternPageStudioPattern.lua`: POSITION, –, START, LENGTH; FL has
-  no pattern position or start offset, so knobs 2 and 3 are empty and fall through to the page below;
-  knob 1 is `COLOR`). One page: the arrow buttons are not the overlay's (they do what the page below
-  makes of them).
+  no pattern position or start offset, so knobs 2 and 3 are empty and do nothing; knob 1 is `COLOR`).
+  One page: the arrow buttons do nothing.
   - **Knob 4 `LENGTH`** (left screen, column 4) = the length of the current pattern: one detent
     (120 counts) = the next or previous common length: 16, 32, 64, 128, 256, 512 steps (1, 2, 4, 8, 16, 32
     bars); from a length that is not on the list the first detent snaps to the nearest list value in that
@@ -300,7 +302,7 @@ bright while open; the PAD MODE / KEYBOARD radio pair stays lit as it is.
     turn starts at the end of the list it turns towards), SET_PATTERN_COLOR (`patterns.setPatternColor`,
     documented; the script sends the wire's `0xRRGGBB` unchanged and a PROBE line shows what FL read
     back), pending for 300 ms like the length. The colour bar on the left screen shows it.
-- The 4D encoder falls through to the page underneath; display 2 does nothing.
+- The 4D encoder and display 2 do nothing.
 
 ## Touch strip (PITCH, MOD, PERFORM, NOTES)
 
@@ -380,7 +382,7 @@ Code: `src/modes/duplicateOverlay.ts`, built on the PATTERN overlay's bank (`Pat
   bank (they no longer toggle channels).
 - Left screen: pin tab `MUTE`, the window text `1–16 of 20` and the number of muted channels. Right
   screen: the pad grid with channel names; muted ones are dimmed and struck through.
-- Knobs, arrows and the 4D encoder fall through; display 2–8 do nothing.
+- Display 2–8, knobs, arrows and the 4D encoder do nothing.
 
 ## NOTE REPEAT (hold NOTE REPEAT)
 
@@ -545,7 +547,7 @@ selected channel), off when unused (display 4–8, and 1–3 without a channel).
 | Knob 8                  | Mixer track the channel is routed to (`Master`, the track's name or `Insert N`)               |
 | Knobs 2–4, display 4–8  | Unused                                                                                        |
 | 4D encoder turn         | Previous/next channel; the window moves a page when the selection leaves it                   |
-| 4D encoder tilt up/down | Previous/next channel (left/right unused)                                                     |
+| 4D encoder tilt up/down | Previous/next channel, lit where there is one to go to (left/right unused)                    |
 | 4D encoder push         | Show the channel's editor                                                                     |
 | Arrow left/right        | Previous/next page of 16 channels                                                             |
 | Group A–H               | Pick the channel bank (page stack, "Channel banks"); the list follows the selection           |
@@ -649,8 +651,8 @@ last control page. Pads are not used (they play as the pad mode says).
   value so a fast turn does not jump back while FL catches up. A track FL has not reported yet,
   or past the last track, is ignored.
 - **4D turn**: volume (or pan) of the selected track, `1/100` per detent (Shift a tenth).
-  **4D tilt ◀ ▶**: previous/next track; the bank moves when the selection leaves it. Tilt up
-  and down are not used.
+  **4D tilt ◀ ▶**: previous/next track, lit where there is one to go to; the bank moves when the selection
+  leaves it. Tilt up and down are not used.
 - **MUTE / SOLO held**: the page claims both buttons (see "Claimed buttons"), so no overlay opens.
   While MUTE (or SOLO) is held, the display and group buttons toggle mute (solo) of that strip
   (SET_TRACK mute/solo) instead of selecting it; MUTE wins if both are held. The toggle reads
@@ -766,8 +768,8 @@ VARIATION closes it. Display 2–6 toggle the windows in the order of FL's toolb
 `PLAYLIST`, `PIANO`, `RACK`, `MIXER`, `BROWSER` (SHOW_WINDOW 2, 3, 1, 0, 4: a focused window is hidden, any
 other is shown and focused). Display 7 `PLUGIN` opens the selected channel's plug-in window (SHOW_EDITOR).
 The **4D encoder** works the page: turning it or tilting it left and right moves a white ring between the
-tiles, its push does what the tile's display button does; it starts on the focused window. Pads and the
-knobs go to the page underneath.
+tiles, its push does what the tile's display button does; it starts on the focused window. Tilt left and
+right are lit where there is a tile to go to. Pads go to the page underneath; the knobs do nothing.
 
 - LEDs (from UI_STATE): bright = focused, dim = shown, off = hidden; PLUGIN bright while a plug-in
   window has the focus, dim with a selected channel. VARIATION bright while open.
@@ -965,7 +967,7 @@ clips of FL's performance mode are on the LIVE overlay (below).
   song mode; press toggles pattern/song, SET_LOOP_MODE); 3 and 4 are empty. The left knobs are empty.
 - **4D encoder**: a turn moves the row cursor through the bank's 16 channels (the 8 rows scroll to keep it
   in view; it stops at the ends of the bank), a push selects the cursor's channel in FL (SELECT_CHANNEL),
-  tilt ◀ ▶ pages the steps. **Knob 5** moves the row cursor too (one detent of 120 counts = one row),
+  tilt ◀ ▶ pages the steps and is lit where there is a page to go to. **Knob 5** moves the row cursor too (one detent of 120 counts = one row),
   **knob 6** pages the steps. **GROUP A–H** pick the bank as on every page: the stack selects a channel
   there and the cursor follows FL's selection (it follows whenever the selected channel changes, not for a
   volume change).

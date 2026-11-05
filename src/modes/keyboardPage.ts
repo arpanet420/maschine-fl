@@ -2,8 +2,9 @@
 // the press, or by SHIFT + KEYBOARD without the page). The pads play notes on the selected channel
 // (the global pad handler in main.ts does that: this page takes no pad and leaves the pad LEDs to
 // it). Display buttons 5–8 move the base note: OCT- OCT+ SEMI- SEMI+. GROUP A–H pick the channel
-// bank. Knob 1 picks the scale (src/modes/chords.ts): the pads then play its degrees from the base
-// note and the root pads are brighter. The CHORDS page (chordsPage.ts) is this page with chords.
+// bank, the 4D the channel. Knob 1 picks the scale (src/modes/chords.ts): the pads then play its
+// degrees from the base note and the root pads are brighter. The CHORDS page (chordsPage.ts) is this
+// page with chords.
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import type { HwEvent } from "../hw/events.js";
 import { PAD_COUNT } from "../hw/ids.js";
@@ -12,7 +13,7 @@ import { TAB_HEIGHT, clear, drawTabs, fitText, font, theme } from "../render/wid
 import { groupBank, setBankLeds } from "./channelBank.js";
 import { DISPLAY_BUTTONS } from "./channelPadPage.js";
 import { CHROMATIC, SCALES, pitchName } from "./chords.js";
-import { FULL } from "./draw.js";
+import { FULL, setChannelNavLeds } from "./draw.js";
 import { flColorToCss } from "./format.js";
 import { HarmonyPanel } from "./harmonyPanel.js";
 import type { Mode, ModeContext, ModeName } from "./mode.js";
@@ -54,7 +55,8 @@ export class KeyboardPage implements Mode {
 
   onEvent(event: HwEvent, mc: ModeContext): boolean {
     if (event.type === "encoder") return this.panel.onEvent(event, mc);
-    if (event.type !== "button") return false; // pads play notes; knobs and the rest fall through
+    if (event.type === "nav") return this.pads.channelNav(event, mc);
+    if (event.type !== "button") return false; // the pads play notes
     const bank = groupBank(event.id);
     if (bank !== undefined) {
       if (event.pressed) this.pads.selectBank(bank, mc);
@@ -159,5 +161,6 @@ export class KeyboardPage implements Mode {
       const id = DISPLAY_BUTTONS[FIRST_STEP_BUTTON + i];
       if (id) leds.setLight(id, this.possible(STEPS[i] ?? 0) ? "dim" : "off");
     });
+    setChannelNavLeds(leds, mc.fl.selectedChannel.index, mc.fl.channelTotal);
   }
 }

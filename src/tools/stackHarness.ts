@@ -56,6 +56,7 @@ export function stackHarness(
     (bytes) => midi.push(bytes),
     padSettings,
     () => fl.selectedChannel.index,
+    time.clock,
   );
   const pages = {
     channel: new ChannelMode(time.clock),

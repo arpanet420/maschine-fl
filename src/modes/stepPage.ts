@@ -11,10 +11,10 @@
 // - Display 7 and 8 (`<<` `>>`) and the arrow buttons page through the pattern, 16 steps at a time.
 //   Display 5 and the FOLLOW button toggle FOLLOW: while on and playing, the page follows the play
 //   position, each time the play head enters another page (so paging by hand sticks until then).
-// - GROUP A–H still pick the channel bank, so the steps switch to the channel selected there.
+// - GROUP A–H still pick the channel bank, so the steps switch to the channel selected there, and the
+//   4D picks the channel.
 // - The play position comes from SONG_POS, assuming 16 steps per bar: position in the pattern =
 //   ((bar − 1) × 16 + step − 1) mod pattern length (docs/mapping.md).
-// - Other knobs, the 4D encoder and everything else fall through to the main page underneath.
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import type { FlSection, FlState } from "../fl/flState.js";
 import type { HwEvent } from "../hw/events.js";
@@ -35,7 +35,7 @@ import {
 } from "../render/widgets.js";
 import { setBankLeds, groupBank } from "./channelBank.js";
 import { DISPLAY_BUTTONS } from "./channelPadPage.js";
-import { FULL } from "./draw.js";
+import { FULL, setChannelNavLeds } from "./draw.js";
 import { knobStep } from "./knob.js";
 import { flColorToCss, flColorToPalette } from "./format.js";
 import type { Mode, ModeContext, ViewCommand } from "./mode.js";
@@ -228,6 +228,8 @@ export class StepPage implements Mode {
         return true;
       case "encoder":
         return this.turnHeldStep(event.index, event.delta, mc);
+      case "nav":
+        return this.pads.channelNav(event, mc);
       case "button": {
         const bank = groupBank(event.id);
         if (bank !== undefined) {
@@ -552,5 +554,6 @@ export class StepPage implements Mode {
     leds.setLight("arrowLeft", hasPrevious ? "dim" : "off");
     leds.setLight("arrowRight", hasNext ? "dim" : "off");
     leds.setLight("follow", this.follow ? "bright" : "dim");
+    setChannelNavLeds(leds, fl.selectedChannel.index, fl.channelTotal);
   }
 }

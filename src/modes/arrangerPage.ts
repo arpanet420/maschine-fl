@@ -49,7 +49,7 @@ import {
 } from "../render/widgets.js";
 import { bankFirst, bankLength, bankLetter, bankOf, bankText, groupBank } from "./channelBank.js";
 import { DISPLAY_BUTTONS } from "./channelPadPage.js";
-import { FULL } from "./draw.js";
+import { FULL, NAV_LIT } from "./draw.js";
 import { flColorToCss, flColorToPalette } from "./format.js";
 import type { Mode, ModeContext, ViewCommand } from "./mode.js";
 import { STEPS_PER_PAGE, groupB, pageCount, playHeadStep } from "./stepPage.js";
@@ -682,5 +682,7 @@ export class ArrangerPage implements Mode {
     leds.setLight("display7", this.page > 0 ? "dim" : "off");
     leds.setLight("display8", this.page < this.lastPage(fl) ? "dim" : "off");
     leds.setLight("follow", this.follow ? "bright" : "dim");
+    leds.setNav("left", this.page > 0 ? NAV_LIT : LED_OFF);
+    leds.setNav("right", this.page < this.lastPage(fl) ? NAV_LIT : LED_OFF);
   }
 }
