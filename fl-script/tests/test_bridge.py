@@ -4984,7 +4984,9 @@ class MeterTests(BridgeTestCase):
         self.assertEqual(self.script._bridge.meter, (16, 4))
         self.clock.advance(0.6)
         self.script.OnIdle()
-        self.assertLessEqual(len(self.fl.called("arrangement.currentTimeHint")), 3)
+        hints = self.fl.called("arrangement.currentTimeHint")
+        self.assertLessEqual(len(hints), 3)
+        self.assertEqual(hints[0], (1, 0, 0))  # song mode, the start, setRecPPB left off
         self.assertEqual(self.song_pos(self.take())["stepsPerBar"], 12)
 
     def test_the_log_hears_it_with_what_fl_said(self):

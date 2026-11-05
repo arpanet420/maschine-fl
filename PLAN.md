@@ -506,7 +506,7 @@ feedback on the feel before the next mode is started.
 ### Phase 7 – Polish and operation
 
 - [ ] **Project review 2026-11-05** (`docs/review-2026-11-05.md`): all done except its **test list**, which has never
-      run on the MK3 or in FL, and two questions for the owner (other meters, a licence).
+      run on the MK3 or in FL.
 - [x] **Project review 2026-10-21** (`docs/review-2026-10-21.md`): closed; the 2026-11-05 review says what came of each item.
 - Dropped for now: a config file (`~/.config/mk3d/config.json`). SETTINGS and `pages.json` keep the velocity curve and
   the pad settings, and nobody has asked for pad note mapping, thresholds or a theme.

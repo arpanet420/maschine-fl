@@ -867,9 +867,10 @@ def split_hint(text):
 def hinted_bar_steps(hint, per_step):
     """Steps in a bar by FL's own split of a time, None when its hints don't add up, and what they
     said. Asking about a time, not reading the song position, so it works anywhere in the song and
-    can't tear. FL's bases don't matter: everything is measured from what it says about the start."""
-    start_text = _safe("", hint, 1, 0)
-    far_text = _safe("", hint, 1, METER_PROBE_STEPS * per_step)
+    can't tear. FL's bases don't matter: everything is measured from what it says about the start.
+    `hint` takes song mode (1), the time, and setRecPPB, undocumented and left off (0)."""
+    start_text = _safe("", hint, 1, 0, 0)
+    far_text = _safe("", hint, 1, METER_PROBE_STEPS * per_step, 0)
     said = "hint %s and %s" % (str(start_text)[:24], str(far_text)[:24])
     start = split_hint(start_text)
     far = split_hint(far_text)
@@ -880,7 +881,7 @@ def hinted_bar_steps(hint, per_step):
     if bars <= 0 or steps <= 0 or steps % bars:
         return None, said
     size = steps // bars
-    one_bar_on = split_hint(_safe("", hint, 1, size * per_step))
+    one_bar_on = split_hint(_safe("", hint, 1, size * per_step, 0))
     return (size if one_bar_on == (start[0] + 1, start[1], start[2]) else None), said
 
 

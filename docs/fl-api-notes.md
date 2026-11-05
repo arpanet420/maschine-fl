@@ -231,7 +231,7 @@ answered, and the [test list](review-2026-11-05.md#test-list) asks for it.
 | Call | What we assume | Status |
 | ---- | -------------- | ------ |
 | `general.getRecPPB()` | The timebase × the numerator, so ÷ `getRecPPQ()` it is the beats in a bar. It knows no denominator: 6/8 and 6/4 give the same. Ignores time signature markers (stubs) | Manual |
-| `arrangement.currentTimeHint(1, ticks)` | `Bar:Step:Tick` for any time, in song mode, with no side effects. `hinted_bar_steps` asks about the start, about 128 steps on, and about one bar on. It works out the bar from the difference, so FL's bases don't matter, and it doesn't believe hints that don't add up | Stubs |
+| `arrangement.currentTimeHint(1, ticks, 0)` | `Bar:Step:Tick` for any time, in song mode, with no side effects. Its third argument, `setRecPPB`, is undocumented and passed as 0. `hinted_bar_steps` asks about the start, about 128 steps on, and about one bar on. It works out the bar from the difference, so FL's bases don't matter, and it doesn't believe hints that don't add up | Stubs |
 
 Without a usable hint the beats count as quarter notes: 3/4 is right, 6/8 comes out as 6/4 (24 steps). Without
 `getRecPPB` too it is 4/4. The manual has no getter for the denominator, only `setDenominator`; `score.tsDenominator`
